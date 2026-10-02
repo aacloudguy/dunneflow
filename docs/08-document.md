@@ -10,7 +10,7 @@ The switch at the top picks between them, and it remembers which you were in.
 
 ## Lane 1: the map
 
-![Document mode, map lane: tabs for Where to start, Routines, Data structures, Named values, Boundaries, Database, Network and "Files the program names", with the Routines document open showing a table of ROUTINE, SIGNATURE, WHY and WHERE](images/08-document-map-lane.jpg)
+![Document mode, map lane, with cmd_serve selected: the Routines document scrolled to the cli section, its header "cli 47" held at the top over the columns ROUTINE, SIGNATURE, WHY and WHERE, and the cmd_serve row highlighted below the tail of cmd_migrate's long WHY and above main (cli.py:2103) — "cmd_serve(args) -> int", "Open the map. Read-only throughout -- serving can never damage what it shows.", cli.py:2033](images/08-document-map-lane.jpg)
 
 Eight documents, generated from the graph:
 
@@ -30,18 +30,24 @@ the inspector fills, the trail records the hop, and Back will bring you home. A 
 a database table selects the table, which means selecting all the code that reads and
 writes it.
 
-Like the table, it says where you are: *SHOWING `cmd_serve` — row 58 of 910*, with **Go
-to it**.
+Like the table, it says where you are: *SHOWING `cmd_serve` — row 75 of 1,550 in this
+document*, with **Go to it**. The table says *as sorted here* instead, because its order is
+the sort you chose and this one is the document's own; the same routine has a different row
+in each, and each sentence names which order it counts in.
+
+The **WHERE** button on a row opens the routine's source at that line in
+[Code mode](09-code.md).
 
 Every analysis also writes the map to disk as Markdown, in `map@<instant>/`, so you can
 send someone the answer without sending them the application. That directory holds
-**fourteen documents and an index** including these eight, and seven more that have their own
-surfaces in the dashboard rather than a tab here: flows, governance, anomalies, the
-glossary, naming, traceability and the mirror.
+**fourteen documents and an index**: seven of these eight — *Files the program names* is a
+tab here and not a file there — and seven more that have their own surfaces in the dashboard
+rather than a tab here: flows, governance, anomalies, the glossary, naming, traceability and
+the mirror.
 
 ## Lane 2: the program's own
 
-![Document mode, corpus lane: a note saying no document is about the current selection, a filter box, "All 9 documents", and the documents grouped under OTHER, GLOSSARY, README and TOOLING headings with word counts and section counts](images/08-document-corpus-lane.jpg)
+![Document mode, corpus lane, "The program's own 53": a blue note saying no document in this map is about cmd_serve, a filter box, "All 53 documents.", and the first group, OTHER 47, listing Backlog (BACKLOG.md, 1,178w, 3 §), the design rules, ground truth, adding a language, packaging, the measured budgets (13,404w, 27 §), the rules (28,188w), the third-party notices, and the guide's chapters from 1. Installing (2,108w, 9 §) onward, each with its path, word count and section count](images/08-document-corpus-lane.jpg)
 
 Everything DunneFlow found beside the code encompassing Markdown, reStructuredText, and plain text, all
 grouped by what kind of document it is, with its size in words and sections.
@@ -53,14 +59,20 @@ The blue note at the top is worth reading. When nothing in the corpus is about y
 current selection it says so, and says *why*:
 
 > No document in this map is about `cmd_serve`. It carries no plan, ticket or decision
-> id, so there is nothing for a document to have in common with it.
+> id, so there is nothing for a document to have in common with it. What follows is the
+> whole corpus — DunneFlow relates code to prose through the plan, ticket and decision ids
+> they both name, and this one shares none.
 
-DunneFlow relates code to prose through the plan, ticket and decision ids they both name,
-though never by matching words, which could produce confident nonsense at scale.
+It relates them through those ids and never by matching words, which could produce
+confident nonsense at scale.
 
 ## Reading one
 
-![A document open: "‹ all documents", the title, README.md, "README · 849 words · 5.4 KB", a note saying it is not related to the current selection, an "IN THIS DOCUMENT" outline on the left, and the rendered prose on the right](images/08-document-open.jpg)
+![A document open: "‹ all documents", the title DunneFlow, README.md, "README · 2,464 words · 15.6 KB", a grey note "Not related to cmd_serve. You opened it from the list of all documents." with a "See what is related ›" button, an "IN THIS DOCUMENT" outline on the left (Download, Run from source, What it reads, The dashboard, For agents, Command line…), and the rendered prose on the right](images/08-document-open.jpg)
+
+When the document you are reading has nothing to do with the selection, the note above it
+says so and says how you got there, and **See what is related ›** closes it and returns you
+to the list, which leads with whatever is related.
 
 **IN THIS DOCUMENT** is the outline; click a heading to jump. Headings land at exactly the
 line the document store recorded, which is what makes a glossary citation able to open on

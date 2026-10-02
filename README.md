@@ -235,16 +235,16 @@ Stated here rather than left to be found:
 - **C++ and Kotlin calls are not resolved** inside the program; every one is external, and
   the map says how many.
 - **A very large single map is slow to open.** 262,879 routines (one part of Unreal) takes
-  27.6 minutes in the dashboard. Reading in parts keeps each map to a size that opens.
+  about 4.6 minutes in the dashboard, down from 27.6. Reading in parts keeps each map to a
+  size that opens quickly.
 - **A call the source does not spell is not seen**: JavaScript served as a string, or `fetch`
-  called through a local alias. A NETWORK count means *what this program calls*, not
-  everything it causes.
+  handed in as a parameter. (A `const` holding the global `fetch` is followed.) A NETWORK
+  count means *what this program calls*, not everything it causes.
 - **A subdirectory analysed on its own**, without `--part-of`, looks upward for its package
-  root and documentation, and can settle further up than you meant.
-- **The tutorial's screenshots** were taken on an earlier, smaller DunneFlow; the steps hold,
-  some of the numbers no longer match.
+  root and documentation, and can settle further up than you meant. The run says where it
+  settled and how many levels up, so it is never a surprise.
 
-The full list, each with where it came from and what would settle it, is
+The full list, each with where it came from and why it stands, is the stated residues in
 [`BACKLOG.md`](BACKLOG.md).
 
 ## Development

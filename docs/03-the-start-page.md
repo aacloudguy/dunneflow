@@ -3,7 +3,7 @@
 This is what DunneFlow serves when nothing is open. This describes the state in which a freshly installed
 application begins.
 
-![The DunneFlow start page: a lead line saying how many programs have been mapped, the path maps are kept in with Show me and Move… buttons, a list of the four mapped programs, and a "+ Analyse a directory…" button](images/03-start-page.jpg)
+![The DunneFlow start page. The lead line reads "4 programs have been mapped. Open one, or read another tree." Below it, MAPS ARE KEPT IN with the path to the maps root and Show me and Move… buttons; then four rows: djangoproject.com, one point in time; dunneflow, 3 points in time; fastapi, one point in time; OpenUSD, one point in time. Under them a "+ Analyse a directory…" button and the line "Nothing leaves this machine."](images/03-start-page.jpg)
 
 It is deliberately **not** the dashboard with everything emptied out. The dashboard is an
 application about one version of one program. There is a navigator counting its routines, a
@@ -34,6 +34,14 @@ whether the emptiness below is *nothing here* or *nothing found*.
 Each row says how many points in time it holds: *one point in time*, or *3 points in
 time* for a program you have analysed more than once. Click a row to open it.
 
+![The same page a moment after dunneflow was clicked: the lead line now reads "opening dunneflow — opening the graph…" and the dunneflow row is shaded under the pointer, still reading "3 points in time".](images/03-opening.jpg)
+
+Opening is not instant on a large map, so the lead line becomes a progress line while it
+happens: it names the program and the step it is on — the graph, the model the stack is
+drawn from, the file list, the naming standard, the glossary, and the cover — and the row
+you clicked greys out and says *opening…*. When the last step is done the page becomes the
+dashboard by itself.
+
 DunneFlow decides what is a map by looking inside, never by the directory's name. A
 folder called `output` full of hand-written prose is a folder full of prose, and it will
 not appear here.
@@ -41,7 +49,7 @@ not appear here.
 **+ Analyse a directory…** . This will read a new tree. That is [the next
 chapter](04-your-first-map.md).
 
-**The footer** Note that *"nothing leaves this machine. The analysis is stdlib parsing, and no
+**The footer** Note that *"Nothing leaves this machine. The analysis is stdlib parsing, and no
 part of it calls a model or opens a network connection."* That is a standing guarantee
 rather than a marketing line; there is a test that fails if anything on the analysis path
 starts importing an HTTP client.

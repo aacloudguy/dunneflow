@@ -12,7 +12,7 @@ means a detour gains you treasure.
 
 At the bottom of the inspector, for whatever is selected.
 
-![The Threads to pull panel: "Not the call graph — reasons something nearby is worth a detour. Two routines that never call each other and both write one table are related, and no call graph can say that." Below it four lanes — THE OTHER END, RUNS THE SAME SHAPE, NAMED LIKE THESE, UNUSUAL NEARBY — each row with a "◇ Keep this" button](images/12-threads-to-pull.png)
+![The Threads to pull panel for resolve.entrypoints.entrypoints_from_manifests, headed "THREADS TO PULL 5" and "Not the call graph — reasons something nearby is worth a detour. Two routines that never call each other and both write one table are related, and no call graph can say that." Below it two lanes: NAMED LIKE THESE 2 — manifests, "8 modules, 1 table — defined in __init__.py:1", and entrypoints, "3 constants, 1 module, 1 table — defined in entrypoints.py:1"; and UNUSUAL NEARBY 3 — _target_routine, "2 comments — the most in entrypoints", binding_note, "called from 4 places — the most in entrypoints", and exact, "nested 2 levels deep — the deepest closure in entrypoints". Each row has a "◇ Keep this" button](images/12-threads-to-pull.png)
 
 This is **adjacency by interest, not by edge**. Two routines that never call each other and
 both write to one table are coupled, and no call graph will ever tell you that.
@@ -25,19 +25,21 @@ both write to one table are coupled, and no call graph will ever tell you that.
 | **Shares a plan** | The same ticket, plan or decision id. |
 | **Unusual nearby** | The most commented routine on your plate. The one called from the most places. A value read three times as often as it is written. |
 
-Every thread states **its own size**, so you can weigh it. A lane that fires on 8 routines
-out of 4,823 says so rather than looking like a general truth.
+Every thread states **its own size**, so you can weigh it. *Called from 4 places — the most
+in entrypoints* says both how many and against what, rather than looking like a general
+truth. A lane with nothing in it is left out, which is why the panel above shows two lanes
+of the five.
 
 ## Worth a look
 
 The **Explore → Worth a look** panel is the same idea with no selection required. This indicates a
 doorway when you do not yet know what to ask.
 
-![The Worth a look panel: twelve cards, each naming a measurement, how many times the middle it is, the thing itself, where it is declared, what the middle actually is, and "Follow this go", "How this was measured show the query" and "◇ Keep this"](images/12-worth-a-look.jpg)
+![The Worth a look panel: "12 measurements of this program, each showing what came out furthest from the middle", with "Measured on the base alone" beneath, then the first cards — "3,023 characters in one call argument", 377.9× the middle, _r_diagram, written at web/serve.py:1867, "the middle argument is 8 characters, of 16,033"; "17,585 characters in one constant's value", 308.5×, SCHEMA_SQL at store.py:52; "782 comments on one routine", 156.4×, web.queries; "89 callers of one routine", 89×, query at store.py:1641 — each with "Follow this go", "How this was measured show the query" and "◇ Keep this"](images/12-worth-a-look.jpg)
 
 Twelve measured extrema, each with **its middle stated beside it**. Every program has a
-most-commented routine, so a maximum on its own is a claim nobody can weigh. *2,382
-characters in one call argument, 264.7× the middle* is a discovery. *3 levels of nesting
+most-commented routine, so a maximum on its own is a claim nobody can weigh. *3,023
+characters in one call argument, 377.9× the middle* is a discovery. *3 levels of nesting
 against a middle of 2* is not, and the panel says the second as plainly as the first.
 
 **A curiosity is a measurement, never a judgement.** No severity, no blind spot, nothing
@@ -53,7 +55,7 @@ alone. Run it yourself with `dunneflow query`, one of the CLI-commands.
 Every selection you make is recorded, and the bar across the top of the centre pane is
 your route.
 
-![The trail bar: "TRAIL +3 behind › render_all › Shape › A boundary, once per pass › mark_duplicates" then "← Back", "Forward →", "Clear" and "◆ 2 kept"](images/12-trail-bar.png)
+![The trail bar: "TRAIL", a count of the steps behind it, then "Worth a look › entrypoints_from_manifests › _target_routine", the last highlighted, then "← Back", "Forward →" (greyed, with nothing ahead), "Clear" and "◆ 1 kept"](images/12-trail-bar.png)
 
 **← Back** (`⌘Z`, or `Ctrl+Z` on Windows and Linux) and **Forward →** (`⇧⌘Z`,
 `Ctrl+Shift+Z`) step along it. They work from anywhere because the person who needs Back is by
@@ -65,7 +67,7 @@ package has an `__init__` so a trail that stored labels would take you back to t
 one to deliver a wrong answer with great confidence.
 
 **The bar is a window onto the history, not the history itself.** It shows a dozen steps;
-Back reaches further. What falls off either end is stated *+3 behind*, *+8 ahead* because
+Back reaches further. What falls off either end is stated, *+N behind* or *+N ahead*, because
 a trail that silently forgets is worse than a short one: you would have no way to
 know Back could still take you further.
 
@@ -81,9 +83,9 @@ screen. It does not drop what you have kept.
 Anywhere you see **◇ Keep this,** including the inspector, a thread, a curiosity, a search hit, or a
 row on the Algorithms page, that thing lands on a shelf.
 
-![The kept shelf: "Things you kept while you were looking at something else. The point of wandering is that you find what you were not looking for; this is where it goes so the detour does not cost you the thread you were on." Two kept loops, each naming its file and line, each with a Drop button](images/12-kept-shelf.jpg)
+![The kept shelf, reached from Explore › Kept 1: "Things you kept while you were looking at something else. The point of wandering is that you find what you were not looking for; this is where it goes so the detour does not cost you the thread you were on." One kept routine, binding_note, with a Drop button. The trail reads "… entrypoints_from_manifests › _target_routine › kept things" with "◆ 1 kept", and the inspector still shows resolve.entrypoints._target_routine, the routine the reader was on](images/12-kept-shelf.jpg)
 
-The count sits in the trail bar as **◆ 2 kept** and opens the shelf. Every row **opens**
+The count sits in the trail bar as **◆ 1 kept** and opens the shelf. Every row **opens**
 when you click it and goes back to the thing itself, not to a note about it. **Drop** removes
 one.
 
@@ -101,22 +103,23 @@ nowhere.
   the map minted it. Its row also recounts itself: *how many routines this stands for
   now*, not how many it stood for when you kept it.
 - **A line, or a loop at a line**, is only true of the version it was kept in. If you
-  switch to a different version the row says so: *kept at 2026-09-08, so this version may
-  have moved it*.
+  switch to a different version the row says so: *kept at 2026-10-02T19:59:47Z, so this
+  version may have moved line 92*.
 - **A box in a diagram** belongs to the drawing it was drawn in, and is valid at the
   altitude you drew it at. The row says that too.
 
 ## A worked detour
 
-1. You are reading `cmd_serve` because you want to know how the server starts.
-2. Its inspector shows **Threads to pull → The other end: `documents` - you write and read
-   it · of 20 others, 16 read it and 3 write it.** You had no idea twenty other things
-   touched that table.
-3. You follow it. The table's page shows what loops over it, and one of those loops runs a
-   `DATABASE UPDATE` once per row.
-4. That is interesting but it is not what you came for. **◇ Keep this** on the loop.
-5. **← Back**, twice. You are on `cmd_serve` again, on the line you left.
-6. When you are done, **◆ 1 kept** takes you straight to the loop.
+1. You are reading `docstore.DocStore.mark_duplicates` because you want to know how
+   DunneFlow decides two documents are copies of one another.
+2. Its inspector shows **Threads to pull → The other end: `documents` — you write and read
+   it · of 20 others, 16 read it and 3 write it and 1 declare it.** You had no idea twenty
+   other things touched that table.
+3. You follow it. Selecting the table selects every routine that reads or writes it, and
+   one of the three other writers is a routine you have never heard of.
+4. That is interesting but it is not what you came for. **◇ Keep this** on it.
+5. **← Back**, twice. You are on `mark_duplicates` again, on the line you left.
+6. When you are done, **◆ 1 kept** takes you straight to it.
 
 The detour cost you nothing, and we hope it was full of value.
 

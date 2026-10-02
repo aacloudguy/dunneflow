@@ -2,7 +2,7 @@
 
 The whole program at once, as a stack of plates. Also known as 2.5D, or two and a half dimensional.
 
-![Graph mode: the stack of coloured dots, the HUD panel on the left with layout sliders, and the Plates legend on the right listing 22 plates with their counts](images/06-graph-stack.jpg)
+![Graph mode with nothing selected: the stack of coloured dots, mostly teal and grey, narrowing to a waist above a wide purple plate at the bottom; the HUD on the left reading "60 fps · 2,690 nodes · 25 plates — nothing selected — all links hidden; pick two plates to see what crosses between them, or click a node" above the undo, redo, you are here, focus, snap to fit, top-down, tilt and benchmark buttons; the sliders folded to one line, "spacing 1.50× · spread 1.00 / 1.00 / 0.35 · plate width 1.00"; the Plates panel folded to a rail labelled PLATES; and the inspector on the right reading "Nothing selected."](images/06-graph-stack.jpg)
 
 ## What you are looking at
 
@@ -14,8 +14,11 @@ shape without anything overlapping anything else.
 drawn as a dot rather than a labelled box because at fifteen thousand of them a labelled
 box is not a picture, it renders as a wall.
 
-The legend on the right lists every plate with what it holds. Click one to select it;
-drag to reorder.
+The legend on the right, **Plates**, lists every plate with what it holds. Click one to
+select it; drag to reorder. Its **⇥** sends it to a rail at the edge, which is the
+quickest way to give the stack the room. When the middle pane is too narrow for both, as it
+is in the picture above with the navigator and the inspector open, the panel starts on its
+rail by itself; click the rail to bring it back.
 
 **Some nodes are shadows and are never drawn.** When a routine on one plate calls a
 routine on another, the model puts a placeholder for the far end on *this* plate, so the
@@ -30,7 +33,7 @@ is a picture of nothing.
 
 Pick a node and the rest dims:
 
-![Graph mode with cmd_serve selected: everything except its neighbourhood is dimmed to grey, and the HUD says "on pkg:cli, pkg:runtime, pkg:web, ext:FILE · cmd_serve · 10 nodes · 5 within · 8 crossing · 1,727 dimmed · focus: only what is lit answers"](images/06-graph-selected.jpg)
+![Graph mode with cmd_serve selected: everything except its neighbourhood is dimmed to grey, its links drawn between the few lit nodes, and the HUD says "60 fps · 2,690 nodes · 25 plates — on pkg:cli, pkg:runtime, pkg:web, ext:FILE · cmd_serve · 9 nodes · 4 within · 7 crossing · 2,681 dimmed · focus: only what is lit answers". The inspector on the right shows cli.cmd_serve, IN 2 and OUT 14 call sites.](images/06-graph-selected.jpg)
 
 The HUD states exactly what it did: how many nodes are lit, how many are dimmed, and
 whether the dimmed ones still answer a hover. **Dimming says what is not yours; it does
@@ -49,9 +52,11 @@ and a ring with four ticks around it. Both can be turned off.
 | **snap to fit** | frame everything |
 | **top-down** / **tilt** | two camera angles |
 | **benchmark** | measure the frame rate on your machine |
-| **clear** | drop the selection |
+| **clear** | drop the selection — it appears once there is one |
 
-**The sliders** are three independent axes plus two.
+**The sliders** are three independent axes plus two. They fold away under the buttons to
+a single line that still states every value — *spacing 1.50× · spread 1.00 / 1.00 / 0.35 ·
+plate width 1.00* — so a folded panel never hides what is in force.
 
 - **spacing** How much clear space a node keeps, as a multiple of its own diameter.
   Smaller means bigger dots. You set the room, and the radius follows from it. This is
@@ -60,7 +65,7 @@ and a ring with four ticks around it. Both can be turned off.
   fuse into a mass at large sizes.
 - **stack** is the gap *between* plates.
 - **width** is how much a plate's width says about how much it holds. At `0` every plate
-  is drawn the same width whether it holds 991 things or 6. At `1` the area is
+  is drawn the same width whether it holds hundreds of things or six. At `1` the area is
   proportional to the contents, so the footprint means *how much is here*.
 
 **nodes** Whether a node's size says how sparse its plate is, or only how connected it
@@ -72,7 +77,8 @@ is. Both readings are good, so both are built.
   instant, and blind to which nodes are connected — so links cross it at every angle.
 - **by connection** runs a force solve until connected things sit near each other, with
   the shadows pulling for the plates they stand in for. On a large program's busiest
-  plate that takes 328,531 edge crossings down to 27,291 — **92% fewer**.
+  plate that takes 328,531 edge crossings down to 27,291 — **91.7% fewer**. (The button's
+  own tooltip rounds that to 92%.)
 
   It costs about **89 ms with a GPU and 9.7 seconds without one**, paid when you ask for
   it. The page says which of the two actually drew it.
@@ -96,8 +102,8 @@ of looking at the same facts and not a filter: nothing is dropped, and every fol
 says what it stands for.
 
 **smallest plate** How few things a plate may hold before it is merged into `<small>`.
-The line under it always states what that merged: *"1,737 drawn · 7 plates merged into
-`<small>`, holding 21."*
+The line under it always states what that merged: *"2,690 drawn · 9 plates merged into
+`<small>`, holding 35."*
 
 **Colour by** What colour means: `what it is`, `which plate`, or `what changed`. The last
 appears only when there are two versions to compare.
@@ -112,7 +118,8 @@ picked, so a few clicks build a visible route through the program.
 **collapse gaps** Close the hole a plate nothing is looking at leaves behind, rather than
 flying past an empty height.
 
-**Plate order** Six of them. `by size` is the default; `by name` and `by kind` are what
+**The sort menu** at the top of the Plates panel, beside its count — it has no label on
+screen; a screen reader announces it as *Sort plates*. Six orders. `by size` is the default; `by name` and `by kind` are what
 they sound like; `as arranged` is whatever order you dragged the legend into. The
 interesting two are **by what they link to** and **by what they link to, grouped**, which
 search for an order putting plates near the ones they cross to. On a 53-plate program the
@@ -124,8 +131,9 @@ be optimal, only better by a stated amount than the order it started from.
 ## The Overview layout
 
 The **Stack** / **Overview** toggle beside the mode buttons is two drawings of one
-selection, not a seventh mode. The stack holds ten thousand nodes and answers *what is in
-here*. The overview holds forty boxes and answers *what is this shaped like*.
+selection, not a seventh mode. The stack holds every node and answers *what is in
+here*. The overview holds one box per package — 24 of them for DunneFlow — and answers *what
+is this shaped like*.
 
 ---
 

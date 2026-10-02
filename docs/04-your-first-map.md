@@ -1,10 +1,10 @@
 # 4. Your first map
 
 Press **+ Analyse a directory…** on the start page. (The same dialog is on the program
-menu inside the dashboard, second from the bottom, under **× Close this map** so you
+menu inside the dashboard, second from the bottom, just above **× Close this map**, so you
 never have to leave a map to read another one.)
 
-![The Analyse a directory dialog: a "Directory to read" field with a Choose… button, a "Call it" field, a "Read the documentation too" checkbox, and Analyse and Cancel buttons](images/04-analyse-dialog.jpg)
+![The Analyse a directory dialog, opened over DunneFlow's own cover: a "Directory to read" field showing the example /Users/you/code/some-project/src with a Choose… button, a "Call it" field reading "the directory's own name", a ticked "Read the documentation too" checkbox, a greyed Analyse button beside Cancel, and the line "It runs behind this page — the map you are reading stays open and stays true."](images/04-analyse-dialog.jpg)
 
 ## The two fields
 
@@ -40,12 +40,12 @@ only want the code, and the analysis is quicker.
 DunneFlow checks what you typed as you type it, and **Analyse** stays disabled until it
 is satisfied.
 
-![The dialog with a valid path filled in, "Call it" auto-filled with the directory's own name, and the Analyse button now enabled](images/04-analyse-preflight.jpg)
+![The dialog with /Volumes/BackupDrive/Documents2025/Developer/requests typed in, "Call it" now showing requests, the directory's own name, and the Analyse button enabled](images/04-analyse-preflight.jpg)
 
 When it refuses, it says which refusal it is. Each is different problem and each has
 its own sentence. The most common one on your first run:
 
-![The dialog refusing in red: "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal."](images/15-refuse-served-program.jpg)
+![The dialog with the path to DunneFlow's own src/dunneflow typed in and "Call it" showing dunneflow, refusing in red: "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." Analyse is greyed.](images/15-refuse-served-program.jpg)
 
 That one is not caution. An analysis into the name that is currently open would rewrite
 the very graph the server is holding, and empty the map under you while you were reading
@@ -54,7 +54,17 @@ nested inside the tree, each of these get their own sentence too. See
 [when it refuses](15-when-it-refuses.md).
 
 Analysing into a name that **already exists** is allowed, and the dialog says plainly
-that it rewrites that program's working snapshot.
+that it rewrites that program's working snapshot:
+
+![The dialog with /Volumes/BackupDrive/Documents2025/Developer/OpenUSD typed in and "Call it" showing OpenUSD, and a note: "There is already a program called OpenUSD. Analysing into it rewrites its working snapshot rather than adding a second point in time — seal it first if you want to keep both." Analyse is enabled.](images/04-already-exists.png)
+
+That is a note and not a refusal, so **Analyse** stays enabled.
+
+**One analysis runs at a time.** Open the dialog while another is going and it says so, names
+the run and the step it is on, and offers to stop it — or to wait, because the dialog stays
+open and **Analyse** comes back by itself when the run finishes:
+
+![The dialog with a requests directory typed in, refusing in red "an analysis of OpenUSD-cold is already running", above a panel reading "An analysis of OpenUSD-cold is running — reading the source tree, step 1 of 7, going 38.1 s." with a Stop it button and "Or leave it — this dialog stays, and Analyse works again as soon as it finishes."](images/04-dialog-blocked.png)
 
 ## While it runs
 
@@ -62,11 +72,11 @@ The panel appears bottom-right and stays there. You can dismiss it, keep reading
 come back. An analysis is not a switch, and the map you already have open stays open and
 stays true for the whole run.
 
-![The start page with an analysis running: the program list is still usable, and a progress panel sits in the bottom-right corner reading "ANALYSING society — reading the source tree — 300/628 — step 1 of 7 · 4.0 s"](images/04-analysis-running.jpg)
+![The dashboard, still showing DunneFlow's cover, with a progress panel in the bottom-right corner reading "ANALYSING OpenUSD-cold — writing the map — step 7 of 7 · 1 m 13 s", a collapsed "What was left out of this map (4)", "The map on screen is untouched. Keep reading." and a Stop it button](images/04-analysis-running.jpg)
 
 Close up:
 
-![The progress panel: "ANALYSING society — reading the documents — step 2 of 7 · 15.5 s", with a progress bar, the line "The map on screen is untouched. Keep reading.", and a Stop it button labelled "What it has written stays, marked unfinished."](images/04-progress-panel.png)
+![The progress panel: "ANALYSING OpenUSD-cold — writing the map — step 7 of 7 · 1 m 17 s", with a progress bar nearly full, a collapsed "What was left out of this map (4)", the line "The map on screen is untouched. Keep reading.", and a Stop it button beside "What it has written stays, marked unfinished."](images/04-progress-panel.png)
 
 The steps are counted for *this* run, not from a fixed list, because the flags you set
 remove work. A full run is:
@@ -77,12 +87,21 @@ remove work. A full run is:
 4. reading the standards *(only if you gave it a standards directory)*
 5. resolving calls and command trees
 6. capturing the source bodies
-7. writing the map
-8. looking for anomalies
+7. looking for anomalies
+8. writing the map
 
-If the panel says nothing has moved for several minutes, it tells you that and does
-nothing about it. Resolution is legitimately quiet for tens of seconds on a large
-program, so whether that is a wedged job or a long step is your call, not the tool's.
+So a run with no standards directory counts seven, as the panels above do.
+
+The panel carries **What was left out of this map** while the run is still going, so what a
+run declined is not something you have to wait for the end to learn. It is the next section.
+
+If nothing has moved for more than three-quarters of a minute, the panel tells you that and
+does nothing about it. This one is from an earlier, slower build reading the same tree:
+
+![The progress panel for OpenUSD-cold at "resolving calls and command trees — step 4 of 7 · 2 m 14 s", with a note: "Nothing new for 1 m 3 s. Some steps are quiet for a while — resolving a large program says nothing until it is done — so this may be working. It may also be stuck."](images/04-progress-quiet.png)
+
+Resolution is legitimately quiet for minutes on a large program, so whether that is a
+wedged job or a long step is your call, not the tool's.
 
 ## What it read, and what it left out
 
@@ -91,27 +110,36 @@ DunneFlow reading itself — two of the four languages it reads, because its own
 neither C++ nor Kotlin:
 
 ```
-files 118 (parsed 118, cached 0, removed 0, failed 0) in 1.7s
-  read: python 107 · typescript 11
+files 142 (parsed 142, cached 0, removed 0, failed 0) in 3.3s
+  read: python 131 · typescript 11
     typescript plugins/typescript/tsconfig.json: 11 files
-    typescript opened in 0.3s
-  unread: 8 .js, 5 .json, 4 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs — no reader here
+    typescript opened in 0.2s
+  unread: 8 .js, 6 .json, 6 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs — no reader here
   claims those suffixes
-  strings not judged: 2,860 python, 110 typescript — outside the 3–200,000 character
+  strings not judged: 3,475 python, 112 typescript — outside the 3–200,000 character
   bound a reader applies before sending
-  calls resolved to somewhere outside this map: 450 typescript — a library, a type
+  calls resolved to somewhere outside this map: 262 typescript — a library, a type
   declaration or a file no reader claimed; external, and right
-  pruned 16 directories: __pycache__ ×14, node_modules, vendor
+  calls whose far end the reader could not name at all: 200 typescript — left external
+  rather than guessed by name
+  pruned 1 directory: vendor
 ```
 
-**This is the command line's, and only the command line's.** `dunneflow serve` runs the
-analysis with `--quiet` so that its machine-readable progress stream stays clean, and these
-lines go with it — so a reader who analyses from the dialog gets the progress panel and the
-map, and not this. If you want to know what a run left out, run it from a terminal. It is
-the one thing in this guide the application does less well than the command, and it is
-named here rather than glossed over.
+That is the command line's. **The dialog gets the same lines**, under **What was left out
+of this map** in the panel: closed by default, with the count of lines on it, and open for
+the asking while the run goes and after it ends. When a run finishes, the panel says what it
+read and offers to open it:
 
-**`read:` is per language, and that is not decoration.** *118 files* says nothing about
+![The panel after a run of requests: "READ requests — 22 files · 290 routines · 31 documents · 5.6 s", "Opening it reloads the page, because a program switch cannot keep the selection, the trail or the version you are on.", a collapsed "What was left out of this map (4)", and Open it and Not now buttons](images/04-analysis-read.png)
+
+Opened, it is the list a terminal would have printed:
+
+![The same finished panel for requests with "What was left out of this map (4)" open: "unread: 5 .png, 4 .cnf, 4 .key, 3 .csr, 3 .pem, 2 .yaml, 1 .ai, 1 .bat, 1 .crt, 1 .css, 1 .html, 1 .in, 1 .ini, 1 .srl, 1 .svg, 1 .toml, 1 .typed — no reader here claims those suffixes", "left out as tests: 15 python — analyse again with --include-tests to read them", "strings not judged: 162 python — outside the 3–200,000 character bound a reader applies before sending" and "pruned 2 directories: .git, .github"](images/04-left-out.png)
+
+Once the map is open, **About this map** holds the same record for good, together with the
+one line the panel leaves out — which languages were read, and how many files of each.
+
+**`read:` is per language, and that is not decoration.** *142 files* says nothing about
 whether the TypeScript half of a tree was read at all — a repository whose TypeScript
 reader never ran would report the same total as one with no TypeScript in it. The line
 under it is the reader saying how it divided the work: TypeScript compiles per
@@ -127,6 +155,8 @@ fact with a different remedy, which is why they are not merged into one:
 | `declined by you` | you passed `--without <lang>`. A different fact from the first line, with the opposite remedy |
 | `skipped by the reader's own rule` | a `.d.ts` is TypeScript's header file, not a program |
 | `strings not judged` | too short or too long to be worth scanning for SQL and filenames |
+| `calls resolved to somewhere outside this map` | the reader's own compiler followed the call to a library or a file no reader claimed. External, and right |
+| `calls whose far end the reader could not name at all` | left external rather than guessed at by name |
 | `pruned N directories` | `node_modules`, `__pycache__`, anything beginning with a dot, and any directory that holds somebody else's map |
 
 If you ever find yourself asking *why is this map smaller than the directory*, the answer
@@ -137,7 +167,12 @@ is one of those lines, and it was printed.
 **Stop it** ends the run. What it had already written stays on disk, **marked
 unfinished** and that mark is the point of the whole mechanism.
 
-![The panel after stopping: "STOPPED society — stopped on signal 15. What it had written is left marked unfinished — analysing society again completes it." with "Analyse it again" and "Close" buttons](images/04-analysis-stopped.jpg)
+![The panel after stopping, over the dashboard: "STOPPED OpenUSD-cold3 — stopped on signal 15. What it had written is left marked unfinished — analysing OpenUSD-cold3 again completes it.", and "Analyse it again" and "Close" buttons](images/04-analysis-stopped.jpg)
+
+**Analyse it again** opens the dialog with the directory and the name already filled in —
+the same directory the stopped run was reading — so finishing it is one more press of
+**Analyse**. The dialog notes that a program by that name already exists, which is true:
+the unfinished one.
 
 An analysis that is killed part-way leaves a graph that **opens perfectly and lies**. One
 stopped twelve seconds into a large program reported 628 files, 4,786 routines and *zero*
@@ -169,11 +204,11 @@ A directory under the maps root, holding:
 - **`source.db`** and **`docsource.db`** The bodies of what was read, held by content
   hash. This is what lets [Code mode](09-code.md) show you the source months later, on a
   machine that has never held the tree.
-- **`map@<instant>/`** Fifteen Markdown documents about the program: entrypoints,
+- **`map@<instant>/`** Fourteen Markdown documents about the program — entrypoints,
   flows, routines, data, boundaries, governance, database, network, anomalies, glossary,
-  naming, traceability, mirror, constants, and a README that indexes them. These are the
-  same eight subjects [Document mode](08-document.md) shows you in the browser, plus the
-  ones that only make sense written down.
+  naming, traceability, mirror and constants — and a README that indexes them. Seven are
+  subjects [Document mode](08-document.md) shows you in the browser; the other seven have
+  surfaces of their own in the dashboard.
 
 The Markdown is readable on its own with no tooling at all, which matters when you want
 to send someone the answer rather than the application.

@@ -151,6 +151,8 @@ the rows that are there, so it tells you the map is unfinished and answers.
 > dunneflow is the program being read — its graph is open here, and an analysis may discard
 > and re-extract it. Switch to another program first, or run this from a terminal.
 
+![The analyse dialog over the dashboard, with DunneFlow's own src/dunneflow typed into "Directory to read" and "Call it" showing dunneflow, refusing in red: "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." Analyse is greyed out; Cancel is not](images/15-refuse-served-program.jpg)
+
 **What happened.** You asked the dashboard to analyse into the name it is currently
 serving.
 
@@ -223,11 +225,14 @@ lets a cancelled dialog mean only that you cancelled it.
 
 ## Refusals from the analyse dialog
 
-Each is its own sentence because each is a different problem.
+Each is its own sentence because each is a different problem, and each appears under the
+fields as you type, with **Analyse** greyed out until it is settled.
+
+![The ANALYSE A DIRECTORY dialog with requests/src typed into "Directory to read", over the hint "The whole path, as this machine sees it — the server reads the tree itself, so a path relative to your terminal would mean nothing to it."; "Call it" shows src, borrowed from the directory; "Read the documentation too" is ticked; and in red, "requests/src is a relative path — give the whole path, because the server's directory is not yours". Analyse is greyed out](images/15-refuse-relative.png)
 
 | It says | What to do |
 |---|---|
-| *…is a relative path — give the whole path* | The server reads the tree itself, so a path relative to your terminal means nothing to it. Use **Choose…** or type the full path. |
+| *…is a relative path — give the whole path, because the server's directory is not yours* | The server reads the tree itself, so a path relative to your terminal means nothing to it. Use **Choose…** or type the full path. |
 | *…does not exist* | Check the path. |
 | *…is a file, not a directory to analyse* | Point at the directory that contains the code. |
 | *…is inside the output root — that is where maps are written* | You have pointed it at its own output. Point it at source. |

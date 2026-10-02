@@ -49,7 +49,7 @@ git worktree add ~/code/some-project-2026-09-08 <commit-or-tag>
 
 That gives you a second complete tree sharing one object store, so it costs almost no
 disk. Name it for **what it is** by including a date, a tag, or a release, because DunneFlow records
-the name of the directory it read and that is what you will recognize the two versions by
+the name of the directory it read and that is what you will recognise the two versions by
 later. `some-project-2026-09-08` reads well in the version strip; `tmp2` does not.
 
 ## Perforce
@@ -113,6 +113,13 @@ is what you recognise them by.
 That leaf is the **project's** directory, not the one you pointed at. Analyse
 `~/code/some-project/src` and the map says `some-project`, because `src` identifies
 nothing because every src-layout program in the world has one.
+
+![The version strip: BASE DunneFlow 0.2.0 compared with dunneflow-before-parts · DunneFlow at 0804aa7 - before parts 0.1.0, a button reading "you chose: the compared version is older", and "captured: compared first".](images/02-version-strip.png)
+
+That strip is DunneFlow reading itself. The base was analysed from `DunneFlow/src/dunneflow`
+and is called `DunneFlow`, the project's directory; the version it is compared with was read
+from a worktree called `dunneflow-before-parts`, and carries the label it was given when it
+was sealed. The green figures beside each are the versions the program states about itself.
 
 **Recorded: the version the program states about itself**, if it states one, whether from
 `pyproject.toml`, or a module-level `__version__`, each with the file that proves it.

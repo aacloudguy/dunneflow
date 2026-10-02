@@ -24,33 +24,38 @@ A program directory holds one **working** snapshot, which each analysis replaces
 two, you seal the first. Note that if you are using the application binary, you do not need
 to type "uv run" in the examples below. Start with "dunneflow" and continue the rest of the lines.
 
+The pictures in this chapter come from a map of DunneFlow itself, built that way: an older
+checkout from before a fix for Windows, sealed, then today's tree.
+
 ```bash
 # 1. analyse the older tree
-uv run dunneflow analyze ~/code/some-project-2026-09-08/src --name some-project
+uv run dunneflow analyze ~/code/dunneflow-before-windows/src/dunneflow --name dunneflow
 
 # 2. seal it, with a name you will recognise
-uv run dunneflow revisions output/some-project \
-    --seal --label "some-project at f795bc3 - 2026-09-08"
+uv run dunneflow revisions output/dunneflow \
+    --seal --label "DunneFlow at 1017ef4 - before the Windows fix"
 
 # 3. analyse the newer tree into the same program
-uv run dunneflow analyze ~/code/some-project/src --name some-project
+uv run dunneflow analyze ~/code/DunneFlow/src/dunneflow --name dunneflow
 ```
 
 ```
-sealed 2026-09-10T18:48:30Z as FOR_COMPARISON — "some-project at f795bc3 - 2026-09-08"
+sealed 2026-10-02T19:59:47Z as FOR_COMPARISON — “DunneFlow at 1017ef4 - before the Windows fix”
 the next `analyze` opens a fresh working revision beside it
 ```
 
-Check what a program holds at any time:
+Seal as many as you like. The map behind these pages holds a third, older still, from
+before DunneFlow's analysis was split into parts. Check what a program holds at any time:
 
 ```bash
-uv run dunneflow revisions output/some-project
+uv run dunneflow revisions output/dunneflow
 ```
 
 ```
-revision               state            captured               files  label
-2026-09-10T18:48:42Z   WORKING          2026-09-10T18:48:42Z      78
-2026-09-10T18:48:30Z   FOR_COMPARISON   2026-09-10T18:48:30Z      73  some-project at f795bc3 - 2026-09-08
+revision               state            captured                files  label
+2026-10-02T19:59:52Z   WORKING          2026-10-02T19:59:52Z      142
+2026-10-02T19:59:47Z   FOR_COMPARISON   2026-10-02T19:59:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-10-02T19:59:41Z   FOR_COMPARISON   2026-10-02T19:59:41Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 **Sealing is a command, not a button**, and the dashboard says so where you would look for
@@ -66,11 +71,19 @@ control, and its options are the **pairs**:
 ```
 reading DunneFlow
     DunneFlow · on its own
-    DunneFlow ← dunneflow-2026-09-08 · DunneFlow at f795bc3 - 2026-09-08
-reading dunneflow-2026-09-08 · DunneFlow at f795bc3 - 2026-09-08
-    dunneflow-2026-09-08 · … · on its own
-    dunneflow-2026-09-08 · … ← DunneFlow
+    DunneFlow ← dunneflow-before-windows · DunneFlow at 1017ef4 - before the Windows fix
+    DunneFlow ← dunneflow-before-parts · DunneFlow at 0804aa7 - before parts
+reading dunneflow-before-windows · DunneFlow at 1017ef4 - before the Windows fix
+    dunneflow-before-windows · … · on its own
+    dunneflow-before-windows · … ← DunneFlow
+    dunneflow-before-windows · … ← dunneflow-before-parts · …
+reading dunneflow-before-parts · DunneFlow at 0804aa7 - before parts
+    …
 ```
+
+Each option names both ends, because a closed menu shows only the option and not the group
+it sits in: closed, it reads *DunneFlow ← dunneflow-bef…*. The list itself is drawn by your
+operating system, which is why there is no picture of it here.
 
 Both ends are real. The **reading** end decides what the whole screen shows, including
 the cover, the routine list, the code browser, the glossary. The other end is what it is held
@@ -91,18 +104,21 @@ that is precisely the case this view exists to serve.
 So the bands are named by **where a thing is**, never by what happened to it, and the
 interpretation is yours. The strip carries it as a button you can flip:
 
-> base **DunneFlow** `0.1.0` compared with **dunneflow-2026-09-08** · DunneFlow at f795bc3
-> - 2026-09-08 `0.1.0` — [ assuming the compared version is newer ] · captured: compared
-> first
+> BASE **DunneFlow** `0.2.0` compared with **dunneflow-before-windows** · DunneFlow at
+> 1017ef4 - before the Windows fix `0.2.0` [ assuming the compared version is newer ]
+> captured: compared first
 
 Three things in that line:
 
 - **The assumption**, as a button. Click it to flip. Where the two versions state numbers
   that can be ordered, it says so — *"the compared version is newer — from their
-  versions"*. Where they cannot, as here (both are `0.1.0`), it says *"assuming the
+  versions"*. Where they cannot, as here (both are `0.2.0`), it says *"assuming the
   compared version is newer"*: a default rather than a reading. Hover it and the reason is
   given in full — *"Neither version says enough to compare, so this is the default
-  assumption."*
+  assumption. It decides whether what only the base has reads as deleted or as added."*
+  Once you have clicked it, it says so, and the versions no longer decide:
+
+  ![The version strip for the before-parts pair: "BASE DunneFlow 0.2.0 compared with dunneflow-before-parts · DunneFlow at 0804aa7 - before parts 0.1.0", then the button "you chose: the compared version is older", then "captured: compared first"](images/14-assumption.png)
 - **captured: compared first** Which of the two DunneFlow read first. A fact about the
   capture, not about the code, which is why it sits beside the assumption rather than
   deciding it.
@@ -113,7 +129,7 @@ Three things in that line:
 
 The **Changes** group in the navigator, or **The whole comparison** inside it.
 
-![The "What differs" page: base and compared instants, then eight cards — 3 added, 49 deleted, 63 behave differently, 1 explained differently, 14 edited only, 1 module explained differently, 3 structures only in the base, 1 structure declaring differently — followed by the routine and structure totals and the lists of ways in, named files and constants that moved](images/14-what-differs.jpg)
+![The "What differs" page for the before-parts pair: "base 2026-10-02T19:59:52Z · compared with 2026-10-02T19:59:41Z — DunneFlow at 0804aa7 - before parts · you chose: the compared version is older · compared in 3,988 ms on the connection already open here", then eight cards — 34 added, 3 deleted, 88 behave differently, 0 explained differently, 37 edited only, 1 module explained differently, 6 structures declaring differently, 1 structure explained differently — followed by "1,550 routines in the base, 1,519 in the compared. A rename reads as one of each — nothing in the source says the two are the same thing.", "207 structures in the base, 207 in the compared", and the start of the constants: +4, beginning cli.STEP_BEFORE and extractors.docs.markdown.IMAGE_ONLY, and ◈13, beginning extractors.cpp.extract.RESIDUE. The navigator's CHANGES group reads 133, with The whole comparison open and its bands listed beneath](images/14-what-differs.jpg)
 
 ### The bands
 
@@ -146,10 +162,18 @@ Docstrings are canonicalised slightly differently: paragraphs are **kept**. Merg
 would destroy the separation between a summary line and the rest, which is exactly the
 change you would want reported.
 
+Every card says what it counts, and the bands add up: of the 1,550 routines in this base,
+34 are added, 88 behave differently, 37 are edited only, and 1,391 are unchanged — the
+same sentence the ROUTINES group prints, which adds that the 3 deleted are *in
+2026-10-02 19:59:41 only, so not listed here*. A list of the base cannot hold a routine the
+base does not have.
+
 ### Below the bands
 
 Ways in that appeared or vanished, named files, and constants with each listed by name, and
-each clickable.
+each clickable. Here, four constants arrived, `cli.STEP_BEFORE` among them, and thirteen
+say something different, `schema.SCHEMA_VERSION` and `plugins.typescript.src.main.VERSION`
+among them; the second list shows six and folds the other seven behind *7 more ▸*.
 
 ## Reading the difference in the views
 
@@ -160,13 +184,13 @@ Free, drawn from an answer already held.
 
 **The code browser** draws it over the source:
 
-![The code browser with the overlay: "Against 2026-09-10 18:48:30: 324 lines deleted and 41 lines added. The added lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "15 routines here the comparison has something to say about", and a list naming each routine and which facts about it moved](images/14-code-overlay.jpg)
+![The code browser on cli.py, against the before-the-Windows-fix version: "cli · 2,132 lines · 47 definitions · 213 marks", then "Against 2026-10-02 19:59:47: 71 lines added and 15 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "8 routines here the comparison has something to say about": build_parser "behaves differently — call_args", cmd_analyze "— call_args, calls, comments", cmd_impact and cmd_mirror "— boundaries, call_args, calls", cmd_naming "— call_args, docstring", cmd_touches "— boundaries, call_args, calls, comments", and two added, _gap and _settled](images/14-code-overlay.jpg)
 
 The lines are the cheap half. The list under them is the half nothing else gives you:
-*`cmd_serve` behaves differently — boundaries, call_args, calls, comments*. That is four
-different claims about one routine, and each is a fact you can go and look at.
+*`cmd_naming` behaves differently — call_args, docstring*. That is two different claims
+about one routine, and each is a fact you can go and look at.
 
-Note what it says about added lines: they are *shown where they belong, with their own
+Note what it says about deleted lines: they are *shown where they belong, with their own
 numbers — they are not in the file you are reading*. You are reading one version, with the
 other drawn over it, not a merged view of both.
 
@@ -175,8 +199,8 @@ control in the graph legend, which offers `what changed` only when there is a co
 to draw.
 
 **The anomaly worklist** can say which findings the other version also has, and whose
-count, severity or confidence moved. That one is the expensive overlay: 1.3 to 4.1 seconds
-the first time, because it means running thirteen detectors against a graph this process
+count, severity or confidence moved. That one is the expensive overlay: on a 628-file program,
+1.3 to 4.1 seconds the first time, because it means running thirteen detectors against a graph this process
 has never opened.
 
 ## What is never done to your snapshots

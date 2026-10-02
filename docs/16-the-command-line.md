@@ -8,7 +8,9 @@ and then use the output in batch operations. It can be used to compare large col
 of applications for example, seeking common issues from a very large corpus of source
 code, whether they are versions over time or just an Enterprise repository.
 
-Every example below is `uv run dunneflow …` from a checkout. If you have the application
+Every example below is `uv run dunneflow …` from a checkout, and every transcript is what
+it printed against the map the screenshots in this guide were taken from: DunneFlow reading
+its own source on 2026-10-02. If you have the application
 binary, do not run the `uv run` portion, start with `dunneflow` 
 From the installed application, the binary is:
 
@@ -56,6 +58,8 @@ uv run dunneflow analyze <path> --name <program>
 | `--include-tests` | include test files |
 | `--without <lang>` | do not read that language, and say so. Repeatable, refused for a language this build has no reader for, and refused if it would decline them all. For a machine that lacks a language's toolchain — see [installing](01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install) |
 | `--part-of <tree>` | this is a part of `<tree>`, so judge what to skip and what is a test from there. A directory read on its own is judged by a path that no longer contains the component that hid something — see [when it refuses](15-when-it-refuses.md) |
+| `--parts` | print the tree cut into parts small enough to read, and stop |
+| `--any-size` | read a tree larger than the guard allows, however long it takes |
 | `--jobs <n>` | parallel workers |
 | `--timings` | print what each phase of the run cost |
 | `--no-render` | build the graph, write no Markdown |
@@ -75,13 +79,14 @@ uv run dunneflow touches src/dunneflow --name dunneflow --routine cmd_serve
 ```
 
 ```
-cli.cmd_serve  (cli.py:1482)
-  reaches 118 routines
-  DATABASE   SELECT * FROM entrypoints ORDER BY kind, name, …
+cli.cmd_serve  (cli.py:2033)
+  reaches 81 routines
+  CRYPTO     hashlib.sha256
+  DATABASE   DOC_SCHEMA_SQL, INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, INSERT INTO revisions(revision, state, captured_at, note) VALUES(?, ?, '', ?), SCHEMA_SQL, SELECT 1 FROM paths WHERE revision = ? LIMIT 1, SELECT 1 FROM revisions WHERE revision = ?, SELECT 1 FROM revisions WHERE state = ? LIMIT 1, SELECT COUNT(*) FROM documents
   ENV        LOCALAPPDATA, XDG_DATA_HOME
-  FILE        , *.yaml, -, ., :, …
+  FILE       *.yaml, -, :, GRAPH_DB, child.is_dir, chosen.is_dir, f'{stem}{SEP}*.db', given.mkdir
   NETWORK    f'{url}api/programs', socket.socket
-  PROCESS    ['taskkill', '/F', '/T', '/PID', str(proc.pid)]
+  PROCESS    self.argv
   STDIO      msg
 ```
 
@@ -92,11 +97,12 @@ uv run dunneflow impact src/dunneflow --name dunneflow --routine _emit
 ```
 
 ```
-cli._emit  (cli.py:60)
-  19 routines depend on this, directly or transitively
-  ways in affected (14):
+cli._emit  (cli.py:77)
+  25 routines depend on this, directly or transitively
+  ways in affected (18):
     - analyze [CLI]
     - check [CLI]
+    - dunneflow [CLI]
     …
 ```
 
@@ -110,11 +116,11 @@ uv run dunneflow glossary src/dunneflow --name dunneflow
 ```
 
 ```
-44 of 155 terms are defined somewhere (28%)
+82 of 223 terms are defined somewhere (37%)
 
-calls  (13 uses)
-  Turning call expressions into edges.
-  [DECLARED_CODE] resolve/calls.py:1
+calls  (18 uses)
+  Call sites, their arguments as written, and the boundaries the rules recognise.
+  [DECLARED_CODE] extractors/cpp/calls.py:1
 ```
 
 Every definition carries where it came from and the line that proves it.
@@ -129,17 +135,47 @@ uv run dunneflow naming src/dunneflow --name dunneflow
 STATED — nothing in this program's documentation states a naming rule
 
 MEASURED — counted against the code
-  [B] 790/806  Routines are named in snake_case.  (16 exceptions)
-  [B] 383/388  A routine marked private is called only from its own module.  (5 exceptions)
+  [B] 1,231/1,247  Python routines are named in snake_case.  (16 exceptions)
+  [B] 611/621  A routine marked private is called only from its own module.  (10 exceptions)
+  [B] 432/434  Python parameters are named in snake_case.  (2 exceptions)
+  [B] 211/213  Python database tables are named in snake_case.  (2 exceptions)
+  [D] 165/182  Python classes are named in PascalCase.  (17 exceptions)
+  …
 ```
 
 **Stated** quotes rules somebody wrote.
 **Measured** counts what the code actually does.
 
+A leading underscore counts against a spelling by default, which is the strict reading:
+`_Handler` does not begin with a capital. `--allow-leading-underscore` reads it as a
+privacy mark instead, and every claim it changed says so:
+
+```bash
+uv run dunneflow naming src/dunneflow --name dunneflow --allow-leading-underscore
+```
+
+```
+  [B] 179/182  Python classes are named in PascalCase (a leading underscore allowed).  (3 exceptions)
+  [B] 154/157  Python data structures are named in PascalCase (a leading underscore allowed).  (3 exceptions)
+```
+
+It is the same choice as the dashboard's **A leading underscore in a name** setting — see
+[Settings](13-settings.md).
+
 **What does the documentation define that the code never uses?**
 
 ```bash
 uv run dunneflow mirror src/dunneflow --name dunneflow
+```
+
+```
+2 definitions read, 2 set aside as not a word, 0 terms carried forward
+  Named       0   Something in the program is called this: a package, a class, a table, a way in, a constant, or a file the program names. The word is load-bearing.
+  Borne       0   A routine, a parameter or a field carries the word, but nothing is called it. The program uses the term without naming a thing after it.
+  Spoken      0   The word appears only in comments and docstrings. The program talks about it; nothing is named for it.
+  Absent      0   Defined in documentation, and nowhere in the code at all. The strongest signal of drift the two stores can produce together.
+
+only Python and TypeScript are extracted: absent from this graph is not absent from the product.
 ```
 
 Four bands — Named, Borne, Spoken, Absent — where **Absent** is the strongest
@@ -152,9 +188,10 @@ uv run dunneflow check src/dunneflow --name dunneflow
 ```
 
 ```
-[SUSPECT/PROBABLE] LOST_EDGE: `side` could not be connected: 4 definitions share the name
+[SUSPECT/PROBABLE] LOST_EDGE: `_literal` could not be connected: 2 definitions share the name  extractors/python/extract.py
+[SUSPECT/PROBABLE] LOST_EDGE: `_scan` could not be connected: 2 definitions share the name  extractors/cpp/control.py
 …
-0 broken, 25 suspect, 15 informational
+0 broken, 26 suspect, 18 informational
 ```
 
 Exits non-zero **only on BROKEN**, so it can gate CI without failing your build over
@@ -170,9 +207,13 @@ uv run dunneflow query src/dunneflow --name dunneflow \
 
 ```
 kind | n
-DATABASE | 272
-FILE | 142
-STDIO | 56
+DATABASE | 290
+FILE | 154
+STDIO | 62
+PROCESS | 9
+ENV | 5
+CRYPTO | 3
+NETWORK | 3
 ```
 
 `--docs` attaches the document store as `docs`, which is what makes the cross-store claims
@@ -189,8 +230,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-09-15T22:14:29Z   WORKING          2026-09-15T22:14:29Z       78
-2026-09-15T22:14:26Z   FOR_COMPARISON   2026-09-15T22:14:26Z       78  DunneFlow at 875499c - before Linux
+2026-10-02T19:59:52Z   WORKING          2026-10-02T19:59:52Z      142
+2026-10-02T19:59:47Z   FOR_COMPARISON   2026-10-02T19:59:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-10-02T19:59:41Z   FOR_COMPARISON   2026-10-02T19:59:41Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 **Keep the current one**, so the next analysis lands beside it rather than on it:

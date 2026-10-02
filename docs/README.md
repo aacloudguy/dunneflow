@@ -51,13 +51,13 @@ The middle of the screen is one selection read six ways. Each one is a unique po
 | | |
 |---|---|
 | [15. When it refuses](15-when-it-refuses.md) | Every refusal DunneFlow can give you, in plain words, and what to do about each. |
-| [16. The command line](16-the-command-line.md) | All thirteen commands, for when you want an answer without opening a browser, or want an agent to ask for you. |
+| [16. The command line](16-the-command-line.md) | The thirteen commands a reader uses, for when you want an answer without opening a browser, or want an agent to ask for you. |
 
 ## Learn it by watching it read itself
 
 | | |
 |---|---|
-| [DunneFlow, read by DunneFlow](tutorial/README.md) | Thirteen chapters walking through the whole tool, using it on its own source. Every number in it is one you can reproduce. |
+| [DunneFlow, read by DunneFlow](tutorial/README.md) | Thirteen chapters walking through the whole tool, using it on its own source. Every number in it is one you can reproduce: it was retaken on 2 October 2026, and its first page says against which commit. |
 
 ## Two promises the tool makes
 

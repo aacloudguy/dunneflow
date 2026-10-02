@@ -17,36 +17,8 @@ what happened and when; this says what has not. When an item is done it leaves h
 
 ## Open
 
-### 8 · A map of 262,879 routines takes 27.6 minutes to open
-
-*From the Unreal ingest, 2026-09-20.*
-
-`/api/program` on `Engine.Source.Runtime` reports `done` after **1,659,334 ms**, most of it in
-*the 2.5D model and its payload*. Every route then answers 200 and the cover is right — it
-works, at a speed that makes it unusable. Design rule 45's bargain is that the bound on this
-work is *a reader opening one thing*; at 18,191 files that bound is no longer a bound.
-
-**The instrument exists now** (2026-09-20). `web.serve._Clock` times all six steps and
-sub-times the five things step 1 conflates — reading the graph into a model, laying it out,
-transposing it into the payload, and the root package — and `serve` prints each as it ends.
-`/api/base` carries the table as `spent`.
-
-**And the first reading of it contradicts the sentence above.** On `Engine.Plugins.AI` —
-331 files, so not this part — the six steps came out **2.3 s · 0.5 s · 0.0 s · 48.4 s ·
-2.2 s · 0.8 s** of 54.0 s: *the naming standard, stated and derived* is 90% of it and *the
-2.5D model and its payload* is under a second. That is one part and not the one this item is
-about, so it settles nothing here; it is recorded because it is the first evidence of any
-kind, and because it points somewhere other than where the last progress line does. Rule 39
-exactly.
-
-**Why not done.** `Engine.Source.Runtime` has not been opened with the instrument. It is a
-~28-minute measurement and the machine has been reading Unreal all session.
-
-**What would settle it.** Opening that part with the six timings, and separately timing the
-first `/api/graph` — `json.dumps` of the whole payload runs per request, uncached, and is
-**not** inside the 1,659,334 ms, so whatever it costs at 262,879 routines is a second figure
-nobody has taken. Then deciding whether the answer is a bound on the payload, a lazier
-build, or a refusal that says a map this large opens in the documents and not in the graph.
+Nothing, as of 2026-10-02. Every item found while photographing the docs, and every older
+one, was closed that day or moved to the residues below with the decision that put it there.
 
 ---
 

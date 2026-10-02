@@ -68,6 +68,13 @@ def package_expr(col: str = "module") -> str:
 
 PACKAGE_EXPR = package_expr()
 
+# **`NOT INDEXED`, and it is the whole of BACKLOG 8.** Walked through the primary-key index,
+# every row is a random seek into the table, and on Unreal's Runtime part -- 262,879 routines
+# in a 766 MB graph on the external volume -- that one statement is what opening the map
+# spent its 27.6 minutes on: the read of this table alone ran past 70 minutes under load,
+# against 7.7 s for the same rows read in table order and sorted in memory. Same rows, same
+# order; only the access path is told what to do. Said here and not inside the SQL, because
+# a statement's text can be shown to a reader and this is the tool's history.
 ROUTINE_NODES = f"""
 SELECT r.id                AS id,
        r.name              AS label,
@@ -79,10 +86,11 @@ SELECT r.id                AS id,
        r.is_async          AS is_async,
        r.class_name        AS class_name,
        {PACKAGE_EXPR}      AS pkg
-FROM routines r
+FROM routines r NOT INDEXED
 ORDER BY r.id
 """
 
+# `NOT INDEXED` for `ROUTINE_NODES`'s reason, one table over.
 STRUCTURE_NODES = f"""
 SELECT s.id           AS id,
        s.name         AS label,
@@ -91,7 +99,7 @@ SELECT s.id           AS id,
        s.file         AS file,
        s.line         AS line,
        {PACKAGE_EXPR} AS pkg
-FROM structures s
+FROM structures s NOT INDEXED
 ORDER BY s.id
 """
 
@@ -180,9 +188,11 @@ ORDER BY src, dst
 # Edges
 # --------------------------------------------------------------------------- #
 
+# `NOT INDEXED` for `ROUTINE_NODES`'s reason: grouped through `ix_calls_caller`, each of
+# Unreal's 947,786 calls was a random seek for the three columns the index does not hold.
 CALL_EDGES = """
 SELECT caller_id AS src, callee_id AS dst, confidence AS confidence, COUNT(*) AS weight
-FROM calls
+FROM calls NOT INDEXED
 WHERE callee_id IS NOT NULL AND at_boundary = 0
 GROUP BY caller_id, callee_id, confidence
 ORDER BY src, dst, confidence

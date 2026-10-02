@@ -250,7 +250,7 @@ class Report:
 
 
 def _routine_rows(store: Store, where: str,
-                  args: tuple[object, ...] = ()) -> list[Occurrence]:
+                  args: tuple[object, ...] = (), *, scan: bool = False) -> list[Occurrence]:
     """The routines a finding is about, as occurrences the shell can already open.
 
     One helper rather than the same three lines in six detectors: what a routine occurrence
@@ -259,12 +259,17 @@ def _routine_rows(store: Store, where: str,
 
     `where` is interpolated because every caller passes a literal written in this file; the
     values that come from data are bound.
+
+    `scan` reads the table in its own order for a population that is most of it -- an index
+    walk is a random seek per row, which on a large map is the whole cost (BACKLOG 8). A
+    selective `where` keeps the index, which is right for it.
     """
     return [
         Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
                    file=str(x["file"] or ""), line=int(x["line_start"] or 0))
         for x in store.query(
-            f"SELECT id, qualname, file, line_start FROM routines {where}"
+            f"SELECT id, qualname, file, line_start FROM routines"
+            f"{' NOT INDEXED' if scan else ''} {where}"
             " ORDER BY file, line_start, qualname", args)
     ]
 
@@ -466,8 +471,11 @@ def _lost_edges(store: Store, r: Report) -> None:
 
 
 def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
+    # `NOT INDEXED`: every routine is read, so the table is read in its own order and sorted
+    # in memory. Through the index each row was a random seek, and on a 262,879-routine map
+    # on the external volume that is minutes rather than seconds (BACKLOG 8).
     rows = store.query(
-        "SELECT id, qualname, file, line_start FROM routines"
+        "SELECT id, qualname, file, line_start FROM routines NOT INDEXED"
         " WHERE name != '<module>' AND is_method = 0 AND is_nested = 0"
         "   AND name NOT LIKE '\\_\\_%' ESCAPE '\\'"
         "   AND id NOT IN (SELECT callee_id FROM calls WHERE callee_id IS NOT NULL)"
@@ -527,13 +535,17 @@ def _unreachable(store: Store, r: Report) -> None:
     # **The stranded routines themselves.** The count was a subtraction and nothing named
     # the rows it stood for, so the finding said *N of M* and a reader could reach none of
     # them. The complement of the reached set is the answer this already had in hand.
+    # The reached set built **once**. It was a comprehension inside the filter, so every
+    # routine rebuilt the whole set to ask one membership question: on Unreal's Runtime
+    # part, 262,879 rebuilds, and 176 s of the cover's 660 (BACKLOG 8).
+    reached_ids = {str(v) for v in reached}
     strand_rows = [
         Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
                    file=str(x["file"] or ""), line=int(x["line_start"] or 0))
         for x in store.query(
-            "SELECT id, qualname, file, line_start FROM routines"
+            "SELECT id, qualname, file, line_start FROM routines NOT INDEXED"
             " WHERE name != '<module>' ORDER BY file, line_start, qualname")
-        if str(x["id"]) not in {str(v) for v in reached}
+        if str(x["id"]) not in reached_ids
     ]
     r.add(Anomaly(
         kind="UNREACHABLE", severity=INFO, confidence=POSSIBLE,
@@ -986,12 +998,15 @@ def _type_gaps(store: Store, r: Report) -> None:
     )[0]["n"]
     if not total:
         return
+    # `NOT INDEXED`: every routine is read, so the table is read in its own order and sorted
+    # in memory. Through the index each row was a random seek, and on a 262,879-routine map
+    # on the external volume that is minutes rather than seconds (BACKLOG 8).
     missing = store.query(
-        "SELECT id, qualname, file, line_start FROM routines"
+        "SELECT id, qualname, file, line_start FROM routines NOT INDEXED"
         " WHERE name != '<module>' AND returns IS NULL ORDER BY qualname, file, line_start"
     )
     untyped = store.query(
-        "SELECT COUNT(DISTINCT routine_id) n FROM params"
+        "SELECT COUNT(DISTINCT routine_id) n FROM params NOT INDEXED"
         " WHERE type IS NULL AND name NOT IN ('self', 'cls')"
     )[0]["n"]
     if missing:
@@ -1023,8 +1038,8 @@ def _type_gaps(store: Store, r: Report) -> None:
             occurrences=_routine_rows(
                 store,
                 "WHERE name != '<module>' AND id IN ("
-                "  SELECT DISTINCT routine_id FROM params"
-                "   WHERE type IS NULL AND name NOT IN ('self', 'cls'))"),
+                "  SELECT DISTINCT routine_id FROM params NOT INDEXED"
+                "   WHERE type IS NULL AND name NOT IN ('self', 'cls'))", scan=True),
         ))
 
 

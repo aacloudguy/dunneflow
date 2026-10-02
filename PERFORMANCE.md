@@ -1182,6 +1182,48 @@ the item's text says *"most of it in the 2.5D model and its payload"* on the evi
 which step label was most recent. One part is not the other and neither settles the other;
 what has changed is that there is now an instrument instead of a label.
 
+### Opening the largest part, measured and then fixed: 27.6 minutes to 4.6 (2026-10-02)
+
+`Engine.Source.Runtime`, the same 766 MB graph on the external volume, with `serve`'s six
+timings. The first two rows were taken with the build the map was written by (`1e408ad`);
+the last with this build's code, the map's staleness refusal bypassed by a measurement script
+because a schema-15 map is otherwise refused, and nothing else changed.
+
+| | before | the model's three queries | everything below |
+|---|---:|---:|---:|
+| opening the graph | — | 5.6 s | 0.2 s |
+| the 2.5D model and its payload | **past 70 min, unfinished** | 33.8 s | 22.7 s |
+| the file list | — | 144.3 s | 21.2 s |
+| the naming standard, stated and derived | — | 58.7 s | 92.5 s |
+| the glossary | — | 4.9 s | 2.8 s |
+| the cover | — | **938.5 s** | 138.6 s |
+| **total** | **1,659 s** (2026-09-20) | 1,185.7 s | **278.1 s** |
+
+**The first number was never the model's work; it was the model's access path.**
+`ROUTINE_NODES` read the 262,879 routines through their primary-key index, a random seek per
+row on the external volume, and stood at step 2 for more than seventy minutes under load. The
+same rows read in table order and sorted in memory: 7.7 s; the index walk was killed unfinished
+at 15 m 46 s. `STRUCTURE_NODES` and `CALL_EDGES` (947,786 calls) did the same and read
+`NOT INDEXED` now too.
+
+**Then the cover was 938.5 s, and cProfile said where** (660 s of it, warm):
+
+* `anomalies.detect`, 549 s. `_unreachable` rebuilt the set of reached ids once for every
+  routine it filtered, a 176 s quadratic; `_type_gaps`, `_dead_code` and the unreachable
+  list walked an index over the whole routines table. 63 s now.
+* The ways-in reach. A recursive query revisited each routine at every depth it could be
+  reached at and sought `calls` for a column its index does not hold, once per way in.
+  On a read-only store the call graph is read once and walked in memory, which reaches the
+  same set (`tests/test_open_cost.py` holds the two equal for every routine); the
+  boundaries a set reaches are filtered from one read of that small table.
+* `store.counts`, 75 s: fifteen `COUNT(*)`s, each a whole table. A finished analysis now
+  records them in `meta`, so this row goes on the next re-read of this part; it was not
+  re-read for this measurement and the 138.6 s still pays it.
+
+`/api/graph` was the second figure nobody had taken: **0.83 s for 123.6 MB** on the first
+request. The item's last question, whether a map this size should refuse the graph and open
+in the documents, does not arise at 4.6 minutes.
+
 ### The whole tree re-read as parts, with the climb bounded (measured 2026-09-20)
 
 `tools/ingest_parts.py` over all 86 parts with `--part-of`, extraction cached throughout, to

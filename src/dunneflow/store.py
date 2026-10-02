@@ -1332,6 +1332,13 @@ class Store:
             self.conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()
 
     def counts(self) -> dict[str, int]:
+        if not self.writable and self.get_meta("complete") == "yes":
+            # Recorded by the analysis that finished this map, which nothing has written to
+            # since -- a read-only handle cannot. Counted afresh only where it is absent: a
+            # map from before 2026-10-02, or one whose analysis did not finish (BACKLOG 8).
+            stored = self.get_meta("counts")
+            if stored:
+                return {str(k): int(v) for k, v in json.loads(stored).items()}
         out: dict[str, int] = {}
         for t in ("files", "routines", "calls", "boundaries", "structures", "entrypoints",
                   "annotations", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
@@ -1433,8 +1440,66 @@ class Store:
     # Recursive SQL over indexed edges. These are the three questions the tool
     # exists to answer, and they must stay fast no matter how large the target is.
 
+    def _reach_graph(self) -> dict[str, list[str]] | None:
+        """Every call edge, caller to callees, read once -- on a store that cannot change.
+
+        **BACKLOG 8's second step, and the larger one.** With the model fixed, opening Unreal's
+        Runtime part spent 938.5 s of 1,185.7 on the cover, and all of it was reach: the
+        recursive query below seeks `calls` through `ix_calls_caller` for a column the index
+        does not hold, once per row per level, and revisits a routine at every depth it can
+        be reached at -- on 947,786 calls, once per way in. Read in table order and walked in
+        memory the same set costs one scan.
+
+        Only where nothing can write: a writable store is the one `resolve_calls` is still
+        filling, and a cache taken before it finished would answer the previous graph. So a
+        writable store keeps the query, and this returns `None` for it.
+        """
+        if self.writable:
+            return None
+        graph = getattr(self, "_reach_cache", None)
+        if graph is None:
+            graph = {}
+            for caller, callee in self.conn.execute(
+                "SELECT caller_id, callee_id FROM calls NOT INDEXED"
+                " WHERE callee_id IS NOT NULL"
+            ):
+                graph.setdefault(caller, []).append(callee)
+            self._reach_cache = graph
+        return graph
+
+    def _routine_ids(self) -> set[str]:
+        """Every routine id, read once on a store that cannot change -- the reach walk's
+        seed check, which was an index search per call and 29 s of the cover on a large
+        map. Only ever asked after `_reach_graph` has said the store is read-only."""
+        ids = getattr(self, "_routine_id_cache", None)
+        if ids is None:
+            ids = {r[0] for r in self.conn.execute("SELECT id FROM routines NOT INDEXED")}
+            self._routine_id_cache = ids
+        return ids
+
+    @staticmethod
+    def _walk(graph: dict[str, list[str]], seeds: Iterable[str], max_depth: int) -> set[str]:
+        """Breadth-first to `max_depth`. The set any path of that length reaches is the set
+        the shortest path reaches, so this answers what the recursive query answers."""
+        seen = set(seeds)
+        level = list(seen)
+        for _ in range(max_depth):
+            nxt = []
+            for rid in level:
+                for callee in graph.get(rid, ()):
+                    if callee not in seen:
+                        seen.add(callee)
+                        nxt.append(callee)
+            if not nxt:
+                break
+            level = nxt
+        return seen
+
     def reachable_from(self, routine_id: str, max_depth: int = 40) -> list[str]:
         """Everything this routine can reach. "What does this touch?" """
+        graph = self._reach_graph()
+        if graph is not None:
+            return sorted(self._walk(graph, [routine_id], max_depth))
         rows = self.conn.execute(
             """
             WITH RECURSIVE reach(id, depth) AS (
@@ -1501,6 +1566,11 @@ class Store:
         """
         if not routine_ids:
             return set()
+        graph = self._reach_graph()
+        if graph is not None:
+            # Seeded with the ids that are routines, as the query's seed is.
+            known = self._routine_ids()
+            return self._walk(graph, [r for r in routine_ids if r in known], max_depth)
         ph = ",".join("?" * len(routine_ids))
         rows = self.conn.execute(
             f"""
@@ -1523,6 +1593,34 @@ class Store:
         """Every boundary a set of routines reaches, directly or transitively."""
         if not routine_ids:
             return []
+        graph = self._reach_graph()
+        if graph is not None:
+            # The reach walked in memory, and the boundaries -- a small table on every map
+            # measured, 2,424 rows on the largest -- filtered against it, in the order and
+            # with the `DISTINCT` the query below gives them (BACKLOG 8).
+            reached = self.reachable_from_many(routine_ids, max_depth)
+            every = getattr(self, "_boundary_cache", None)
+            if every is None:
+                # Read once: this is asked once per way in, and Unreal's Runtime part has
+                # thousands of them.
+                every = list(self.conn.execute(
+                    "SELECT DISTINCT * FROM boundaries"
+                    " ORDER BY kind, target, direction, line, evidence"))
+                self._boundary_cache = every
+            rows = [r for r in every if r["routine_id"] in reached]
+        else:
+            rows = list(self._boundaries_reached_query(routine_ids, max_depth))
+        return [
+            BoundaryHit(
+                routine_id=r["routine_id"], kind=BoundaryKind(r["kind"]),
+                direction=Direction(r["direction"]), target=r["target"], line=r["line"],
+                evidence=r["evidence"], salience=r["salience"],
+            )
+            for r in rows
+        ]
+
+    def _boundaries_reached_query(self, routine_ids: list[str],
+                                  max_depth: int) -> Iterator[sqlite3.Row]:
         ph = ",".join("?" * len(routine_ids))
         rows = self.conn.execute(
             f"""
@@ -1538,14 +1636,7 @@ class Store:
             """,
             (*routine_ids, max_depth),
         )
-        return [
-            BoundaryHit(
-                routine_id=r["routine_id"], kind=BoundaryKind(r["kind"]),
-                direction=Direction(r["direction"]), target=r["target"], line=r["line"],
-                evidence=r["evidence"], salience=r["salience"],
-            )
-            for r in rows
-        ]
+        yield from rows
 
     def query(self, sql: str,
               args: tuple[Any, ...] | dict[str, Any] = ()) -> list[sqlite3.Row]:

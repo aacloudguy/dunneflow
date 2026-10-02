@@ -1196,6 +1196,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         standards_store.close()
     # The last act before the store is closed, and committed like its opposite above. Every
     # reader that presents this map as finished asks for this one value.
+    # The table counts, as the finished map has them, so a reader need not count them again.
+    # Every `COUNT(*)` reads the whole table, and on a large map on the external volume the
+    # cover spent 86 s doing it at every open (BACKLOG 8). Written beside `complete`, so a
+    # map that has these counts is one whose analysis finished; `Store.counts` checks both.
+    store.set_meta("counts", json.dumps(store.counts(), sort_keys=True))
     store.set_meta_now("complete", "yes")
     store.close()
     return 0

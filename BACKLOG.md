@@ -48,41 +48,6 @@ first `/api/graph` — `json.dumps` of the whole payload runs per request, uncac
 nobody has taken. Then deciding whether the answer is a bound on the payload, a lazier
 build, or a refusal that says a map this large opens in the documents and not in the graph.
 
-### 9 · The documents of a part are not bounded the way its code is
-
-*From the Unreal ingest, 2026-09-20. Reshaped the same day — the original item was "a part of
-fifteen files costs two hundred seconds", and the two causes it was looking for were found.*
-
-`analyze --timings` prints what every phase cost, and `--progress-json` carries `ms`. With
-it, the original item split into two answered halves and one that is left:
-
-* **Answered — the document root was outside the tree.** **Rule 108**, now item 11: the
-  document walk read every project on the machine, about 205 s a part over 85 parts, which
-  is most of a 327-minute run.
-* **Answered — one judgement made three times.** `detect` ran for `09-anomalies.md`, again
-  inside `_overview` for the headline that points at it, and a third time for `analyze`'s own
-  step. On `Engine/Binaries` writing the map was **855.6 s** and the anomalies **306.4 s** —
-  **94.8% of a 1,226.6 s run**. `render_all` takes the report now.
-* **Left, and the whole-tree re-read on 2026-09-20 measured how much of it there is.** A
-  part's *documents* are still whatever is physically under its root, where its *code* is
-  what a reader admits. Across all 86 parts the tree now holds **12,886 documents — and
-  11,850 of them are `Engine.Source.ThirdParty`'s**, a part of 620 code files sitting on
-  57,373 files of vendored library source. Every other part in Unreal is in double or
-  single figures. So this is not a general property of parts; it is one directory, and the
-  question is whether vendored third-party prose is documentation of the program.
-
-**Why not done.** Because it is not obviously wrong. Those documents really are in that
-directory, and design rule 11 says documentation and source are equal inputs — a reader's
-`skip_dirs` is a statement about what is *program source*, and nothing has ever said it is a
-statement about prose. Applying one reader's skip list to documents would also be a
-per-language rule applied to a thing that has no language.
-
-**What would settle it.** Deciding what a part's documentation *is*. The measurement that
-was wanted has been taken and it narrows the question rather than answering it: 92% of the
-tree's documents are under one directory that the C++ reader skips by name for code. Until
-somebody decides whether that is evidence about Unreal, the number is what it is and is now
-visible, which it was not.
-
 ### 15 · The graph can arrive framed for a size it no longer has
 
 *Retake defect 8.*
@@ -199,11 +164,12 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **DunneCorp's routines are two conventions by role** | PascalCase 88 against camelCase 79 — React components against ordinary functions. A language split does not touch it, and it stays a reported gap because that is the true answer. Open question 6. |
 | **DunneNote's modules stay a gap** | kebab 221, other 210. That tree really does spell module files three ways. Open question 6. |
 | **Next.js route segments read as `other`** | `app.(admin).admin.customers.[id].page`. Route syntax is not an identifier and stripping it would be guessing at a spelling. Open question 6. |
-| **Python's leading-underscore classes drag PascalCase to a `D`** | `_Base` and `Exception_`, 15 of DunneFlow's 164. A pre-existing question about what PascalCase means with an affixed underscore; not a language question, and left alone deliberately rather than folded into a chunk about something else. Open question 6. |
+| **Python's leading-underscore classes drag PascalCase to a `D`** | `_Base` and `Exception_`, 15 of DunneFlow's 164. Answered on 2026-10-02 as a Setting rather than a rule (*A leading underscore in a name*, and `naming --allow-leading-underscore`): strictly a violation, and allowed where the reader says so. `Exception_` and its kind stay exceptions either way. Open question 6. |
 | **A Linux session cannot run the recorded ground truth** | None of the four Society clones nor `../dunnecorp-standards` is on that machine, so no figure in `CLAUDE.md` was retaken there. Do not restate a Mensores figure measured elsewhere as though it had been reproduced (rule 24). |
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
 | **A killed analysis can leave its pool behind** | Nine `ProcessPoolExecutor` workers from the original Unreal ingest were still alive 22 hours later, parented to init, idle at 5.5 MB each. Harmless where they are, and the 86-part re-read on 2026-09-20 added none — so it is an interrupted run's leak rather than an ordinary one's. Stated because a batch runner doing this nightly would accumulate them, and the batch-ingest design is the place that would have to care. 2026-09-20. |
 | **The size guard counts files and nothing else** | `walk.TOO_BIG` is 20,000 *files*, which is the shape of the evidence — `Engine/Source/Runtime` is 18,191 and is the largest tree read end to end. A tree of 19,000 enormous files passes it and a tree of 25,000 tiny ones is refused, and neither is what the bound is really about: the thing that hurts is rows written, not files read. Bytes or an estimate of rows would be the honest key, and taking one needs a corpus spread wide enough to separate the two — which is a measurement, not an edit. Stated so the number is read as what it is. 2026-09-19. |
+| **A part's documents are whatever is under its root, vendored prose included** | Unreal's 86 parts hold **12,886 documents, and 11,850 of them are `Engine.Source.ThirdParty`'s**: a part of 620 code files on 57,373 files of vendored library source, which the C++ reader skips by name for code. Every other part is in double or single figures. Tom's decision, 2026-10-02: vendored prose **is** documentation of the program, so it is read. Design rule 11 holds as written, and a reader's `skip_dirs` stays a statement about program source and never about prose. Measured with `analyze --timings` on 2026-09-20; formerly BACKLOG 9. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

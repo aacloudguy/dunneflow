@@ -40,7 +40,7 @@ uv run dunneflow analyze ~/code/DunneFlow/src/dunneflow --name dunneflow
 ```
 
 ```
-sealed 2026-10-02T19:59:47Z as FOR_COMPARISON — “DunneFlow at 1017ef4 - before the Windows fix”
+sealed 2026-10-02T21:37:11Z as FOR_COMPARISON — “DunneFlow at 1017ef4 - before the Windows fix”
 the next `analyze` opens a fresh working revision beside it
 ```
 
@@ -53,9 +53,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-10-02T19:59:52Z   WORKING          2026-10-02T19:59:52Z      142
-2026-10-02T19:59:47Z   FOR_COMPARISON   2026-10-02T19:59:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
-2026-10-02T19:59:41Z   FOR_COMPARISON   2026-10-02T19:59:41Z      141  DunneFlow at 0804aa7 - before parts
+2026-10-02T21:37:19Z   WORKING          2026-10-02T21:37:19Z      142
+2026-10-02T21:37:11Z   FOR_COMPARISON   2026-10-02T21:37:11Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-10-02T21:37:03Z   FOR_COMPARISON   2026-10-02T21:37:03Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 **Sealing is a command, not a button**, and the dashboard says so where you would look for
@@ -129,7 +129,7 @@ Three things in that line:
 
 The **Changes** group in the navigator, or **The whole comparison** inside it.
 
-![The "What differs" page for the before-parts pair: "base 2026-10-02T19:59:52Z · compared with 2026-10-02T19:59:41Z — DunneFlow at 0804aa7 - before parts · you chose: the compared version is older · compared in 3,988 ms on the connection already open here", then eight cards — 34 added, 3 deleted, 88 behave differently, 0 explained differently, 37 edited only, 1 module explained differently, 6 structures declaring differently, 1 structure explained differently — followed by "1,550 routines in the base, 1,519 in the compared. A rename reads as one of each — nothing in the source says the two are the same thing.", "207 structures in the base, 207 in the compared", and the start of the constants: +4, beginning cli.STEP_BEFORE and extractors.docs.markdown.IMAGE_ONLY, and ◈13, beginning extractors.cpp.extract.RESIDUE. The navigator's CHANGES group reads 133, with The whole comparison open and its bands listed beneath](images/14-what-differs.jpg)
+![The "What differs" page for the before-parts pair: "base 2026-10-02T21:37:19Z · compared with 2026-10-02T21:37:03Z — DunneFlow at 0804aa7 - before parts · you chose: the compared version is older · compared in 1,799 ms on the connection already open here", then eight cards — 36 added, 3 deleted, 87 behave differently, 0 explained differently, 37 edited only, 1 module explained differently, 6 structures declaring differently, 1 structure explained differently — followed by "1,552 routines in the base, 1,519 in the compared. A rename reads as one of each — nothing in the source says the two are the same thing.", "207 structures in the base, 207 in the compared", and the start of the constants: +4, beginning cli.STEP_BEFORE and extractors.docs.markdown.IMAGE_ONLY, and ◈14, beginning extractors.cpp.extract.RESIDUE. The navigator's CHANGES group reads 134, with The whole comparison open and its bands listed beneath](images/14-what-differs.jpg)
 
 ### The bands
 
@@ -162,18 +162,18 @@ Docstrings are canonicalised slightly differently: paragraphs are **kept**. Merg
 would destroy the separation between a summary line and the rest, which is exactly the
 change you would want reported.
 
-Every card says what it counts, and the bands add up: of the 1,550 routines in this base,
-34 are added, 88 behave differently, 37 are edited only, and 1,391 are unchanged — the
+Every card says what it counts, and the bands add up: of the 1,552 routines in this base,
+36 are added, 87 behave differently, 37 are edited only, and 1,392 are unchanged — the
 same sentence the ROUTINES group prints, which adds that the 3 deleted are *in
-2026-10-02 19:59:41 only, so not listed here*. A list of the base cannot hold a routine the
+2026-10-02 21:37:03 only, so not listed here*. A list of the base cannot hold a routine the
 base does not have.
 
 ### Below the bands
 
 Ways in that appeared or vanished, named files, and constants with each listed by name, and
-each clickable. Here, four constants arrived, `cli.STEP_BEFORE` among them, and thirteen
+each clickable. Here, four constants arrived, `cli.STEP_BEFORE` among them, and fourteen
 say something different, `schema.SCHEMA_VERSION` and `plugins.typescript.src.main.VERSION`
-among them; the second list shows six and folds the other seven behind *7 more ▸*.
+among them; the second list shows six and folds the other eight behind *8 more ▸*.
 
 ## Reading the difference in the views
 
@@ -184,7 +184,7 @@ Free, drawn from an answer already held.
 
 **The code browser** draws it over the source:
 
-![The code browser on cli.py, against the before-the-Windows-fix version: "cli · 2,132 lines · 47 definitions · 213 marks", then "Against 2026-10-02 19:59:47: 71 lines added and 15 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "8 routines here the comparison has something to say about": build_parser "behaves differently — call_args", cmd_analyze "— call_args, calls, comments", cmd_impact and cmd_mirror "— boundaries, call_args, calls", cmd_naming "— call_args, docstring", cmd_touches "— boundaries, call_args, calls, comments", and two added, _gap and _settled](images/14-code-overlay.jpg)
+![The code browser on cli.py, against the before-the-Windows-fix version: "cli · 2,132 lines · 47 definitions · 213 marks", then "Against 2026-10-02 21:37:11: 71 lines added and 15 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "8 routines here the comparison has something to say about": build_parser "behaves differently — call_args", cmd_analyze "— call_args, calls, comments", cmd_impact and cmd_mirror "— boundaries, call_args, calls", cmd_naming "— call_args, docstring", cmd_touches "— boundaries, call_args, calls, comments", and two added, _gap and _settled](images/14-code-overlay.jpg)
 
 The lines are the cheap half. The list under them is the half nothing else gives you:
 *`cmd_naming` behaves differently — call_args, docstring*. That is two different claims

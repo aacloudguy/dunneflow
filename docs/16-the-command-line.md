@@ -135,9 +135,9 @@ uv run dunneflow naming src/dunneflow --name dunneflow
 STATED — nothing in this program's documentation states a naming rule
 
 MEASURED — counted against the code
-  [B] 1,231/1,247  Python routines are named in snake_case.  (16 exceptions)
-  [B] 611/621  A routine marked private is called only from its own module.  (10 exceptions)
-  [B] 432/434  Python parameters are named in snake_case.  (2 exceptions)
+  [B] 1,233/1,249  Python routines are named in snake_case.  (16 exceptions)
+  [B] 616/623  A routine marked private is called only from its own module.  (7 exceptions)
+  [B] 433/435  Python parameters are named in snake_case.  (2 exceptions)
   [B] 211/213  Python database tables are named in snake_case.  (2 exceptions)
   [D] 165/182  Python classes are named in PascalCase.  (17 exceptions)
   …
@@ -188,10 +188,10 @@ uv run dunneflow check src/dunneflow --name dunneflow
 ```
 
 ```
-[SUSPECT/PROBABLE] LOST_EDGE: `_literal` could not be connected: 2 definitions share the name  extractors/python/extract.py
-[SUSPECT/PROBABLE] LOST_EDGE: `_scan` could not be connected: 2 definitions share the name  extractors/cpp/control.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self.ancestors` could not be connected: 2 definitions share the name  extractors/cpp/scopes.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self.masked.line_at` could not be connected: 2 definitions share the name  extractors/cpp/ctx.py
 …
-0 broken, 26 suspect, 18 informational
+0 broken, 21 suspect, 18 informational
 ```
 
 Exits non-zero **only on BROKEN**, so it can gate CI without failing your build over
@@ -230,9 +230,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-10-02T19:59:52Z   WORKING          2026-10-02T19:59:52Z      142
-2026-10-02T19:59:47Z   FOR_COMPARISON   2026-10-02T19:59:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
-2026-10-02T19:59:41Z   FOR_COMPARISON   2026-10-02T19:59:41Z      141  DunneFlow at 0804aa7 - before parts
+2026-10-02T21:37:19Z   WORKING          2026-10-02T21:37:19Z      142
+2026-10-02T21:37:11Z   FOR_COMPARISON   2026-10-02T21:37:11Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-10-02T21:37:03Z   FOR_COMPARISON   2026-10-02T21:37:03Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 **Keep the current one**, so the next analysis lands beside it rather than on it:

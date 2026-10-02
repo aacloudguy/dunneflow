@@ -202,9 +202,11 @@ collapses to a reach of 1 or 2, a registration idiom is being missed.
 
 **Every figure in the user guide and the tutorial is one this map reproduces**, so a retake
 rebuilds it rather than rediscovering it. Taken 2026-10-02, on a map of a **clean clone** at
-`5b737a0` analysed by the installed release built from that commit, and photographed through
-that release and through release 6 (`7e8d9ba`), which reads the same maps (all five stamps
-agree) and fixes five things the retake found on screen. The clone is required: the working
+`2cdd872` analysed by release 8, the installed build of that commit, and photographed through
+releases 8 and 9 (`0cd81cd`), which read the same maps — all five stamps agree. The shots of
+the analyse dialog and the Settings page (`04-*`, `13-*`, `03-opening`, `15-refuse-relative`)
+hold no figure these maps decide and were kept from the previous retake, against `5b737a0`.
+The clone is required: the working
 tree holds `CLAUDE.local.md` and `output/`, which the documentation scan would read as
 DunneFlow's own corpus and print into the screenshots.
 
@@ -214,7 +216,7 @@ named commit, so they can be rebuilt from history:
 ```bash
 git worktree add ../dunneflow-before-parts   7665d66^    # 0804aa7
 git worktree add ../dunneflow-before-windows 290c39b^    # 1017ef4
-git clone . ../tour/DunneFlow && git -C ../tour/DunneFlow checkout 5b737a0
+git clone . ../tour/DunneFlow && git -C ../tour/DunneFlow checkout 2cdd872
 
 dunneflow analyze ../dunneflow-before-parts/src/dunneflow --name dunneflow --output ../tour/maps
 dunneflow revisions ../tour/maps/dunneflow --seal --label "DunneFlow at 0804aa7 - before parts"
@@ -224,11 +226,9 @@ dunneflow analyze ../tour/DunneFlow/src/dunneflow --name dunneflow --output ../t
     --standards ../dunnecorp-standards
 ```
 
-The last analysis must reproduce **142 files · 53,939 lines · 1,550 routines · 3,261
+The last analysis must reproduce **142 files · 53,988 lines · 1,552 routines · 3,315
 internal calls · 526 boundary touches · 207 structures · 24 ways in**, findings 0 broken,
-26 suspect and 18 informational, and 53 documents. What the walk left out is stored with the
-map in the words of the build that wrote it, so a map from before `8f6c5b5` says *pruned 1
-directories* in About this map; a rebuild says *pruned 1 directory*. Each figure moves with the source, so a
+21 suspect and 18 informational, and 53 documents. Each figure moves with the source, so a
 retake at another commit writes new figures rather than matching these. The tutorial's
 chapter 8 compares *before the Windows fix* with the working revision; guide chapter 14
 compares *before parts*.

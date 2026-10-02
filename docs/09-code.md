@@ -2,14 +2,14 @@
 
 The source, as it was measured.
 
-![Code mode showing cli.py: the header reads "cli · 2,132 lines · 47 definitions · 213 marks" with "◆ changes", "▾ margin 213" and "detach ⧉" buttons; under it "Against 2026-10-02 19:59:47: 71 lines added and 15 lines deleted" and "8 routines here the comparison has something to say about" — build_parser, cmd_analyze, cmd_impact, cmd_mirror, cmd_naming and cmd_touches, each "behaves differently" with what moved beside it, then _gap and _settled, each "added"; then the source with a margin column naming the import on each line, and a SOURCE line at the foot reading "Read from the content-addressed sidecar — the file as measured at 2026-10-02T19:59:52Z, not as the tree stands now."](images/09-code.jpg)
+![Code mode showing cli.py: the header reads "cli · 2,132 lines · 47 definitions · 213 marks" with "◆ changes", "▾ margin 213" and "detach ⧉" buttons; under it "Against 2026-10-02 21:37:11: 71 lines added and 15 lines deleted" and "8 routines here the comparison has something to say about" — build_parser, cmd_analyze, cmd_impact, cmd_mirror, cmd_naming and cmd_touches, each "behaves differently" with what moved beside it, then _gap and _settled, each "added"; then the source with a margin column naming the import on each line, and a SOURCE line at the foot reading "Read from the content-addressed sidecar — the file as measured at 2026-10-02T21:37:19Z, not as the tree stands now."](images/09-code.jpg)
 
 ## Where the text comes from
 
 The line at the foot reveals the origin:
 
 > **SOURCE** — Read from the content-addressed sidecar — the file as measured at
-> 2026-10-02T19:59:52Z, not as the tree stands now.
+> 2026-10-02T21:37:19Z, not as the tree stands now.
 
 DunneFlow keeps the bytes it read, held by content hash. That is not a cache. It is what
 lets you open a sealed snapshot months later, on a machine that has never held the tree,
@@ -53,9 +53,9 @@ did not ask for.
 Each hit says where it sits, including which routine and which class, resolved from the line range with
 innermost first.
 
-![The Code group's own search box holding "webbrowser", with its Aa, |ab| and .* toggles; under it "4 lines in 2 files, of 142 files, 53,939 lines. The first is open; open any."; then cli.py open at the first hit, with "‹ files", "◆ changes" and "open ▸", the comparison sentence, and lines 2033–2035 — def cmd_serve, its docstring, and import webbrowser — highlighted](images/09-code-search.png)
+![The Code group's own search box holding "webbrowser", with its Aa, |ab| and .* toggles; under it "4 lines in 2 files, of 142 files, 53,988 lines. The first is open; open any."; then cli.py open at the first hit, with "‹ files", "◆ changes" and "open ▸", the comparison sentence, and lines 2033–2035 — def cmd_serve, its docstring, and import webbrowser — highlighted](images/09-code-search.png)
 
-The count is said against the whole program — *of 142 files, 53,939 lines* — so a word
+The count is said against the whole program — *of 142 files, 53,988 lines* — so a word
 that turns up in two files out of a hundred and forty reads as rare, which it is.
 **‹ files** goes back to the list, and **open ▸** puts the file in the main pane.
 
@@ -64,7 +64,7 @@ that turns up in two files out of a hundred and forty reads as rare, which it is
 With a compared version set, the difference is drawn over the lines.
 
 The picture at the top of this chapter was taken with one set: under the header, *Against
-2026-10-02 19:59:47: 71 lines added and 15 lines deleted*, and then the eight routines in
+2026-10-02 21:37:11: 71 lines added and 15 lines deleted*, and then the eight routines in
 `cli.py` the comparison has something to say about.
 
 The line-level difference is what `git diff` gives you and gives you better. The half

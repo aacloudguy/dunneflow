@@ -35,7 +35,7 @@ of the five.
 The **Explore → Worth a look** panel is the same idea with no selection required. This indicates a
 doorway when you do not yet know what to ask.
 
-![The Worth a look panel: "12 measurements of this program, each showing what came out furthest from the middle", with "Measured on the base alone" beneath, then the first cards — "3,023 characters in one call argument", 377.9× the middle, _r_diagram, written at web/serve.py:1867, "the middle argument is 8 characters, of 16,033"; "17,585 characters in one constant's value", 308.5×, SCHEMA_SQL at store.py:52; "782 comments on one routine", 156.4×, web.queries; "89 callers of one routine", 89×, query at store.py:1641 — each with "Follow this go", "How this was measured show the query" and "◇ Keep this"](images/12-worth-a-look.jpg)
+![The Worth a look panel: "12 measurements of this program, each showing what came out furthest from the middle", with "Measured on the base alone" beneath, then the first cards — "3,023 characters in one call argument", 377.9× the middle, _r_diagram, written at web/serve.py:1867, "the middle argument is 8 characters, of 16,049"; "17,585 characters in one constant's value", 308.5×, SCHEMA_SQL at store.py:52; "785 comments on one routine", 157×, web.queries; "89 callers of one routine", 89×, query at store.py:1641 — each with "Follow this go", "How this was measured show the query" and "◇ Keep this"](images/12-worth-a-look.jpg)
 
 Twelve measured extrema, each with **its middle stated beside it**. Every program has a
 most-commented routine, so a maximum on its own is a claim nobody can weigh. *3,023
@@ -83,7 +83,7 @@ screen. It does not drop what you have kept.
 Anywhere you see **◇ Keep this,** including the inspector, a thread, a curiosity, a search hit, or a
 row on the Algorithms page, that thing lands on a shelf.
 
-![The kept shelf, reached from Explore › Kept 1: "Things you kept while you were looking at something else. The point of wandering is that you find what you were not looking for; this is where it goes so the detour does not cost you the thread you were on." One kept routine, binding_note, with a Drop button. The trail reads "… entrypoints_from_manifests › _target_routine › kept things" with "◆ 1 kept", and the inspector still shows resolve.entrypoints._target_routine, the routine the reader was on](images/12-kept-shelf.jpg)
+![The kept shelf, reached from the "◆ 1 kept" badge: "Things you kept while you were looking at something else. The point of wandering is that you find what you were not looking for; this is where it goes so the detour does not cost you the thread you were on." One kept routine, binding_note, with a Drop button. The trail reads "… Worth a look › _target_routine › kept things" with "◆ 1 kept", and the inspector still shows resolve.entrypoints._target_routine, the routine the reader was on](images/12-kept-shelf.jpg)
 
 The count sits in the trail bar as **◆ 1 kept** and opens the shelf. Every row **opens**
 when you click it and goes back to the thing itself, not to a note about it. **Drop** removes
@@ -103,7 +103,7 @@ nowhere.
   the map minted it. Its row also recounts itself: *how many routines this stands for
   now*, not how many it stood for when you kept it.
 - **A line, or a loop at a line**, is only true of the version it was kept in. If you
-  switch to a different version the row says so: *kept at 2026-10-02T19:59:47Z, so this
+  switch to a different version the row says so: *kept at 2026-10-02T21:37:11Z, so this
   version may have moved line 92*.
 - **A box in a diagram** belongs to the drawing it was drawn in, and is valid at the
   altitude you drew it at. The row says that too.

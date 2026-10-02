@@ -2,9 +2,9 @@
 
 One compartment, drawn as a diagram.
 
-![Diagram mode showing the render compartment: a dropdown reading "render — 14 boxes", the line "14 boxes over 91 routines · 23 flows within · 45 crossing to 10 other compartments (not drawn) · drawn in 4 ms · double-click a box to open it", a "show crossings" checkbox, "colour by: nothing", a "fit" button and "· what you picked is not in this compartment"; below, fourteen labelled boxes — snapshot.py, index.py and markdown.py at the top, eleven files and the Stamp class in a row, page.py at the foot — joined by arrows](images/10-diagram-compartment.jpg)
+![Diagram mode showing the render compartment: a dropdown reading "render — 14 boxes", the line "14 boxes over 91 routines · 23 flows within · 45 crossing to 10 other compartments (not drawn) · drawn in 7 ms · double-click a box to open it", a "show crossings" checkbox, "colour by: nothing", a "fit" button and "· what you picked is not in this compartment"; below, fourteen labelled boxes — snapshot.py, index.py and markdown.py at the top, eleven files and the Stamp class in a row, page.py at the foot — joined by arrows](images/10-diagram-compartment.jpg)
 
-The stack draws all 2,690 nodes of this map at once. This draws fourteen boxes and answers
+The stack draws all 2,692 nodes of this map at once. This draws fourteen boxes and answers
 a different question: **what is this part shaped like, and what flows through it.**
 
 ## What a box is
@@ -36,7 +36,7 @@ in it. The line says which, in one of three ways:
 - **what you picked is not in this compartment** is the actual answer, and used to
   be given by saying nothing.
 
-![The diagram's header, close up: "render — 14 boxes", the line "14 boxes over 91 routines · 23 flows within · 45 crossing to 10 other compartments (not drawn) · drawn in 4 ms · double-click a box to open it", and under it "show crossings", "colour by: nothing", "fit", then "· 1 box selected" and a "frame it" button](images/10-frame-it.png)
+![The diagram's header, close up: "render — 14 boxes", the line "14 boxes over 91 routines · 23 flows within · 45 crossing to 10 other compartments (not drawn) · drawn in 7 ms · double-click a box to open it", and under it "show crossings", "colour by: nothing", "fit", then "· 1 box selected" and a "frame it" button](images/10-frame-it.png)
 
 **frame it** moves the camera to your selection *and everything an arrow joins it to*, so
 you land on the neighbourhood rather than on one box with no context. **fit** is untouched,
@@ -55,7 +55,7 @@ you were looking at. Framing is offered, one click away, and never taken on your
 
 Double-click one.
 
-![The second level: "render — 14 boxes", "‹ out" and "markdown.py", then "13 routines · 27 flows within · 36 crossing to 21 other boxes (not drawn) · drawn in 3 ms"; the routines inside markdown.py drawn as boxes, render_all at the top fanning out to _flows, _routines, _data, _boundaries, _governance, _overview and _entrypoints, most of them writing to a FILE cylinder and calling _esc at the foot; the inspector on the right is headed render.markdown, render/markdown.py:42–626, ANALYSED · FILE · 13 folded, and lists HOLDS 13 with a code button beside each. The navigator's ROUTINES list has the thirteen routines of render.markdown lit](images/10-diagram-box-open.jpg)
+![The second level: "render — 14 boxes", "‹ out" and "markdown.py", then "13 routines · 27 flows within · 36 crossing to 21 other boxes (not drawn) · drawn in 4 ms" and "· you are inside what you picked"; the routines inside markdown.py drawn as boxes, render_all at the top fanning out to _flows, _routines, _data, _boundaries, _governance, _overview and _entrypoints, most of them writing to a FILE cylinder and calling _esc at the foot; the inspector on the right is headed render.markdown, render/markdown.py:42–626, ANALYSED · FILE · 13 folded, and lists HOLDS 13 with a code button beside each. The navigator is still filtered to the search "cmd_serve"](images/10-diagram-box-open.jpg)
 
 Now the boxes are routines and the same sentence describes them; the breadcrumb above it
 names the box you are inside, and with a selection made first the sentence adds whether

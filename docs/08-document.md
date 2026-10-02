@@ -30,10 +30,11 @@ the inspector fills, the trail records the hop, and Back will bring you home. A 
 a database table selects the table, which means selecting all the code that reads and
 writes it.
 
-Like the table, it says where you are: *SHOWING `cmd_serve` — row 75 of 1,550 in this
-document*, with **Go to it**. The table says *as sorted here* instead, because its order is
-the sort you chose and this one is the document's own; the same routine has a different row
-in each, and each sentence names which order it counts in.
+Like the table, it says where you are — *SHOWING `cmd_serve` — row 75 of 1,552 in this
+document*, with **Go to it** — and it scrolls to that row each time you arrive. The table
+says *as sorted here* instead, because its order is the sort you chose and this one is the
+document's own; the same routine has a different row in each, and each sentence names
+which order it counts in.
 
 The **WHERE** button on a row opens the routine's source at that line in
 [Code mode](09-code.md).
@@ -47,7 +48,7 @@ the mirror.
 
 ## Lane 2: the program's own
 
-![Document mode, corpus lane, "The program's own 53": a blue note saying no document in this map is about cmd_serve, a filter box, "All 53 documents.", and the first group, OTHER 47, listing Backlog (BACKLOG.md, 1,178w, 3 §), the design rules, ground truth, adding a language, packaging, the measured budgets (13,404w, 27 §), the rules (28,188w), the third-party notices, and the guide's chapters from 1. Installing (2,108w, 9 §) onward, each with its path, word count and section count](images/08-document-corpus-lane.jpg)
+![Document mode, corpus lane, "The program's own 53": a blue note saying no document in this map is about cmd_serve, a filter box, "All 53 documents.", and the first group, OTHER 47, listing Backlog (BACKLOG.md, 1,211w, 3 §), the design rules, ground truth, adding a language, packaging, the measured budgets (13,404w, 27 §), the rules (28,188w), the third-party notices, and the guide's chapters from 1. Installing (2,265w, 9 §) onward, each with its path, word count and section count](images/08-document-corpus-lane.jpg)
 
 Everything DunneFlow found beside the code encompassing Markdown, reStructuredText, and plain text, all
 grouped by what kind of document it is, with its size in words and sections.
@@ -68,7 +69,7 @@ confident nonsense at scale.
 
 ## Reading one
 
-![A document open: "‹ all documents", the title DunneFlow, README.md, "README · 2,464 words · 15.6 KB", a grey note "Not related to cmd_serve. You opened it from the list of all documents." with a "See what is related ›" button, an "IN THIS DOCUMENT" outline on the left (Download, Run from source, What it reads, The dashboard, For agents, Command line…), and the rendered prose on the right](images/08-document-open.jpg)
+![A document open: "‹ all documents", the title DunneFlow, README.md, "README · 2,476 words · 15.6 KB", a grey note "Not related to cmd_serve. You opened it from the list of all documents." with a "See what is related ›" button, an "IN THIS DOCUMENT" outline on the left (Download, Run from source, What it reads, The dashboard, For agents, Command line…), and the rendered prose on the right](images/08-document-open.jpg)
 
 When the document you are reading has nothing to do with the selection, the note above it
 says so and says how you got there, and **See what is related ›** closes it and returns you

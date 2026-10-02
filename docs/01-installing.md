@@ -167,7 +167,7 @@ language and get a map of everything else, with the count of what you left out p
 the end of the run and recorded in the map:
 
 ```
-files 131 (parsed 131, cached 0, removed 0, failed 0) in 1.4s
+files 131 (parsed 131, cached 0, removed 0, failed 0) in 1.0s
   read: python 131
   declined by you: 11 typescript — this build has a reader for that language;
   drop --without to read them
@@ -180,7 +180,7 @@ row headed *It was told* — because a map read `--without typescript` and a map
 program actually written in one language hold exactly the same rows, and only one of them
 is the second thing.
 
-![About this map for DunneFlow read with both languages: Program dunneflow 2026-10-02T19:59:52Z, Read by 0.2.0 · extractor 16:9befb90ff994e280, 142 files · 1,550 routines · 53 documents, Read from Python 131 · TypeScript 11, and under Left out of it the unread suffixes (8 .js, 6 .json, 6 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs), the strings not judged (3,475 python, 112 typescript), 262 typescript calls resolved outside this map, 200 whose far end could not be named, and the line "pruned 1 directories: vendor". Inferred facts: none; Read by a model: none.](images/01-about-this-map.png)
+![About this map for DunneFlow read with both languages: Program dunneflow 2026-10-02T21:37:19Z, Read by 0.2.0 · extractor 16:9befb90ff994e280, 142 files · 1,552 routines · 53 documents, Read from Python 131 · TypeScript 11, and under Left out of it the unread suffixes (8 .js, 6 .json, 6 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs), the strings not judged (3,475 python, 112 typescript), 262 typescript calls resolved outside this map, 200 whose far end could not be named, and "pruned 1 directory: vendor". Inferred facts: none; Read by a model: none.](images/01-about-this-map.png)
 
 That one was read with both languages, so it has no *It was told* row: **Read from** names
 what was read and how much of it, and **Left out of it** names everything that was not —

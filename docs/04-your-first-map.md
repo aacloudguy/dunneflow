@@ -110,10 +110,10 @@ DunneFlow reading itself — two of the four languages it reads, because its own
 neither C++ nor Kotlin:
 
 ```
-files 142 (parsed 142, cached 0, removed 0, failed 0) in 3.3s
+files 142 (parsed 142, cached 0, removed 0, failed 0) in 3.5s
   read: python 131 · typescript 11
     typescript plugins/typescript/tsconfig.json: 11 files
-    typescript opened in 0.2s
+    typescript opened in 0.1s
   unread: 8 .js, 6 .json, 6 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs — no reader here
   claims those suffixes
   strings not judged: 3,475 python, 112 typescript — outside the 3–200,000 character

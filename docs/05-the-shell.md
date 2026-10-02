@@ -1,6 +1,6 @@
 # 5. The shell
 
-![The DunneFlow dashboard on the cover of dunneflow: the top bar (program menu "dunneflow — 142 files", SOURCE DIRECTORY DunneFlow, the version menu, the search box, the scale slider, System and Settings); the version strip comparing with dunneflow-before-windows and "assuming the compared version is newer"; the navigator on the left with Routines open, "1,550 in 24 packages — open one, or search"; the cover in the middle headed "dunneflow 142 files · 53,939 lines · 1,550 routines · analysed 2026-10-02 19:59 UTC" with WHERE TO START, WHAT IT TOUCHES 526 and WHAT LOOKS WRONG (Broken 0, Suspect 26, Informational 18); and the inspector railed on the right](images/05-shell-cover.jpg)
+![The DunneFlow dashboard on the cover of dunneflow: the top bar (program menu "dunneflow — 142 files", SOURCE DIRECTORY DunneFlow, the version menu, the search box, the scale slider, System and Settings); the version strip comparing with dunneflow-before-windows and "assuming the compared version is newer"; the navigator on the left with Routines open, "1,552 in 24 packages — open one, or search"; the cover in the middle headed "dunneflow 142 files · 53,988 lines · 1,552 routines · analysed 2026-10-02 21:37 UTC" with WHERE TO START, WHAT IT TOUCHES 526 and WHAT LOOKS WRONG (Broken 0, Suspect 21, Informational 18); and the inspector railed on the right](images/05-shell-cover.jpg)
 
 Three panes and a top bar. The important thing to understand before anything else is that
 the middle is **one selection read six ways**, not six places to go. Pick a routine

@@ -590,9 +590,13 @@ WHERE b.kind = :kind AND COALESCE(b.target, '') = COALESCE(:target, '')
 ORDER BY b.salience DESC, r.qualname, b.line
 """
 
+# These rows are an artefact's IN, and an IN row's `name` is the caller's: the inspector
+# prints it. It returned `a.name` there until 2026-10-02, so every row under `source.db`
+# read `source.db`. A mention at module scope has no routine and is named by its file.
 ARTEFACT_NAMERS = """
-SELECT a.name, a.stem, a.ext, a.kind, a.line, a.literal, a.is_pattern,
-       a.file, r.id, r.name AS routine, r.qualname, r.module
+SELECT a.name AS artefact, a.stem, a.ext, a.kind, a.line, a.literal, a.is_pattern,
+       a.file, r.id, COALESCE(r.name, a.file) AS name, r.name AS routine,
+       r.qualname, r.module
 FROM artefacts a
 LEFT JOIN routines r ON r.id = a.routine_id
 WHERE a.name = :name

@@ -163,3 +163,29 @@ def test_a_boundary_carries_the_loops_that_reach_it(analyzed):
     assert d["kind"] == "BOUNDARY"
     assert set(d["loops"]) == {"loops", "points", "deepest", "places", "sentence", "rows"}
     assert d["loops"]["sentence"], "a boundary states no answer about loops at all"
+
+
+def test_an_artefact_lists_the_routines_that_name_it(tmp_path: Path) -> None:
+    """IN on a file the program names is the routines that name it, each by its own name.
+
+    Every row was labelled with the artefact's name until 2026-10-02 -- seven rows reading
+    `source.db` under `source.db` -- because the query returned the artefact as `name` and
+    the caller as `routine`, and the IN rows print `name`. Found retaking the tutorial.
+    """
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path / "src" / "pkg"
+    root.mkdir(parents=True)
+    (root / "__init__.py").write_text("", encoding="utf-8")
+    (root / "app.py").write_text(
+        "def open_store():\n    return 'cache.db'\n\n"
+        "def wipe_store():\n    return 'cache.db'\n", encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    try:
+        analyze_tree(root.parent, store)
+        d = describe(store, "art:cache.db")
+        names = sorted(c["name"] for c in d["in"]["callers"])
+        assert names == ["open_store", "wipe_store"]
+        assert {c["artefact"] for c in d["in"]["callers"]} == {"cache.db"}
+    finally:
+        store.close()

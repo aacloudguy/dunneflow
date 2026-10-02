@@ -3662,6 +3662,7 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .usagebar { display: grid; grid-template-columns: 9rem 1fr 3rem; gap: .5rem; align-items: center;
   padding: var(--row-pad) 0; font-size: .78rem; border-bottom: 1px solid var(--border); }
 .usagebar:last-child { border-bottom: 0; }
+.usagebar .usagekey { min-width: 0; overflow-wrap: anywhere; }
 .usagebar .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
 .note {

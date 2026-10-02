@@ -7949,7 +7949,11 @@ function viewSettings() {
       <div class="panel-body">
         ${Object.entries(state.usage).sort((a, b) => b[1] - a[1]).map(([k, v]) => `
           <div class="usagebar">
-            <span style="text-transform:capitalize">${esc(k)}</span>
+            ${/* A key longer than its 9rem column ran under the bar and the bar's dot was
+                 drawn over the cut -- `Naming:Underscore:Allowe` -- so it breaks after each
+                 colon instead, inside its own column (found retaking the guide, 2026-10-02). */""}
+            <span class="usagekey" style="text-transform:capitalize">${
+              esc(k).split(":").join(":<wbr>")}</span>
             <span class="bar"><i style="width:${(v / 68) * 100}%"></i></span>
             <span class="n">${v}</span>
           </div>`).join("")}
@@ -12092,8 +12096,12 @@ function viewInspectorFold(s) {
           title="${esc(m.qualname || m.name || "")}"><code>${esc(m.name || "")}(${
           (m.params || []).map(pp => esc(pp.text)).join(", ")})${m.returns
             ? ` <span class="dim">→ ${esc(m.returns)}</span>` : ""}</code></button>
-        <span class="dim" style="margin-left:auto">${gotoCodeBtn(id.file, m.line_start)
-          }<span class="ln">:${m.line_start}</span></span>
+        ${/* **The button and its line number never give way to the signature.** They
+             shrank and wrapped instead, so a long parameter list stood `code ▸` on two
+             lines with `:42` under it, on every row of an opened box (found retaking the
+             guide, 2026-10-02). The signature is the one that is cut, at its tail. */""}
+        <span class="dim holds-at" style="margin-left:auto;flex:none;white-space:nowrap"
+          >${gotoCodeBtn(id.file, m.line_start)}<span class="ln">:${m.line_start}</span></span>
       </div>`).join("")
     : `<div class="hint">This box folds nothing the store has a routine for.</div>`;
 
@@ -13280,10 +13288,21 @@ function render() {
      * `CHANGES` is held, so every paint would schedule the next one. */
     ensureTableOverlay();
 
+    /* **The scroll is kept on the element that scrolls, and that is the table's own
+     * wrapper.** Only `#viewMount`'s was kept, from when the pane scrolled; the wrapper is
+     * rebuilt here, so every repaint put the table back at row 1. On a first open the
+     * reveal scrolled to the selection, the CHANGES overlay's repaint landed a moment later
+     * and threw that away, and the row was already marked revealed -- the selection sat
+     * 1,181 rows down until **Go to it** was pressed (found retaking the tutorial,
+     * 2026-10-02). A reader's own scroll went the same way on any repaint. */
     const mount = $("#viewMount");
     const keep = mount ? mount.scrollTop : 0;
+    const was = vp.querySelector(".tablewrap");
+    const kept = was ? [was.scrollTop, was.scrollLeft] : null;
     vp.innerHTML = viewTable();
     if (mount) mount.scrollTop = keep;
+    const wrap = vp.querySelector(".tablewrap");
+    if (wrap && kept) [wrap.scrollTop, wrap.scrollLeft] = kept;
     revealSelectedRow(false);
   }
   else if (state.view === "doc")     {
@@ -18744,6 +18763,13 @@ async function ensureGraph() {
   graphLoading = false;
   applyGraphPalette();
   render();
+  /* **The navigator's fan counts are the engine's, so the mount owes the navigator a
+     repaint.** `routineFan` is blank until the stack is mounted, deliberately -- an absent
+     count is not a zero -- and nothing rebuilt the list once it was, so `cmd_serve` sat
+     beside an empty column until the next keystroke or selection happened to (found
+     retaking the guide, 2026-10-02). Rule 78: the pane is brought up to date by what
+     changed, not by whichever control moves next. */
+  buildNav();
 }
 
 /* One selection, every view. The graph reports what was picked; the inspector, the

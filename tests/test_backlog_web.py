@@ -135,3 +135,38 @@ def test_the_centre_fits_the_window_the_docs_are_taken_at():
     folds = _code(_fn(js, "narrowFolds"))
     assert 'folds.add("legend")' in folds and "PLATES_FOLD_REM" in folds
     assert re.search(r"const paneHeld = \{[^}]*legend: false", js)
+
+
+
+def test_a_table_repaint_keeps_the_scroll_of_the_element_that_scrolls():
+    """Found retaking the tutorial: the reveal scrolled to the selection, the CHANGES
+    overlay's repaint rebuilt `.tablewrap` at row 1, and the row was already marked revealed.
+    Only `#viewMount`'s scroll was kept, and it is not the one that scrolls."""
+    js = _read("shell.js")
+    i = js.index("vp.innerHTML = viewTable();")
+    block = _code(js[i - 900:i + 400])
+    assert 'const was = vp.querySelector(".tablewrap")' in block
+    assert "[wrap.scrollTop, wrap.scrollLeft] = kept" in block
+    assert block.index("= kept") < block.index("revealSelectedRow(false)")
+
+
+def test_an_opened_box_keeps_each_code_button_on_one_line():
+    """Found retaking the guide: a long signature squeezed `code ▸` onto two lines and pushed
+    the line number under it, on every HOLDS row of an opened box."""
+    js = _read("shell.js")
+    i = js.index('class="dim holds-at"')
+    assert "flex:none;white-space:nowrap" in js[i:i + 120]
+
+
+def test_the_navigator_is_repainted_once_the_stack_is_mounted():
+    """Found retaking the guide: the fan counts are blank until the engine is mounted, and
+    nothing rebuilt the navigator when it was."""
+    body = _code(_fn(_read("shell.js"), "ensureGraph"))
+    assert body.index("Graph.mount(") < body.rindex("buildNav()")
+
+
+def test_a_usage_key_wraps_inside_its_own_column():
+    """Found retaking the guide: `Naming:Underscore:Allowed` ran under the bar's dot."""
+    js, css = _read("shell.js"), _read("tokens.css")
+    assert '.split(":").join(":<wbr>")' in js
+    assert re.search(r"\.usagebar \.usagekey \{[^}]*overflow-wrap: anywhere", css)

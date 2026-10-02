@@ -1784,10 +1784,11 @@ const CHANGE_STRUCT_BANDS = {
     nav: "chg", id: "id", label: "name", meta: "module", badge: "kind",
     labelFit: "name", metaFit: "module", tone: "gone",
     title: "Structures only in the base",
+    /* Compared by nothing at all until 2026-09-02: on Mensores' pair that hid eight of
+       them while the page was free to say *no differences found*. History, so it stays
+       here and out of the sentence a reader of any program is shown (BACKLOG 25). */
     why: `A class, dataclass, enum or type alias the base version declares and the compared
-       one does not. Compared by nothing at all until 2026-09-02 — on Mensores' pair that
-       hid <strong>eight</strong> of them while the page was free to say
-       <em>no differences found</em>.`,
+       one does not.`,
     stat: "structures only in the base", stat1: "structure only in the base",
     statWhy: "structures, not routines",
   },
@@ -11248,7 +11249,7 @@ function glossHeld(held) {
   return `<p class="hint">These occur only <b>inside</b> a compound constant name — never
       as the whole name of anything — and nothing defines them. That is what
       <code>CHARS</code> is: the unit on somebody else's constant. It is also what the
-      program's own word looks like in <code>MENSORES_MAX_LEN</code>, so if one of these
+      program's own word looks like in <code>APPNAME_MAX_LEN</code>, so if one of these
       is a word rather than a unit, put it in the worklist.</p>
     <ul class="undeflist">
       ${held.map(t => `<li>
@@ -12285,8 +12286,7 @@ function viewInspectorConstant(s) {
   const whyBody = comments.length
     ? comments.map(c => `<div class="why"><span class="ln">:${c.line}</span> ${
         esc(c.text)}</div>`).join("")
-    : `<div class="hint">No comment says why it is this value. 1,047 of Mensores' 2,638
-       named values carry one; this is not among them.</div>`;
+    : `<div class="hint">No comment says why it is this value.</div>`;
 
   const tags = [
     id.is_final ? `<span class="kind-tag">FINAL</span>` : "",

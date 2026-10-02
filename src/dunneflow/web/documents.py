@@ -238,8 +238,8 @@ DOCUMENTS: tuple[Document, ...] = (
         id="artefacts",
         title="Files the program names",
         blurb="Names the authors chose, which is different from files the code opens. "
-              "`tabularium.db` is named 52 times across 25 files and reaches no other "
-              "detector, because its path is assembled rather than written whole.",
+              "A database whose path is assembled from parts, rather than written "
+              "whole, is named here and reaches no other detector.",
         sections=(
             Section(
                 query=queries.DOC_ARTEFACTS,

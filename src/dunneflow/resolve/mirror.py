@@ -99,7 +99,7 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
     ),
     Exclusion(
         "CODE_SHAPED", "Code, not a word",
-        "`read_all() -> dict` and `src/society/cli/_root.py (lines 110-115)` are "
+        "`read_all() -> dict` and `src/app/cli/_root.py (lines 110-115)` are "
         "spans of code the definition extractor read as terms. Rule 12 in the mirror: "
         "a signature is a statement, not a name.",
     ),

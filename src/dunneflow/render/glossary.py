@@ -106,7 +106,7 @@ def render_glossary(store: Store, docs: DocStore | None, out_dir: Path,
             "`_GLOSSARY_DEFINITION_MAX_LEN` is one name somebody chose, and splitting it "
             "yields its subject, its type and its unit; the units are what these are. "
             "They are held back rather than dropped, because the split cannot tell "
-            "`MENSORES_MAX_LEN`'s first word from its last: if one of these is the "
+            "`APPNAME_MAX_LEN`'s first word from its last: if one of these is the "
             "program's own word, it is on this list and nowhere else.\n"
         )
         lines.append("| Word | Uses | First seen as |")

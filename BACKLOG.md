@@ -276,18 +276,6 @@ an internal key, where every other step carries a label a reader would recognise
 **What would settle it.** `subjectLabel` names a boundary node by its kind and target, as
 the inspector does.
 
-### 25 · The map's mirror page carries another program's story
-
-*Found 2026-10-02 while rewriting the tutorial's chapter 10.*
-
-`13-mirror.md` is written into every map with prose from `resolve/mirror.py` that describes
-Society: *"things Mensores was never asked to name"*, the `tabularium.db` paragraph, and
-*Society of Mensores* as an example. DunneFlow's own map says so about DunneFlow. It is the
-development record's reasoning, printed as though it were a finding about the program read.
-
-**What would settle it.** The page states its rule and its thresholds in words that name
-no corpus, and keeps the history in the module's docstring, where it belongs.
-
 ### 26 · A heading followed by an image is read as a definition
 
 *Found 2026-10-02 while rewriting the tutorial's chapter 10.*

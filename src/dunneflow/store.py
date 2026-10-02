@@ -389,8 +389,8 @@ CREATE TABLE IF NOT EXISTS imports (
     line    INTEGER NOT NULL
 );
 
--- Files the program names in its own source: `tabularium.db`, `groma.json`,
--- `STATUSQUO.md`. One row per reference site, never deduplicated at ingest, so
+-- Files the program names in its own source: `app.db`, `settings.json`,
+-- `STATUS.md`. One row per reference site, never deduplicated at ingest, so
 -- "how often is this named, and by whom" is answerable.
 -- Values the program names at module level: model names, token ceilings, directory
 -- names, retry limits. A constant is a name a person chose, and it carries the WHY

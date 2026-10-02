@@ -12,6 +12,16 @@ definition and the line it came from, and every claim ships the query behind it.
 
 Nothing here is bounded. There are 119 admitted terms on Mensores and 94 set-aside ones;
 all 213 are on the page.
+
+**The page says nothing about the program it was built on, and it once did** (BACKLOG 25).
+It is written into every map, and until 2026-10-02 three of its paragraphs were this
+module's history printed as findings: *"things Mensores was never asked to name"*, the
+story of `tabularium` -- glossed in Society's pantheon table, absent from its glossary, and
+in fact the database the whole program writes to, as `root / ".mensores" /
+"tabularium.db"`, which is why named files are joined at all -- and `Society of Mensores`
+as the example under the word cap. DunneFlow's own map said so about DunneFlow. The
+reasoning is kept here, where it belongs; the page states its rules in words that name no
+corpus.
 """
 
 from __future__ import annotations
@@ -118,8 +128,8 @@ def _what_it_could_not_see(m: Mirror) -> list[str]:
         f"**{m.excluded_total:,} of the {m.definitions_seen:,} definitions read are "
         "not words.** The definition extractor admits headings, test names and code "
         "fragments; run forwards that costs nothing, because a heading matches no code "
-        "and is never seen. Run backwards it would fill this page with things Mensores "
-        "was never asked to name. They are set aside by a rule stated below, counted, "
+        "and is never seen. Run backwards it would fill this page with things the "
+        "program was never asked to name. They are set aside by a rule stated below, counted, "
         "and listed whole — the rule is shape-based and cannot read meaning, so it "
         "keeps some phrases it should not and the Absent band shows them with their "
         "definitions beside them.\n",
@@ -141,14 +151,11 @@ def _what_was_joined(m: Mirror) -> list[str]:
         f"| Named files found in code | {m.artefact_names:,} |",
         f"| References to them | {m.artefacts_seen:,} |",
         "",
-        "The named-file surface is here because of one word. `tabularium` is glossed "
-        "in the pantheon table and appeared in the glossary nowhere, which read as a "
-        "term the project had abandoned. It is in fact the name of the database the "
-        "whole program writes to — a path assembled as "
-        "`root / \".mensores\" / \"tabularium.db\"`, which is not a module, not a "
-        "table and not a boundary target, because only the parts are literals. "
-        "DunneFlow recorded no file the program names, so the first finding this "
-        "report produced was a defect in the reader, not drift in the read.\n",
+        "The named files are joined because a word can be the name of a file the "
+        "program writes — a path assembled from literal parts — without being a "
+        "module, a table or a boundary target. Without them such a word reads as "
+        "absent, which looks like a term the project abandoned and is in fact a "
+        "blind spot in the reader.\n",
     ]
 
 
@@ -268,19 +275,19 @@ def _set_aside(m: Mirror) -> list[str]:
         ]
     lines.append(
         f"The word cap is {MAX_TERM_WORDS}. It is a threshold, printed so it can be "
-        "argued with: on this corpus every entry of four words or more is a sentence, "
-        "and the two- and three-word entries include `Audit event`, `Decision graph` "
-        "and `Society of Mensores`. A second corpus may move it.\n"
+        "argued with: it was set on the corpus this page was first built against, where "
+        "every entry of four words or more was a sentence and the two- and three-word "
+        "entries were names. A corpus that names things in longer phrases may move "
+        "it.\n"
     )
     return lines
 
 
 def _reproducing(m: Mirror) -> list[str]:
     """Rule 13. Every count above is re-runnable, and the queries are the proof."""
-    example = next(
-        (t.term for t in m.terms if t.term.lower() == "tabularium"),
-        m.terms[0].term if m.terms else "tabularium",
-    )
+    # The first term carried forward, or a placeholder a reader substitutes when there is
+    # none -- never a word from another program's vocabulary (BACKLOG 25).
+    example = m.terms[0].term if m.terms else "<term>"
     return [
         "## Reproducing this\n",
         "Every count on this page comes from one of these. The definition side lives "

@@ -57,8 +57,8 @@ LANG = "cpp"
 RESIDUE = (
     "no types and no overload resolution — three overloads of one name are one written "
     "name, every call is external, and no `callee_id` is ever set",
-    "no macro expansion — what a macro *generates* is invisible, including Unreal's "
-    "`GENERATED_BODY()` boilerplate and any scope a macro opens",
+    "no macro expansion — what a macro *generates* is invisible, including a "
+    "framework's `GENERATED_BODY()`-style boilerplate and any scope a macro opens",
     "no `#include` following — a call into another header is external by construction",
     "no preprocessor evaluation beyond a literal `#if 0`; every other branch is read as "
     "live on both arms, and a name defined in two of them is kept as two identities",

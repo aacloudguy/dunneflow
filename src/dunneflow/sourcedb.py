@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS revisions (
     label       TEXT NOT NULL DEFAULT '',
     note        TEXT NOT NULL DEFAULT '',
     -- The **leaf** of the directory this version was read from, and only the leaf:
-    -- `society-2026-08-26`, never the path that led to it. Two versions of one program
+    -- `myapp-2026-08-26`, never the path that led to it. Two versions of one program
     -- are two directories, so this is what a reader recognises them by -- an instant
     -- says when we read the bytes and nothing about which tree they came from.
     --

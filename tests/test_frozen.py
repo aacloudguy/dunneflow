@@ -14,6 +14,7 @@ way every one of these was written, with `Path(__file__)`.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -872,6 +873,28 @@ def test_the_folder_picker_says_while_it_is_opening():
     assert "finally" in handler, (
         "a throw would leave the start page saying 'Opening…' for ever"
     )
+
+
+def test_every_step_that_signs_asks_for_the_identity_first_and_names_the_variable():
+    """The default identity is the maintainer's, so on any other Mac it is absent.
+
+    `release.sh` checked for it in `sign` alone, with a message naming only the missing
+    string, and `dmg` built the whole image before reaching a `codesign` that would fail the
+    same way. A contributor needs to be told which variable carries *their* certificate, so
+    every step that runs `codesign --sign` must call `require_identity` before it does any
+    work, and the refusal must name `DUNNEFLOW_IDENTITY`.
+    """
+    script = RELEASE.read_text(encoding="utf-8")
+    body = script[script.index("require_identity() {"):]
+    body = body[:body.index("\n}\n")]
+    assert "DUNNEFLOW_IDENTITY" in body, "the refusal does not name the variable to set"
+    steps = re.findall(r"^(step_\w+)\(\) \{\n(.*?)^\}", script, re.M | re.S)
+    signing = [(name, text) for name, text in steps if "--sign" in text]
+    assert {name for name, _ in signing} >= {"step_sign", "step_dmg"}, signing
+    for name, text in signing:
+        assert "require_identity" in text, f"{name} signs without asking for the identity"
+        assert text.index("require_identity") < text.index("--sign"), (
+            f"{name} asks for the identity only after it has started signing")
 
 
 def test_the_release_script_and_the_spec_name_the_same_bundle():

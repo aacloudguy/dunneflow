@@ -158,13 +158,38 @@ Run '$0 build', which builds for arm64 and x86_64. A DUNNEFLOW_ARCH=host build i
 verification gate and for nothing that leaves this machine."
 }
 
+# **The default identity is the maintainer's, and on anybody else's Mac it is not there.** A
+# contributor building their own release has a certificate of their own, and the script
+# cannot guess its name -- so it says which variable carries it and how to read that name off
+# the keychain, rather than failing inside `codesign` with an error about a string they did
+# not choose. Asked by both steps that sign, and before either does any work: `dmg` used to
+# build the whole image first and only then reach `codesign`.
+require_identity() {
+    local have
+    have="$(security find-identity -v -p codesigning 2>/dev/null)"
+    printf '%s\n' "$have" | grep -qF "\"$IDENTITY\"" && return 0
+    local yours
+    yours="$(printf '%s\n' "$have" | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/      \1/p')"
+    local whose="That is the default, and it is the maintainer's certificate."
+    [ -n "${DUNNEFLOW_IDENTITY:-}" ] && whose="That is what DUNNEFLOW_IDENTITY names."
+    die "no codesigning identity named
+      $IDENTITY
+is in this keychain. $whose
+To sign with your own, set DUNNEFLOW_IDENTITY to its name:
+      DUNNEFLOW_IDENTITY='Developer ID Application: Your Name (TEAMID)' $0 ${1:-sign}
+${yours:+The Developer ID identities this keychain does hold:
+$yours
+}A Mac App Store or Apple Development certificate will not do: Gatekeeper accepts only a
+Developer ID outside the store. Notarising also needs your own notary profile, named by
+DUNNEFLOW_NOTARY_PROFILE (see this file's header). '$0 build' needs neither."
+}
+
 # --- sign ------------------------------------------------------------------------------------
 step_sign() {
     say "signing as ${IDENTITY}"
     [ -d "$APP" ] || die "there is no $APP_NAME to sign — run '$0 build' first"
     require_universal "signed"
-    security find-identity -v -p codesigning | grep -qF "$IDENTITY" || die \
-        "no codesigning identity matching '$IDENTITY' in the keychain"
+    require_identity sign
 
     # PyInstaller ad-hoc signs what it builds; --force is what replaces that.
     local f
@@ -204,6 +229,7 @@ step_dmg() {
     dmg="$(dmg_path)"
     say "disk image $(basename "$dmg")"
     require_universal "put in a disk image"
+    require_identity dmg
     xcrun stapler validate "$APP" >/dev/null 2>&1 || die \
         "the .app is not stapled — run '$0 notarize' before building the image.
 A disk image built around an un-notarised app is a notarised wrapper on a refused program."

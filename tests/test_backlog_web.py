@@ -177,3 +177,14 @@ def test_a_picked_box_counts_as_a_selection_without_the_stack():
     saying you are inside what you picked was wiped, because nothing mounted the stack."""
     mark = _code(_fn(_read("shell.js"), "markDiagramSelection"))
     assert "dgmSelectionNote(marked, want.size > 0 || !!state.fold)" in mark
+
+
+def test_arriving_at_a_pane_forgets_the_row_it_last_revealed():
+    """Found retaking the docs: leave Table and come back on the same selection, and the
+    rebuilt table sat at row one -- the row had been 'revealed' a visit ago."""
+    body = _code(_fn(_read("shell.js"), "render"))
+    i = body.index("state.view !== lastDrawnView")
+    block = body[i:i + 300]
+    assert 'lastRevealedRow.row = null' in block
+    assert 'lastRevealedRow.docrow = null' in block
+    assert body.index("lastDrawnView = state.view") < body.index("revealSelectedRow(false)")

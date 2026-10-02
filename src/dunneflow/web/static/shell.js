@@ -13235,6 +13235,17 @@ function render() {
      does: a laid-out SVG and the reader's pan are destroyed by an `innerHTML` write, and
      `render()` runs on every keystroke. */
   const diagramOn = state.view === "diagram";
+  /* **Arriving at a pane is a new answer, the same as a new subject.** The reveal remembers
+     the row it last moved to so that a repaint never fights the reader's own scroll -- but
+     that memory outlived the pane. Leave Table, come back on the same selection, and the
+     rebuilt table sat at row one while its banner said *row 886*, because the row had been
+     "revealed" a visit ago (found retaking the docs, 2026-10-02). Nobody has scrolled a
+     pane they have just arrived in, so it is forgotten on the way in. */
+  if (state.view !== lastDrawnView) {
+    if (state.view === "table") lastRevealedRow.row = null;
+    if (state.view === "doc") lastRevealedRow.docrow = null;
+    lastDrawnView = state.view;
+  }
   $("#graphMount").hidden = !stackOn;
   $("#diagramMount").hidden = !diagramOn;
   $("#viewMount").hidden = stackOn || diagramOn;
@@ -18871,6 +18882,8 @@ function scrollerFor(el) {
  * a different row in a different document, and the skip looks exactly like a pane that is
  * not wired to the selection at all. */
 let lastRevealedRow = { row: null, docrow: null };
+// The view `render()` last drew, so arriving at one can be told from repainting it.
+let lastDrawnView = null;
 
 function revealSelectedRow(force, attr = "row") {
   if (!state.selected) return;

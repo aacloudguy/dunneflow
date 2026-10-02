@@ -342,3 +342,27 @@ def test_a_bare_name_in_a_method_never_means_the_method(tmp_path):
         assert _call_in(store, "pkg.tree.Tree.walk", "walk")["callee"] == "pkg.tree.walk"
     finally:
         store.close()
+
+
+def test_a_name_spelled_with_its_module_keeps_reaching_that_modules_methods(tmp_path):
+    """The positive control the first fix for BACKLOG 29 failed, found on DunneFlow's map.
+
+    `store.query(...)` on a local `store` -- a `Store` from the module `store` -- resolves
+    through the module path, and that is how 180 of DunneFlow's own edges are found. Taking
+    methods out of *every* module lookup lost all 237 such edges; only a bare name never
+    reaches a method, so only bare lookups drop them.
+    """
+    store = _read(tmp_path, {
+        "store.py": "class Store:\n    def query(self, sql):\n        return sql\n",
+        "use.py": (
+            "from . import store\n"
+            "\n"
+            "def report(s):\n"
+            "    store.query('x')\n"
+        ),
+        "decoy.py": "class Other:\n    def query(self, sql):\n        return sql\n",
+    })
+    try:
+        assert _call(store, "report", "store.query")["callee"] == "pkg.store.Store.query"
+    finally:
+        store.close()

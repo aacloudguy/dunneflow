@@ -176,20 +176,30 @@ def _visible(ix: _Index, ids: list[str], caller_id: str) -> list[str]:
     return out
 
 
-def _in_module(ix: _Index, key: tuple[str, str], caller_id: str) -> str | None:
-    """The one routine `key` -- (module, name) -- names that this caller can reach."""
-    ids = [i for i in _visible(ix, ix.by_module_name.get(key, []), caller_id)
-           if not _is_method(ix, i)]
-    return _itself(ids, caller_id) or _pick(ids, caller_id)
+def _in_module(ix: _Index, key: tuple[str, str], caller_id: str, *,
+               bare: bool = False) -> str | None:
+    """The one routine `key` -- (module, name) -- names that this caller can reach.
+
+    `bare`: the call spelled the name alone, which in Python never reaches a method, so the
+    module's methods are not candidates. A name spelled *with* a module path keeps them --
+    `store.query(...)` on a local `store` finds `Store.query` that way, 180 of DunneFlow's
+    own edges, and the first fix for BACKLOG 29 lost all of them by dropping methods there
+    too. Only a caller that is not itself a method can find itself here.
+    """
+    ids = _visible(ix, ix.by_module_name.get(key, []), caller_id)
+    if bare:
+        ids = [i for i in ids if not _is_method(ix, i)]
+    own = None if _is_method(ix, caller_id) else _itself(ids, caller_id)
+    return own or _pick(ids, caller_id)
 
 
 def _is_method(ix: _Index, rid: str) -> bool:
     """Defined in a class body, and so reachable by no bare or module-qualified name.
 
-    The module index holds methods beside functions, so `walk()` in a module that also
-    defines `Tree.walk` had two candidates -- and when one was the caller, `_pick` chose the
-    method: a function calling itself was recorded as calling a method nobody named (found
-    with BACKLOG 29). A closure inside a method carries the class too and is not one.
+    The module index holds methods beside functions, so a bare `walk()` in a module that
+    also defines `Tree.walk` had two candidates -- and when one was the caller, `_pick` chose
+    the method: a function calling itself was recorded as calling a method nobody named
+    (found with BACKLOG 29). A closure inside a method carries the class too and is not one.
     """
     return bool(ix.caller_info.get(rid, ("", None))[1]) and rid not in ix.enclosing
 
@@ -204,8 +214,9 @@ def _itself(ids: list[str], caller_id: str) -> str | None:
     call fell through to the program-wide index and met strangers. On DunneFlow's own map
     that bound `cpp.literals._all` to `kotlin.literals._all`, left `cpp.calls._walk` LOST
     between two rivals, and counted ~35 more recursive sites EXTERNAL (rules 1, 5 and 26).
-    A method spelling its own name bare is not itself: `_in_module` has already dropped
-    methods, because a bare name never reaches one.
+    A method spelling its own name bare is not itself: a bare lookup has already dropped
+    methods, because a bare name never reaches one, and `_in_module` asks this only of a
+    caller that is not a method.
     """
     return caller_id if ids == [caller_id] else None
 
@@ -332,7 +343,7 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
 
         if len(parts) == 1:
             # Bare name: the enclosing module first, then whatever was imported.
-            target = _in_module(ix, (caller_module, last), caller_id)
+            target = _in_module(ix, (caller_module, last), caller_id, bare=True)
             if target:
                 conf = Confidence.CERTAIN
             else:
@@ -341,7 +352,7 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
                 mod, name, is_from = alias_map[last]
                 if is_from:
                     abs_mod = _absolute(mod, caller_module, caller_is_pkg)
-                    target = _in_module(ix, (abs_mod, name), caller_id)
+                    target = _in_module(ix, (abs_mod, name), caller_id, bare=True)
                     if target:
                         conf = Confidence.CERTAIN
                     else:

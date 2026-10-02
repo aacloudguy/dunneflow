@@ -178,7 +178,36 @@ def _visible(ix: _Index, ids: list[str], caller_id: str) -> list[str]:
 
 def _in_module(ix: _Index, key: tuple[str, str], caller_id: str) -> str | None:
     """The one routine `key` -- (module, name) -- names that this caller can reach."""
-    return _pick(_visible(ix, ix.by_module_name.get(key, []), caller_id), caller_id)
+    ids = [i for i in _visible(ix, ix.by_module_name.get(key, []), caller_id)
+           if not _is_method(ix, i)]
+    return _itself(ids, caller_id) or _pick(ids, caller_id)
+
+
+def _is_method(ix: _Index, rid: str) -> bool:
+    """Defined in a class body, and so reachable by no bare or module-qualified name.
+
+    The module index holds methods beside functions, so `walk()` in a module that also
+    defines `Tree.walk` had two candidates -- and when one was the caller, `_pick` chose the
+    method: a function calling itself was recorded as calling a method nobody named (found
+    with BACKLOG 29). A closure inside a method carries the class too and is not one.
+    """
+    return bool(ix.caller_info.get(rid, ("", None))[1]) and rid not in ix.enclosing
+
+
+def _itself(ids: list[str], caller_id: str) -> str | None:
+    """The caller, when the only routine a pinned lookup finds is the caller: recursion.
+
+    **BACKLOG 29.** `_pick` drops the caller from every candidate list, which is right for a
+    name matched across the program -- `self.repo.save()` inside `save` is someone else's
+    `save` -- and wrong where the lookup is already pinned to the caller's own module or
+    class. There, finding only yourself is the answer, and `_pick` made it no answer: the
+    call fell through to the program-wide index and met strangers. On DunneFlow's own map
+    that bound `cpp.literals._all` to `kotlin.literals._all`, left `cpp.calls._walk` LOST
+    between two rivals, and counted ~35 more recursive sites EXTERNAL (rules 1, 5 and 26).
+    A method spelling its own name bare is not itself: `_in_module` has already dropped
+    methods, because a bare name never reaches one.
+    """
+    return caller_id if ids == [caller_id] else None
 
 
 def _constructor(ix: _Index, cls: str, conf: Confidence, caller_id: str) -> Decision:
@@ -337,7 +366,8 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
             # A method on the enclosing class is as certain as Python gets, and one
             # inherited from a base is nearly so.
             if caller_class:
-                target = _pick(ix.by_class_method.get((caller_class, last), []), caller_id)
+                own = ix.by_class_method.get((caller_class, last), [])
+                target = _itself(own, caller_id) or _pick(own, caller_id)
                 if target:
                     conf = Confidence.CERTAIN
                 else:

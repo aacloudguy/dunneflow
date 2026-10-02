@@ -244,3 +244,101 @@ def test_the_resolution_figures_count_constructions_on_their_own(tmp_path):
         assert stats.resolved + stats.external + stats.constructions == stats.total
     finally:
         store.close()
+
+
+# --------------------------------------------------------------------------- recursion
+#
+# BACKLOG 29: `_pick` dropped the caller from every candidate list, so a call a routine
+# made to itself found nothing at home and fell through to the program-wide name index.
+# On DunneFlow's own map that bound `extractors.cpp.literals._all` to
+# `extractors.kotlin.literals._all`, left `extractors.cpp.calls._walk` LOST between two
+# strangers, and counted ~35 more recursive sites EXTERNAL. Each case below has a decoy:
+# a routine of the same name in another module, which is what the fall-through found.
+
+RECURSIVE = (
+    "def walk(node):\n"
+    "    for child in node:\n"
+    "        walk(child)\n"
+    "\n"
+    "class Tree:\n"
+    "    def visit(self, node):\n"
+    "        self.visit(node)\n"
+    "\n"
+    "    def walk(self, node):\n"
+    "        walk(node)\n"
+    "\n"
+    "def outer(node):\n"
+    "    def step(n):\n"
+    "        step(n)\n"
+    "    step(node)\n"
+)
+
+DECOYS = (
+    "def walk(node):\n    return node\n"
+    "\n"
+    "class Other:\n"
+    "    def visit(self, node):\n"
+    "        return node\n"
+    "\n"
+    "def step(n):\n    return n\n"
+)
+
+
+def _call_in(store: Store, caller_qual: str, expr: str):
+    rows = store.query(
+        "SELECT c.callee_id, c.external, c.confidence, c.ambiguous, r.qualname AS callee"
+        "  FROM calls c JOIN routines k ON k.id = c.caller_id"
+        "  LEFT JOIN routines r ON r.id = c.callee_id"
+        " WHERE k.qualname = ? AND c.callee_expr = ?", (caller_qual, expr))
+    assert rows, f"no call to {expr} from {caller_qual}"
+    return rows[0]
+
+
+def test_a_function_that_calls_itself_is_an_edge_to_itself(tmp_path):
+    store = _read(tmp_path, {"tree.py": RECURSIVE, "decoy.py": DECOYS})
+    try:
+        row = _call_in(store, "pkg.tree.walk", "walk")
+        assert row["callee"] == "pkg.tree.walk", f"bound to {row['callee']}"
+        assert (row["external"], row["confidence"]) == (0, Confidence.CERTAIN.value)
+    finally:
+        store.close()
+
+
+def test_recursion_is_found_at_home_however_many_strangers_share_the_name(tmp_path):
+    """Two decoys made the fall-through ambiguous, and the edge was LOST rather than wrong."""
+    store = _read(tmp_path, {"tree.py": RECURSIVE, "decoy.py": DECOYS, "more.py": DECOYS})
+    try:
+        row = _call_in(store, "pkg.tree.walk", "walk")
+        assert row["callee"] == "pkg.tree.walk"
+        assert row["ambiguous"] == 0
+    finally:
+        store.close()
+
+
+def test_a_method_that_calls_itself_through_self_is_an_edge_to_itself(tmp_path):
+    store = _read(tmp_path, {"tree.py": RECURSIVE, "decoy.py": DECOYS})
+    try:
+        row = _call_in(store, "pkg.tree.Tree.visit", "self.visit")
+        assert row["callee"] == "pkg.tree.Tree.visit", f"bound to {row['callee']}"
+        assert row["external"] == 0
+    finally:
+        store.close()
+
+
+def test_a_closure_that_calls_itself_is_an_edge_to_itself(tmp_path):
+    store = _read(tmp_path, {"tree.py": RECURSIVE, "decoy.py": DECOYS})
+    try:
+        row = _call_in(store, "pkg.tree.outer.step", "step")
+        assert row["callee"] == "pkg.tree.outer.step", f"bound to {row['callee']}"
+    finally:
+        store.close()
+
+
+def test_a_bare_name_in_a_method_never_means_the_method(tmp_path):
+    """Python's bare names do not reach methods, so `walk()` inside `Tree.walk` is the
+    module's `walk` -- the positive control that recursion is not matched by name alone."""
+    store = _read(tmp_path, {"tree.py": RECURSIVE, "decoy.py": DECOYS})
+    try:
+        assert _call_in(store, "pkg.tree.Tree.walk", "walk")["callee"] == "pkg.tree.walk"
+    finally:
+        store.close()

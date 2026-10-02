@@ -1339,6 +1339,19 @@ GROUP BY kind
 ORDER BY n DESC
 """
 
+# How many different things each kind of boundary reaches, over the whole program -- the
+# number the overview's external boxes show beside the cover's own count of touches. It was
+# a per-package `COUNT(DISTINCT target)` summed across packages, so a target reached from
+# two packages counted twice and the box disagreed with the cover with no word to say
+# why (BACKLOG 18, rule 32). An empty target is not a target.
+BOUNDARY_KIND_TARGETS = """
+SELECT kind, COUNT(DISTINCT target) AS targets
+FROM boundaries
+WHERE target <> ''
+GROUP BY kind
+ORDER BY kind
+"""
+
 # Top-level package by routine count, **under the same expression the disks use** -- so a
 # navigator row and a plate are the same thing rather than two things with one name.
 #
@@ -1529,7 +1542,11 @@ SELECT o.tbl, o.direction, o.operation, o.line, o.file,
 FROM sql_ops o
 LEFT JOIN routines r ON r.id = o.routine_id
 WHERE o.tbl = :name
-ORDER BY r.qualname, o.line
+-- Total, to the last column. One `executescript` holding a `CREATE TABLE` and its
+-- `CREATE INDEX` is two rows on one line of one routine, and on (qualname, line) alone the
+-- pair came back in storage order and swapped under the row-reversal probe (BACKLOG 13,
+-- rule 66).
+ORDER BY r.qualname, o.line, o.file, o.operation, o.direction, o.sql
 """
 
 

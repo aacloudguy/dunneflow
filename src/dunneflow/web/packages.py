@@ -92,6 +92,16 @@ def build(store: Store, root: str | None = None) -> dict[str, Any]:
         known = externals.get(str(r["kind"]))
         if known is not None:
             known["detail"] = str(r["common"] or "")
+            # **The cover's count, not a sum over the packages drawn here.** A box said
+            # NETWORK 2 where the cover said 3, because a touch from a routine outside every
+            # drawn package was dropped from one and not the other (BACKLOG 18).
+            known["hits"] = int(r["n"])
+    for known in externals.values():
+        known["targets"] = 0
+    for r in store.query(queries.BOUNDARY_KIND_TARGETS):
+        known = externals.get(str(r["kind"]))
+        if known is not None:
+            known["targets"] = int(r["targets"])
 
     ranks = _rank(sizes, entries, edges)
     nodes = _place(sizes, entries, ranks)

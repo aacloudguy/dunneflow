@@ -6014,7 +6014,7 @@ def test_a_chosen_revision_that_is_gone_is_dropped_and_said_out_loud() -> None:
     assert "REVISIONS.some" in lost, "pairLost no longer checks anything"
     # And the boot path must actually say so rather than just computing it.
     assert re.search(r"pairLost\(\)", js), "nothing asks which chosen revisions are gone"
-    boot = js[js.index("await loadRevisions();"):]
+    boot = js[js.index("await revisionsLoaded;"):]
     boot = boot[:boot.index("buildNav();", boot.index("buildRevControls();"))]
     assert "state.revNote" in boot, (
         "a retired revision is dropped without telling the reader -- the toolbar would name "

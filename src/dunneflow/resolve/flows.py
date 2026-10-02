@@ -53,6 +53,17 @@ class Flow:
         return dict(sorted(out.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+def _reach(start: str, out: dict[str, list[str]]) -> int:
+    """How many traced routines `start` leads to, itself excluded, over the traced edges."""
+    seen, todo = {start}, [start]
+    while todo:
+        for nxt in out.get(todo.pop(), []):
+            if nxt not in seen:
+                seen.add(nxt)
+                todo.append(nxt)
+    return len(seen) - 1
+
+
 def trace_flow(
     store: Store,
     root_id: str,
@@ -112,6 +123,19 @@ def trace_flow(
     flow.total_reachable = len(seen)
     if len(order) > max_nodes:
         flow.truncated = True
+        # **Shallowest first, then widest reach, then id** (BACKLOG 3, Tom 2026-10-02). The
+        # cut used to fall wherever the walk happened to be, which was reproducible and
+        # arbitrary -- rule 66's floor. Depth keeps the top of the flow, which is what a
+        # reader orients by; within the level the cut falls in, a routine that leads to
+        # more of what was traced is the one worth keeping; the id settles the rest.
+        # The walk is breadth-first, so `order` is already by depth and only the level the
+        # cut falls in has to be ranked -- reach is measured there and nowhere else.
+        cut_at = order[max_nodes - 1][1]
+        out: dict[str, list[str]] = {}
+        for a, b in flow.edges:
+            out.setdefault(a, []).append(b)
+        reach = {rid: _reach(rid, out) for rid, d in order if d == cut_at}
+        order.sort(key=lambda o: (o[1], -reach.get(o[0], 0), o[0]))
         order = order[:max_nodes]
 
     kept = {rid for rid, _ in order}

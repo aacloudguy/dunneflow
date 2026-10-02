@@ -66,6 +66,7 @@ from .walk import (
     walk_languages,
     walk_residue,
 )
+from .words import plural
 
 
 def _default_paths(target: Path, name: str | None, out_root: Path) -> tuple[str, Path]:
@@ -549,6 +550,29 @@ def _emit_uncovered(cut: Breakdown, root: Path) -> None:
         _emit(f"  {d.relative_to(root)}   # {k:,} files")
 
 
+def _settled(target: Path, pkg_root: Path, found: list[Path], *, docs_moved: bool) -> str:
+    """Where the climb settled, when it settled above the directory analysed. Else nothing.
+
+    **BACKLOG 12, and the half of it that needed no guess.** Without `--part-of` the climb
+    for a manifest has no ceiling, and inventing one would be a rule with no evidence behind
+    it. What it can always do is *say what it did*: the tree's name and, unless `--docs` or
+    `--no-docs` decided otherwise, the documentation root both come from where it stopped,
+    and a run that took them from four levels up said nothing at all (design rule 1).
+
+    In levels and file names, never a path: this sentence goes into `--progress-json` and
+    the analyse dialog, and one machine's layout is not a fact about the tree (rule 60).
+    """
+    if pkg_root == target:
+        return ""
+    up = len(target.relative_to(pkg_root).parts)
+    names = ", ".join(sorted(m.name for m in found))
+    what = (f"the tree's name ({pkg_root.name}) and its documentation were"
+            if docs_moved else f"the tree's name ({pkg_root.name}) was")
+    return (f"{what} taken from {up} level{'' if up == 1 else 's'} above the directory "
+            f"analysed, where {names} {'is' if len(found) == 1 else 'are'} — "
+            f"--part-of sets where that search stops")
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     target = Path(args.path).resolve()
     if not target.exists():
@@ -623,6 +647,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # `package.json` -- and took the document root and the tree's name with it. See
     # `find_package_root`.
     pkg_root, root_manifests = manifests.find_package_root(target, part_of)
+    settled = _settled(target, pkg_root, root_manifests,
+                       docs_moved=not (args.no_docs or args.docs))
+    if settled:
+        _emit(settled[0].upper() + settled[1:] + ".")
 
     # The leaf that **identifies this tree**, and only the leaf: `target` is an absolute
     # path, and recording it would put one machine's directory layout into a map built to
@@ -1136,7 +1164,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                   # The machine channel says the same things the sentence does, per
                   # language and per unclaimed suffix -- rule 13, across two channels.
                   languages=dict(sorted(stats.by_lang.items())),
-                  unread=dict(sorted(stats.unclaimed.items())))
+                  unread=dict(sorted(stats.unclaimed.items())),
+                  settled=settled)
     else:
         print(
             f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal "
@@ -1215,6 +1244,11 @@ def _open_store(args: argparse.Namespace, *,
     return store, db_path
 
 
+def _gap(i: int, said: list[str]) -> str:
+    """A separating newline, owed only when something has already been printed."""
+    return "\n" if i or said else ""
+
+
 def cmd_touches(args: argparse.Namespace) -> int:
     opened = _open_store(args)
     if not opened:
@@ -1225,16 +1259,19 @@ def cmd_touches(args: argparse.Namespace) -> int:
         _emit(f"no routine matching {args.routine!r}")
         return 1
     shown = found.matches[: args.limit]
-    for line in search_said(args.routine, found, len(shown)):
+    said = search_said(args.routine, found, len(shown))
+    for line in said:
         print(line)
     if not shown:
         # The module sentence *is* the answer here, and there is nothing to list under it.
         store.close()
         return 1
-    for m in shown:
+    for i, m in enumerate(shown):
         reach, kinds = entry_reach(store, m["id"])
-        print(f"\n{m['qualname']}  ({m['file']}:{m['line_start']})")
-        print(f"  reaches {reach:,} routines")
+        # A blank line *between* things printed, never above the first: an exact match has
+        # no search sentence over it, and stdout began with an empty line (BACKLOG 28).
+        print(f"{_gap(i, said)}{m['qualname']}  ({m['file']}:{m['line_start']})")
+        print(f"  reaches {plural(reach, 'routine')}")
         bounds = store.boundaries_reached(m["id"])
         if not bounds:
             print("  touches nothing outside itself")
@@ -1259,16 +1296,19 @@ def cmd_impact(args: argparse.Namespace) -> int:
         _emit(f"no routine matching {args.routine!r}")
         return 1
     shown = found.matches[: args.limit]
-    for line in search_said(args.routine, found, len(shown)):
+    said = search_said(args.routine, found, len(shown))
+    for line in said:
         print(line)
     if not shown:
         # The module sentence *is* the answer here, and there is nothing to list under it.
         store.close()
         return 1
-    for m in shown:
+    for i, m in enumerate(shown):
         callers = store.callers_of(m["id"])
-        print(f"\n{m['qualname']}  ({m['file']}:{m['line_start']})")
-        print(f"  {len(callers):,} routines depend on this, directly or transitively")
+        print(f"{_gap(i, said)}{m['qualname']}  ({m['file']}:{m['line_start']})")
+        print(f"  {plural(len(callers), 'routine')} "
+              f"{'depends' if len(callers) == 1 else 'depend'} on this, directly or "
+              f"transitively")
         eps = ways_in_affected(store, callers)
         if eps:
             print(f"  ways in affected ({len(eps)}):")
@@ -1391,9 +1431,9 @@ def cmd_mirror(args: argparse.Namespace) -> int:
         return 0
 
     groups = report.by_band()
-    print(f"{report.definitions_seen:,} definitions read, "
+    print(f"{plural(report.definitions_seen, 'definition')} read, "
           f"{report.excluded_total:,} set aside as not a word, "
-          f"{len(report.terms):,} terms carried forward")
+          f"{plural(len(report.terms), 'term')} carried forward")
     for band in MIRROR_BANDS:
         print(f"  {band.label:8} {len(groups[band.key]):4}   {band.meaning}")
 

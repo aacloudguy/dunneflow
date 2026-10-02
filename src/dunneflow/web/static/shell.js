@@ -5174,7 +5174,10 @@ function viewGraph() {
       <rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"></rect>
       <text x="${p.x + 12}" y="${p.y + 20}">${esc(p.id)}</text>
       <text class="sub" x="${p.x + 12}" y="${p.y + 34}">${isExt
-        ? `${p.targets.toLocaleString()} endpoints · outside our control`
+        /* Both counts, each named: the cover's touches, and how many distinct things they
+           reach. "endpoints" alone sat beside a cover figure it never equalled (BACKLOG 18). */
+        ? `${p.hits.toLocaleString()} touch${p.hits === 1 ? "" : "es"} · ${
+            p.targets.toLocaleString()} target${p.targets === 1 ? "" : "s"}`
         : `${p.n.toLocaleString()} routines${p.entry ? " · way in" : ""}`}</text>
     </g>`;
 
@@ -10690,7 +10693,11 @@ function statedBlank() {
     </div>`;
   }
   return `<div class="note">
-    <b>${VOCAB.statedDocs.toLocaleString()} document${VOCAB.statedDocs === 1 ? "" : "s"} were read,
+    <b>${VOCAB.statedDocs.toLocaleString()} document${VOCAB.statedDocs === 1 ? " was" : "s were"} read${
+      /* The files, copies included; the glossary counts distinct documents, and the two
+         sat a page apart as 53 and 52 with nothing to say why (BACKLOG 18, rule 32). */
+      VOCAB.statedDupes ? ` (${VOCAB.statedDupes.toLocaleString()} of them a byte-identical
+      copy of another)` : ""},
     and not one of them states a naming rule.</b> That is a finding rather than an absence of
     one: the <b>derived naming standard</b> shows what the code does about names, and nothing
     in this project records what it was supposed to do. A rule has to name a class of
@@ -11191,8 +11198,10 @@ function viewGlossary() {
     <div class="note">
       <b>${cov.toLocaleString()} of the ${tot.toLocaleString()} words this program uses as
       names are defined somewhere it can quote.</b>
-      ${VOCAB.documentsSeen ? `${VOCAB.definitionsSeen.toLocaleString()} definitions were found
-        across ${VOCAB.documentsSeen.toLocaleString()} documents, and every one of them names the
+      ${VOCAB.documentsSeen ? `${VOCAB.definitionsSeen.toLocaleString()} definition${
+        VOCAB.definitionsSeen === 1 ? " was" : "s were"} found across ${
+        VOCAB.documentsSeen.toLocaleString()} distinct document${VOCAB.documentsSeen === 1
+          ? "" : "s"} — a byte-identical copy is read once — and every one of them names the
         file and the line it came from.`
       : `No document store was read, so every definition here comes out of the code itself
         — which is the normal case, not a degraded one.`}
@@ -16814,7 +16823,11 @@ const NAV_GROUPS = [
       /* `!m.all`, never `q` -- the matcher is an object and so always truthy, which would
          have appended this sentence to the resting state as well. */
       return !m.all && m.ok && !hit
-        ? `${base} — these are the nine kinds; a target is in the source` : base;
+        /* The number is the group's own, never a word: "the nine kinds" sat over a list of
+           seven on DunneFlow's map, because the list holds only the kinds this program
+           touches (BACKLOG 18, rule 32). */
+        ? `${base} — these are the ${BOUNDARIES.length} kind${BOUNDARIES.length === 1
+            ? "" : "s"} this program touches; a target is in the source` : base;
     },
     items: () => {
       const q = navQuery();
@@ -17083,7 +17096,10 @@ function changeList() {
        + band("explained_only", "Explained differently", c.explained_only,
               "The same routine, and what <em>explains</em> it has moved. Nothing it does "
               + "changed, and neither did a line of its code.", "moved")
-       + band("edited", "Edited, behaving the same", c.edited_only,
+       /* Listed and, by design, not in the group's count -- see `changeCount`. Said in the
+          band's own title, because a badge that is not the sum of the rows under it has to
+          say which row it leaves out (BACKLOG 18, rule 32). */
+       + band("edited", "Edited, behaving the same — not in the count", c.edited_only,
               "The body changed and nothing it does did. Internal computation, which this "
               + "tool exists not to report — listed so its absence is not a silent filter.")
        /* The one group here whose rows are files. It cannot go through `band` — that builds
@@ -17091,6 +17107,11 @@ function changeList() {
           not folded into `band` with a flag is rule 32 in a function: one caller, one claim.
           Its rows open the file, which is the code browser's own route. */
        + Object.entries(CHANGE_FILE_BANDS)
+              .map(([k, b]) => modgroup(k, b, c[k] || [])).join("")
+       /* **Counted in the badge and listed nowhere until 2026-10-02**: on Society the group
+          read 49 over rows that added up to fewer, and the difference was these (BACKLOG 18).
+          Their spec is the page's, and it carries `meta` and `tone` for this. */
+       + Object.entries(CHANGE_STRUCT_BANDS)
               .map(([k, b]) => modgroup(k, b, c[k] || [])).join("");
 }
 
@@ -17108,13 +17129,13 @@ function modgroup(key, b, rows) {
   const open = state.changeBand === key;
   return `<div class="chgband">
       <button class="nav-head sub" data-changeband="${esc(key)}" aria-expanded="${open}">
-        <span class="nav-title tone-moved">${b.title}</span>
-        <span class="n num tone-moved">${rows.length}</span>
+        <span class="nav-title tone-${b.tone || "moved"}">${b.title}</span>
+        <span class="n num tone-${b.tone || "moved"}">${rows.length}</span>
       </button>
       ${open ? `<div class="nav-items">
         <p class="hint" style="margin:.2rem .5rem .4rem">${b.why}</p>
         ${rows.map(r => navItemHtml({
-            nav: b.nav, label: r[b.label] || r[b.id], sub: r[b.id], n: "",
+            nav: b.nav, label: r[b.label] || r[b.id], sub: r[b.meta || b.id], n: "",
             sel: r[b.id],
           })).join("")}
       </div>` : ""}
@@ -19930,7 +19951,7 @@ function renderGraphFurniture() {
                   state.plateLayout === "force" ? "structural" : "force"}"
                 aria-pressed="${state.plateLayout === "force"}"
                 title="${state.plateLayout === "force"
-                  ? "Plates are arranged by connection — 92% fewer crossings. Click for the spiral."
+                  ? "Plates are arranged by connection — 91.7% fewer crossings. Click for the spiral."
                   : "Plates are arranged on a spiral, busiest in the middle. Click to arrange by connection instead."}"
                 >${state.plateLayout === "force" ? "◉ by connection"
                                                  : "◌ by structure"}</button>
@@ -21228,6 +21249,11 @@ async function boot() {
   applyDiagramLook();
   applyScale();
   state.view = state.startup;
+  /* Asked for now and waited for below. It was requested last, after the cover and every
+     fire-and-forget beside it, so on a cold open `/api/revisions` queued behind the rest and
+     the version strip arrived seconds after everything else (BACKLOG 18). Nothing in it
+     depends on the cover, and `loadRevisions` cannot throw. */
+  const revisionsLoaded = loadRevisions();
   try {
     await loadCover();
     /* After the cover, never before: the cover names the served program, and this fills in
@@ -21306,7 +21332,7 @@ async function boot() {
    * before it can decide whether the Changes group applies at all -- so it is awaited
    * rather than fired and forgotten, or the first `buildNav()` runs against an empty list
    * and the group is missing until something else happens to rebuild the pane. */
-  await loadRevisions();
+  await revisionsLoaded;
   reconcileBase();
   /* The two toolbar controls, from the list that has just arrived. Before `buildNav`,
      because a revision the reader chose in an earlier session may since have been retired

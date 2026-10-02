@@ -17,21 +17,6 @@ what happened and when; this says what has not. When an item is done it leaves h
 
 ## Open
 
-### 3 · The rendered map still varies with `--jobs` in one respect
-
-*From the ordering fix, 2026-09-17.*
-
-Not a defect and stated so it is not rediscovered as one: `trace_flow` is breadth-first and
-`max_nodes` truncates it, so **which** routines a flow diagram draws is decided by the
-order the walk reaches them. That order is now total and content-derived (`ORDER BY
-caller_id, callee_id`), so it is identical run to run and build to build — but it is not
-the order a reader would choose, and the same is true of the six commands
-`command_tree_diagram` draws per node.
-
-**What would settle it.** Deciding what a *good* truncation is — widest reach? shallowest?
-alphabetical? — which is a product question rather than a correctness one. Until then the
-answer is reproducible and arbitrary, which is rule 66's floor and not its ceiling.
-
 ### 4 · `fetch` through a name
 
 *From chunk 10, 2026-09-17. Searched for a corpus 2026-09-18.*
@@ -58,26 +43,6 @@ guessing at it would be building a feature against no ground truth (rule 24).
 now analysed as `gstack` and is the corpus to re-test against if one is ever found — it is
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
-
-### 12 · An `analyze` with no `--part-of` still climbs without a ceiling
-
-*From rule 108, 2026-09-20.*
-
-`--part-of` bounds the climb for a part. A plain `analyze <some/subdirectory>` has no tree
-to be bounded by and still walks its ancestors to `/`, looking for any of six filenames, and
-takes the document root and the tree's name from wherever it lands.
-
-**Why not done.** Nothing in those arguments says where to stop, and every candidate
-stopping condition is a guess: the git root is a guess (a tree need not be under one, and a
-monorepo's root is not a program), the first directory holding no manifest is a guess, and a
-depth limit is the worst of the three. Inventing one would be a rule with no evidence behind
-it, which is what rule 24 is about.
-
-**What would settle it.** Either a measurement that says how far real trees' package roots
-actually sit above their source — which the corpora here could answer — or the honest
-alternative, which is to **say what it did**: a run that took its documentation root from
-four levels up should print that, and today it prints nothing at all. The second is small and
-is design rule 1's shape.
 
 ### 8 · A map of 262,879 routines takes 27.6 minutes to open
 
@@ -145,38 +110,6 @@ tree's documents are under one directory that the C++ reader skips by name for c
 somebody decides whether that is evidence about Unreal, the number is what it is and is now
 visible, which it was not.
 
-### 5 · Rule 95's general remedy
-
-*From chunk 6, 2026-09-17.*
-
-Rule 95 is *a cache key assembled from a directory does not cover what that directory
-imports*. `sql.py` joined the core key, which shut the specific gap the rule was minted
-from. **The general remedy — deriving the key from the import graph rather than from a
-list of directories — is not built**, and a rule is never closed.
-
-**What would settle it.** Either building it, or recording the measurement that says the
-hand-kept list is sufficient and why.
-
----
-
-### 13 · `/api/table?name=annotations` follows the order its rows are stored in
-
-*From the ordering gate run for the Windows fixes, 2026-10-01.*
-
-`tools/ordering.py --api` on a fresh map of DunneFlow's own `src` reports one route that is
-not the same under a full row reversal. Two of the `annotations` table's SQL operations,
-`CREATE TABLE` and `CREATE INDEX`, swap places, and nothing else moves. It is the same at
-`a877bd3`, before that session's changes, so it was not introduced there. The document
-probe is clean on the same map.
-
-The two rows almost certainly share every sort key `_r_table` orders by, so the tie falls
-to storage order (rule 66). Each answer is true, but the order is not one the tool can
-defend.
-
-**What would settle it.** Add a final, total tie-break to the query behind `_r_table`'s
-operations, such as the operation's file, line and kind. Then show the reversal probe clean
-on that route.
-
 ### 15 · The graph can arrive framed for a size it no longer has
 
 *Retake defect 8.*
@@ -212,24 +145,6 @@ the selection. Rule 68's shape: a restore is a setter.
 
 **What would settle it.** Going back to *dimmed* re-applies the lit colouring the way
 selecting does, with a test over the engine's colour buffer.
-
-### 18 · Counts beside each other that do not say what they count
-
-*Retake defects 6, 7, 10, 23, 32 and 39, each with its screenshot in the record.*
-
-- **BOUNDARIES:** the search note says "the nine kinds" while the group lists seven.
-- **SHAPE:** the inspector says "1 thing moves inside them" when its one boundary is
-  outside both loops.
-- **Overview:** the system-boundaries column (NETWORK 2, DATABASE 204) disagrees with the
-  cover (3, 287).
-- **Documents:** the glossary says "52 documents" and the stated-rules page "53".
-- **Changes:** the CHANGES group's 49 does not equal its parts.
-- **Cold open:** `/api/revisions` waits behind the page's other requests on a cold open.
-
-Each may be two true numbers about two populations. Rule 32 asks that each say which.
-
-**What would settle it.** Each pair is checked against its query, and is either reworded
-to name its population or fixed.
 
 ### 19 · At 1,483 px with both panes open, the centre is too narrow for three of its views
 
@@ -276,18 +191,6 @@ an internal key, where every other step carries a label a reader would recognise
 **What would settle it.** `subjectLabel` names a boundary node by its kind and target, as
 the inspector does.
 
-### 26 · A heading followed by an image is read as a definition
-
-*Found 2026-10-02 while rewriting the tutorial's chapter 10.*
-
-Run over this repository's documentation, the definition extractor took **The glossary**,
-a tutorial heading, as a term, and its *definition* was the alt text of the screenshot
-beneath it. Two of the three definitions it reads in DunneFlow are headings of this kind.
-`mirror` sets them aside as "not words", but the glossary counts them.
-
-**What would settle it.** An image line is not a definition body, with a test on a heading
-followed by `![…](…)`.
-
 ### 27 · The trail bar loses steps off its left edge without counting them
 
 *Found 2026-10-02 while rewriting the tutorial's chapter 12.*
@@ -299,20 +202,15 @@ neither visible nor counted. That is a filter that is silent (design rule 1).
 **What would settle it.** Either the bar does not scroll, or *+N behind* counts what is out
 of view, checked at 1,483 px with a trail longer than the bar.
 
-### 28 · Small wording and count defects found during the retake
+### 28 · The CODE note can describe the file before last
 
-- `naming --allow-leading-underscore` tags *(a leading underscore allowed)* on claims it
-  cannot change, such as kebab-case commands and TypeScript camelCase, but not on Python's
-  snake_case claims. The Settings text promises that only the claims it changed say so.
-- "`note` is called 1 times" (LOST_EDGE detail) and "1 terms carried forward" (`mirror`).
-- `touches` and `impact` print a stray blank first line when `--output` is given.
-- With `cmd_serve` selected, the navigator's CODE note still read "357 lines, 37
-  clickable", which is `resolve/entrypoints.py`, the previous selection.
-- The plate-arrangement tooltip says "92% fewer crossings" where the measurement, and now
-  the guide, say 91.7%.
+*Retake, 2026-10-02.* With `cmd_serve` selected, the navigator's CODE note still read "357
+lines, 37 clickable", which is `resolve/entrypoints.py`, the previous selection. The other
+small defects first filed under this number were fixed on 2026-10-02.
 
-**What would settle it.** Each is fixed with a test where one can be written, or reworded.
-None changes a figure in the guide.
+**What would settle it.** The note names the file it counts and says nothing about a file
+that is not the one selected, with the follow-into-code path not marking a subject as
+followed before the file list has loaded.
 
 ---
 

@@ -10,6 +10,7 @@ Diagrams are bounded on purpose. A picture of 4,500 routines is not a picture.
 
 from __future__ import annotations
 
+from ..resolve.cli import DRAWN_COMMANDS
 from ..resolve.flows import Flow
 from ..schema import BoundaryKind, Direction
 
@@ -113,7 +114,7 @@ def flow_diagram(flow: Flow, max_boundaries_per_node: int = 3) -> str:
     return "\n".join(lines)
 
 
-def command_tree_diagram(tree: dict, max_commands: int = 6) -> str:
+def command_tree_diagram(tree: dict, max_commands: int = DRAWN_COMMANDS) -> str:
     """Render a CLI application tree: the executable and what it can be told to do.
 
     The drawing shows a few commands per group to stay legible; the complete tree is
@@ -131,7 +132,12 @@ def command_tree_diagram(tree: dict, max_commands: int = 6) -> str:
         lines.append(f'    {nid}["{_san(label, 24)}"]:::entry')
         if parent:
             lines.append(f"    {parent} --> {nid}")
-        for cmd in node.get("commands", [])[:max_commands]:
+        commands = node.get("commands", [])
+        # The widest-reaching `max_commands`, drawn in the tree's own order (BACKLOG 3).
+        # `reach` is set by `command_tree` only where there is a choice to make.
+        drawn = {id(c) for c in sorted(commands, key=lambda c: (-c.get("reach", 0),
+                                                                c["name"]))[:max_commands]}
+        for cmd in (c for c in commands if id(c) in drawn):
             counter[0] += 1
             cid = f"A{counter[0]}"
             lines.append(f'    {cid}("{_san(cmd["name"], 24)}"):::rout')

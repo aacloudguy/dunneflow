@@ -915,3 +915,35 @@ def test_the_test_is_on_the_opening_not_on_the_numbers(tmp_path: Path) -> None:
         "the refusal is looking past the opening, so a sentence that quotes a bound is "
         "being read as a constraint"
     )
+
+
+FIGURE = '''# Tutorial
+
+## The glossary
+
+![The glossary page: "81 of 223 defined" [Go to it] and a list of terms.](images/10-glossary.jpg)
+
+The page lists every word.
+
+## Sprocket
+
+A toothed wheel that drives a chain.
+
+![a sprocket](images/sprocket.png)
+'''
+
+
+def test_a_heading_over_a_picture_is_not_a_definition(tmp_path):
+    """BACKLOG 26: the alt text of a screenshot was read as what "The glossary" means."""
+    facts = _extract(tmp_path, "docs/tutorial/glossary.md", FIGURE)
+    defs = {d.term: d.definition for d in facts.definitions}
+    assert "The glossary" not in defs, defs.get("The glossary")
+    assert not any("![" in d or "Go to it" in d for d in defs.values()), defs
+
+
+def test_a_heading_over_a_paragraph_is_still_a_definition(tmp_path):
+    """The positive control: the form the image rule must not swallow."""
+    body = "# Guide\n\n## Glossary\n\n### Sprocket\n\nA toothed wheel that drives a chain.\n"
+    facts = _extract(tmp_path, "docs/glossary.md", body)
+    defs = {d.term: d.definition for d in facts.definitions}
+    assert defs.get("Sprocket", "").startswith("A toothed wheel"), defs

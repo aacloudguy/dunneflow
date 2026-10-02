@@ -399,14 +399,22 @@ def _sort(blocks: list[dict[str, Any]]) -> None:
             _sort(arm["children"])
 
 
-def _tally(blocks: list[dict[str, Any]], out: dict[str, int]) -> dict[str, int]:
+def _tally(blocks: list[dict[str, Any]], out: dict[str, int],
+           inside: bool = False) -> dict[str, int]:
+    """Spans by kind, and the moves and calls **inside** a span.
+
+    The inspector's sentence is *"N things move inside them"*, and until 2026-10-02 `moves`
+    and `calls` were counted wherever they sat -- so a routine whose one database write
+    came after both its loops said *1 thing moves inside them* about a write outside both
+    (BACKLOG 18, rule 32). What sits at the top level is not inside anything.
+    """
     for block in blocks:
         if block["type"] == "point":
             out[block["kind"]] = out.get(block["kind"], 0) + 1
-            _tally(block["children"], out)
+            _tally(block["children"], out, True)
             for arm in block["arms"]:
-                _tally(arm["children"], out)
-        else:
+                _tally(arm["children"], out, True)
+        elif inside:
             key = "moves" if block["type"] == "move" else "calls"
             out[key] = out.get(key, 0) + 1
     return out

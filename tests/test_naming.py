@@ -481,3 +481,39 @@ def test_a_leading_underscore_allowed_is_allowed_by_the_judge_and_its_query_alik
             f"{sorted(returned)} where the judge refuses {sorted(expected)}"
         )
     conn.close()
+
+
+def test_the_underscore_allowance_is_stated_only_where_it_moved_a_count(tmp_path) -> None:
+    """BACKLOG 28: kebab-case commands and TypeScript camelCase said "(a leading underscore
+    allowed)" over counts the allowance had not moved, because the tag was keyed on the
+    style. Here the classes are moved by it -- `_Handler` -- and the functions are not.
+    """
+    from dunneflow.resolve.naming import mine_case_conventions
+
+    src = tmp_path / "src"
+    src.mkdir()
+    classes = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
+               "_Handler", "_Index"]
+    funcs = [f"do_{w.lower()}" for w in classes[:8]] + ["_private_one", "_private_two"]
+    envs = [f"{c.upper()}_HOME" for c in classes[:8]]
+    (src / "m.py").write_text(
+        "import os\n\n"
+        + "".join(f"class {c}:\n    pass\n\n" for c in classes)
+        + "".join(f"def {f}():\n    pass\n\n" for f in funcs)
+        + "def read_env():\n"
+        + "".join(f"    os.environ.get({e!r})\n" for e in envs),
+        encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    try:
+        analyze_tree(src, store)
+        relaxed, _ = mine_case_conventions(store, private_prefix=True)
+        claims = {c.population: c for c in relaxed}
+        tagged = {p for p, c in claims.items() if "leading underscore allowed" in c.claim}
+        assert any("class" in p for p in tagged), claims
+        assert not any("routine" in p or "function" in p for p in tagged), tagged
+        # Spelled in UPPER_SNAKE_CASE, and not one of them starts with an underscore: the
+        # population the old style-keyed rule tagged anyway.
+        assert any("environment" in p for p in claims), claims
+        assert not any("environment" in p for p in tagged), tagged
+    finally:
+        store.close()

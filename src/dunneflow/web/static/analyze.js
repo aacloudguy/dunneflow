@@ -553,6 +553,10 @@
                 · ${secs.toFixed(1)} s</p>
         <p class="hint">Opening it reloads the page, because a program switch cannot keep
            the selection, the trail or the version you are on.</p>
+        ${/* Where the climb for a manifest settled, when that was above the directory
+             chosen: the tree's name and its documents came from there (BACKLOG 12). */
+          a.settled ? `<p class="hint">${esc(a.settled.charAt(0).toUpperCase()
+            + a.settled.slice(1))}.</p>` : ""}
         ${residueBlock(a)}
         <div class="an-foot">
           <button class="linkbtn" data-anopen="${esc(a.program || "")}">Open it</button>

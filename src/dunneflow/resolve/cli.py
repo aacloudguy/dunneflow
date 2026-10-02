@@ -279,6 +279,11 @@ def _by_import(store: Store, r: _AppResolver, module: str, file: str,
     return None
 
 
+#: How many commands a node of the command-tree diagram draws; the rest are *+N more*, and
+#: the complete tree is listed beneath it. Here, beside the reach it is chosen by.
+DRAWN_COMMANDS = 6
+
+
 def command_tree(store: Store, app_id: str, depth: int = 0,
                  seen: set[str] | None = None) -> dict:
     """The tree under one CLI application: its commands and its mounted sub-apps."""
@@ -305,6 +310,14 @@ def command_tree(store: Store, app_id: str, depth: int = 0,
             callback = item
         else:
             commands.append(item)
+
+    # **Which commands the diagram draws is decided by reach** where it cannot draw them
+    # all (BACKLOG 3): the six that lead to most of the program, then by name. Measured only
+    # where there is a choice to make, because each is a walk of the call graph.
+    if len(commands) > DRAWN_COMMANDS:
+        for item in commands:
+            rid = item["routine_id"]
+            item["reach"] = len(store.reachable_from(rid)) if rid else 0
 
     children = []
     for m in store.query(

@@ -29,6 +29,7 @@ from .detectors import load_rules
 from .resolve.entrypoints import binding_note
 from .schema import make_id
 from .store import Store
+from .words import are, plural
 
 # What it means for the program.
 BROKEN = "BROKEN"    # the program cannot be correct as written
@@ -434,7 +435,7 @@ def _lost_edges(store: Store, r: Report) -> None:
             kind="LOST_EDGE", severity=SUSPECT, confidence=PROBABLE,
             title=f"`{row['callee_expr']}` could not be connected: "
                   f"{row['rivals']} definitions share the name",
-            detail=f"`{row['callee_expr']}` is called {row['n']} times, and "
+            detail=f"`{row['callee_expr']}` is called {plural(row['n'], 'time')}, and "
                    f"{row['rivals']} routines share that name. The call graph has no "
                    f"edge here, so anything downstream is missing from every flow "
                    f"that passes through it.",
@@ -484,7 +485,8 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
     )
     r.add(Anomaly(
         kind="DEAD_CODE", severity=INFO, confidence=POSSIBLE,
-        title=f"{len(rows)} routines are never called and are not a way in",
+        title=f"{plural(len(rows), 'routine')} {are(len(rows))} never called and "
+              f"{'is' if len(rows) == 1 else 'are'} not a way in",
         detail="; ".join(x["qualname"] for x in rows),
         blind_spot=f"{scope} Routines reached by name (plugin registries, "
                    f"`getattr`, entry-point groups) also appear here, because no "
@@ -535,7 +537,8 @@ def _unreachable(store: Store, r: Report) -> None:
     ]
     r.add(Anomaly(
         kind="UNREACHABLE", severity=INFO, confidence=POSSIBLE,
-        title=f"{stranded:,} of {total:,} routines are not reachable from any way in",
+        title=f"{stranded:,} of {plural(total, 'routine')} {are(stranded)} not reachable "
+              f"from any way in",
         detail="These cannot run when the program is started by any entrypoint "
                "DunneFlow found.",
         blind_spot="An edge lost to ambiguity strands everything behind it, so "
@@ -855,8 +858,10 @@ def _looped_boundaries(store: Store, r: Report) -> None:
         # many acts are in there*, and one figure would be whichever the reader assumed.
         # `places` is the query's own `COUNT(DISTINCT line)`, which is
         # `resolve/shape.places` in SQL for the reason that function exists.
-        title=f"{len(reported)} loops reach a database, a queue or the network on every"
-              f" pass — {sum(int(x['places']) for x in reported)} places in all",
+        title=f"{plural(len(reported), 'loop')} "
+              f"{'reaches' if len(reported) == 1 else 'reach'} a database, a queue or the "
+              f"network on every pass — "
+              f"{plural(sum(int(x['places']) for x in reported), 'place')} in all",
         detail=(
             "; ".join(f"{x['qualname']} ({x['file']}:{x['line_start']})"
                       for x in reported)

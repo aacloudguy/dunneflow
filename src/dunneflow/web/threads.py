@@ -34,6 +34,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..store import Store
+from ..words import plural
 from . import queries, vocabulary
 
 # How the panel groups them. Order is fixed here rather than left to the client so that
@@ -54,10 +55,6 @@ def _rows(store: Store, sql: str, args: dict[str, Any]) -> list[dict[str, Any]]:
 def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
     rows = _rows(store, sql, args)
     return rows[0] if rows else None
-
-
-def _plural(n: int, one: str, many: str = "") -> str:
-    return f"{n:,} {one}" if n == 1 else f"{n:,} {many or one + 's'}"
 
 
 # --------------------------------------------------------------------------- #
@@ -139,7 +136,7 @@ def _governance(store: Store, node_id: str) -> list[dict[str, Any]]:
         out.append({
             "kind": "governance",
             "label": value,
-            "why": f"{_plural(others, 'other routine')} carr"
+            "why": f"{plural(others, 'other routine')} carr"
                    f"{'ies' if others == 1 else 'y'} this {noun}",
             "count": others,
             "subject": cohort_subject("governance", value, value),
@@ -181,8 +178,8 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
         # total and its parts are visibly the same claim. They still do not partition --
         # a routine that reads and writes is in two groups -- which is why it is "of",
         # not a sum.
-        rest = (f"of {_plural(others, 'other')}, " + " and ".join(parts)) if parts \
-            else f"{_plural(others, 'other routine')} touch it"
+        rest = (f"of {plural(others, 'other')}, " + " and ".join(parts)) if parts \
+            else f"{plural(others, 'other routine')} touch it"
         out.append({
             "kind": "boundary",
             "label": r["name"],
@@ -198,7 +195,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
         out.append({
             "kind": "boundary",
             "label": target,
-            "why": f"{_plural(others, 'other routine')} also "
+            "why": f"{plural(others, 'other routine')} also "
                    f"{'reach' if others != 1 else 'reaches'} this {kind.lower()}",
             "count": others,
             # An endpoint *is* a node, so it is selected as itself rather than through
@@ -211,7 +208,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
         out.append({
             "kind": "boundary",
             "label": r["name"],
-            "why": f"{_plural(others, 'other routine')} name"
+            "why": f"{plural(others, 'other routine')} name"
                    f"{'s' if others == 1 else ''} this file",
             "count": others,
             "subject": node_subject(f"art:{r['name']}"),
@@ -222,7 +219,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
         out.append({
             "kind": "boundary",
             "label": r["target"],
-            "why": f"{_plural(others, 'other routine')} also "
+            "why": f"{plural(others, 'other routine')} also "
                    f"{'call' if others != 1 else 'calls'} this {r['protocol']} destination",
             "count": others,
             "subject": cohort_subject("net", r["target"], r["target"]),
@@ -281,19 +278,19 @@ def _outliers(store: Store, node_id: str, module: str, root: str) -> list[dict[s
     r = _one(store, queries.THREAD_MOST_COMMENTED, args)
     if r and int(r["n"]) > 0:
         out.append({"kind": "outlier", "label": label_of(r),
-                    "why": f"{_plural(int(r['n']), 'comment')} — the most in {here}",
+                    "why": f"{plural(int(r['n']), 'comment')} — the most in {here}",
                     "count": int(r["n"]), "subject": node_subject(str(r["id"]))})
 
     r = _one(store, queries.THREAD_MOST_CALLED, args)
     if r and int(r["n"]) > 0:
         out.append({"kind": "outlier", "label": label_of(r),
-                    "why": f"called from {_plural(int(r['n']), 'place')} — the most in {here}",
+                    "why": f"called from {plural(int(r['n']), 'place')} — the most in {here}",
                     "count": int(r["n"]), "subject": node_subject(str(r["id"]))})
 
     r = _one(store, queries.THREAD_DEEPEST, args)
     if r and int(r["depth"]) > 1:
         out.append({"kind": "outlier", "label": label_of(r),
-                    "why": f"nested {_plural(int(r['depth']), 'level')} deep — "
+                    "why": f"nested {plural(int(r['depth']), 'level')} deep — "
                            f"the deepest closure in {here}",
                     "count": int(r["depth"]), "subject": node_subject(str(r["id"]))})
 
@@ -350,7 +347,7 @@ def _vocabulary(name: str, module: str, naming: dict[str, Any] | None,
             "kind": "vocabulary",
             "label": c["glob"],
             "why": f"{c['claim'].rstrip('.')} — {c['holds']:,} of {c['total']:,}"
-                   f" ({c['rating']}); {_plural(others, 'other')} named this way",
+                   f" ({c['rating']}); {plural(others, 'other')} named this way",
             "count": others,
             "subject": cohort_subject("convention", c["glob"], c["glob"]),
         })
@@ -404,7 +401,7 @@ def _algorithm(store: Store, node_id: str) -> list[dict[str, Any]]:
         out.append({
             "kind": "algorithm",
             "label": r["name"],
-            "why": (f"you loop over it · {_plural(others, 'other routine')} "
+            "why": (f"you loop over it · {plural(others, 'other routine')} "
                     f"{'does' if others == 1 else 'do'} too")
                    if others else "you loop over it · nothing else does",
             "count": others,
@@ -423,7 +420,7 @@ def _algorithm(store: Store, node_id: str) -> list[dict[str, Any]]:
         out.append({
             "kind": "algorithm",
             "label": header,
-            "why": f"{_plural(others, 'other routine')} branch"
+            "why": f"{plural(others, 'other routine')} branch"
                    f"{'es' if others == 1 else ''} on this same test, as written",
             "count": others,
             "subject": cohort_subject("decision", header, header),

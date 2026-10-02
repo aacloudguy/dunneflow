@@ -366,3 +366,32 @@ def test_nothing_is_reached_from_inside_a_loop_in_a_program_with_none(store):
     b = webshape.loops_around(store, boundary=("ENV", "NOTHING_READS_THIS"))
     assert b == {"loops": 0, "points": 0, "deepest": 0, "places": 0,
                  "sentence": "not reached from inside any loop", "rows": []}
+
+
+def test_the_inspector_counts_only_what_moves_inside_a_span(tmp_path):
+    """BACKLOG 18: the sentence is "N things move inside them", and a write after both
+    loops was counted in N. What sits at the top of a routine is not inside anything."""
+    tree = tmp_path / "prog"
+    tree.mkdir()
+    (tree / "m.py").write_text(
+        "import sqlite3\n"
+        "\n"
+        "def helper(x):\n"
+        "    return x\n"
+        "\n"
+        "def after(conn, rows):\n"
+        "    for row in rows:\n"
+        "        helper(row)\n"
+        "    conn.execute('INSERT INTO done (id) VALUES (1)')\n"
+        "    helper(rows)\n",
+        encoding="utf-8")
+    st = Store(tmp_path / "graph.db")
+    try:
+        analyze_tree(tree, st)
+        resolve_calls(st)
+        counts = webshape.outline_for(st, _rid(st, "after"))["counts"]
+        assert counts.get("LOOP") == 1, counts
+        assert counts.get("moves", 0) == 0, f"the write after the loop was counted: {counts}"
+        assert counts.get("calls") == 1, f"only `helper(row)` is inside the loop: {counts}"
+    finally:
+        st.close()

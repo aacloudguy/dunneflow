@@ -57,6 +57,9 @@ from ...schema import (
 FENCE = re.compile(r"^\s{0,3}(?P<f>`{3,}|~{3,})")
 ATX = re.compile(r"^(?P<h>#{1,6})\s+(?P<t>.*?)\s*#*\s*$")
 SETEXT = re.compile(r"^\s{0,3}(=+|-{2,})\s*$")
+# A line that is a Markdown image and nothing else. The alt text may itself hold brackets --
+# a screenshot's alt quotes a button as `[Go to it]` -- so the text is matched greedily.
+IMAGE_ONLY = re.compile(r'^\s*!\[.*\]\([^)\s]*(?:\s+"[^"]*")?\)\s*$')
 TABLE_SEP = re.compile(r"^\s*\|?[\s:]*-{2,}[\s:]*(\|[\s:]*-{2,}[\s:]*)*\|?\s*$")
 LIST_ITEM = re.compile(r"^(?P<indent>\s*)(?:[-*+]|\d+[.)])\s+(?P<t>.*)$")
 
@@ -337,7 +340,15 @@ class _Scanner:
                 continue
 
             if self.pending is not None and not self.mask[i]:
-                self.pending[2].append(_text(line))
+                if not IMAGE_ONLY.match(line):
+                    self.pending[2].append(_text(line))
+                elif not self.pending[2]:
+                    # **A heading whose first block is a picture is a figure's title, not a
+                    # term** (BACKLOG 26). `## The glossary` over a screenshot of the
+                    # glossary page was read as a definition of "The glossary", and its
+                    # body was the screenshot's alt text. A picture later in a body is
+                    # skipped rather than read, which is the same judgement.
+                    self.pending = None
 
             self._definition(line, lineno)
             i = self._rule_unit(i)

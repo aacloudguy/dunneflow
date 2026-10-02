@@ -547,9 +547,16 @@ def mine_case_conventions(
             predicate = style_predicate(style, column, dotted, private_prefix)
             where = _scoped(f"{from_clause} AND {predicate}", lang_clause, lang)
             # The allowance is stated in the claim it changed, so a reader comparing two
-            # screens can see why one counts `_Handler` and the other does not.
-            allowed = (" (a leading underscore allowed)"
-                       if private_prefix and not dotted and style != "snake_case" else "")
+            # screens can see why one counts `_Handler` and the other does not -- and
+            # **only** there. It was keyed on the style until 2026-10-02, so kebab-case
+            # commands and TypeScript camelCase said "(a leading underscore allowed)" over
+            # a count it had not moved (BACKLOG 28). Judged by asking the strict question
+            # too and comparing, so the tag is a fact about this population's count.
+            allowed = ""
+            if private_prefix:
+                strict, _ = resolve_styles([styles_in(n, dotted, False) for n, _ in rows])
+                if sum(1 for st in strict if st == style) != holds:
+                    allowed = " (a leading underscore allowed)"
             conventions.append(Convention(
                 kind="CASE",
                 claim=f"{leading(named, lang)} are named in {STYLE_NAMES[style]}{allowed}.",

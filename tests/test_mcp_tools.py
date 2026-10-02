@@ -496,3 +496,16 @@ def test_analysing_into_the_program_being_read_is_refused(mapped: Path) -> None:
     with driving(mapped / "sample") as session:
         said = session.refused("analyze", {"path": str(mapped), "name": "sample"})
         assert said, "analysing over the open map was allowed"
+
+
+def test_touches_and_impact_begin_with_the_answer_not_a_blank_line(
+        mapped: Path, capsys: Any) -> None:
+    """BACKLOG 28: with `--output` given, nothing is said on stderr first, and stdout opened
+    on an empty line -- the separator owed *between* results, printed above the first."""
+    from dunneflow import cli
+
+    for command in ("touches", "impact"):
+        assert cli.main([command, "sample", "--output", str(mapped),
+                         "--routine", "load_config"]) == 0
+        out = capsys.readouterr().out
+        assert out and not out.startswith("\n"), repr(out[:40])

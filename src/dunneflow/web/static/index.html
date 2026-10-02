@@ -171,7 +171,11 @@
       <div id="trailMount"></div>
 
       <!-- ═══ THE FILTER STRIP ═══ -->
-      <div class="filterstrip" id="filterstrip">
+      <!-- Starts hidden. `renderFilters` shows it only while a filter is in force, but until
+           the shell has loaded nothing has run it, and the strip announced "Filtered ·
+           showing 0 of 0 routines" over an empty page for the half-minute a cold map takes
+           to open -- a filter that was not there (design rule 1, inverted). -->
+      <div class="filterstrip" id="filterstrip" style="display:none">
         <span class="fs-label">Filtered</span>
         <div class="chips" id="chips"></div>
         <span class="fs-counts">showing <b id="fsShown">0</b> of <b id="fsTotal">0</b> routines</span>

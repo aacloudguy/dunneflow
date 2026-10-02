@@ -405,6 +405,14 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
 
     `popen` is an argument so a test can drive the failure paths without a real analysis.
     """
+    # **Every report names the tree it is reading.** A map records a tree's leaf and never
+    # its path (rule 60), so *Analyse it again* had nothing to pre-fill and opened with the
+    # directory blank -- found photographing the tutorial, 2026-10-02. A run in progress is
+    # not a map: this server started it, from a path the reader typed a minute ago, and
+    # handing that back is repeating their own words rather than recording a location.
+    def say(**fields: Any) -> None:
+        note(**{**fields, "source": str(source)})
+
     cmd = argv(source, name, out_root, docs)
     tail: deque[str] = deque(maxlen=REASON_LINES)
     try:
@@ -422,7 +430,7 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
         proc = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                      encoding="utf-8", errors="replace", **own_group())
     except OSError as exc:
-        note(state="failed", program=name, reason=f"could not start the analysis: {exc}")
+        say(state="failed", program=name, reason=f"could not start the analysis: {exc}")
         return
     # **Handed out before anything is read**, so the child is reachable for the whole of
     # its life rather than only once this function returns. It was a local here, which
@@ -460,7 +468,7 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
             if not isinstance(fields, dict):
                 continue
             fields["program"] = name
-            note(**fields)
+            say(**fields)
             finished = fields.get("state") == "done"
 
     code = proc.wait()
@@ -475,16 +483,16 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
             how = ("signal " + str(-code) if code < 0
                    else "a console break" if was_stopped(code)
                    else "being killed, having not stopped when asked")
-            note(state="stopped", program=name,
+            say(state="stopped", program=name,
                  reason=f"stopped on {how}. What it had written is left marked "
                         f"unfinished — analysing {name} again completes it.")
             return
-        note(state="failed", program=name, reason=_reason(tail, code))
+        say(state="failed", program=name, reason=_reason(tail, code))
         return
     if not finished:
         # Exit 0 with no `done` object means the contract was not met, and saying so is
         # better than reporting a success this never saw (rule 49).
-        note(state="failed", program=name,
+        say(state="failed", program=name,
              reason="the analysis ended without saying it had finished")
         return
     # **Nothing is said here on success, and that is deliberate.** The child's own `done`

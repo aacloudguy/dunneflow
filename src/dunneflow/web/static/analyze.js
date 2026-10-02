@@ -493,10 +493,21 @@
    * and until the record arrives the true answer is *not yet*, which is not a state worth
    * drawing. The map keeps the distinction, because there the question is being asked
    * rather than answered unprompted (design rule 21). */
+  /* **Whether the reader has the list open is state, and the panel is rebuilt on every
+     poll** -- so a `<details>` drawn without it snapped shut on the next progress line, and
+     the residue could not be read while a run was going at all (rule 67: a control's value
+     is state, and a rebuild that does not carry it hands back the browser's default).
+     Photographing the tutorial found it, 2026-10-02: two clicks, neither survived a tick. */
+  let RESIDUE_OPEN = false;
+  document.addEventListener("toggle", (ev) => {
+    const d = ev.target;
+    if (d && d.classList && d.classList.contains("an-residue")) RESIDUE_OPEN = d.open;
+  }, true);
+
   function residueBlock(a) {
     const lines = Array.isArray(a.residue) ? a.residue : [];
     if (!lines.length) return "";
-    return `<details class="an-residue">
+    return `<details class="an-residue"${RESIDUE_OPEN ? " open" : ""}>
         <summary>What was left out of this map (${lines.length})</summary>
         <ul>${lines.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
       </details>`;
@@ -523,7 +534,7 @@
       body = `<p class="an-step">${esc(a.reason || "it was stopped")}</p>
         ${residueBlock(a)}
         <div class="an-foot">
-          <button class="linkbtn" data-anagain="${esc(a.program || "")}">Analyse it again</button>
+          <button class="linkbtn" data-anagain="${esc(a.program || "")}" data-anagainpath="${esc(a.source || "")}">Analyse it again</button>
           <button class="linkbtn" data-andismiss>Close</button>
         </div>`;
     } else if (a.state === "failed") {
@@ -603,10 +614,12 @@
     if (t.closest("[data-anstop]")) { HOST.used("program:analyze:stop"); stopAnalysis(); return; }
     const again = t.closest("[data-anagain]");
     if (again) {
-      /* Straight back into the dialog with the name filled and the **path blank**: a map
-         records a tree's leaf and never its path (rule 60), so there is nothing honest to
-         pre-fill it with. Same bargain as About's *Analyse this again*. */
+      /* Straight back into the dialog with the name filled, and the path too **when this
+         server ran it**: the run's own reports carry the directory the reader typed. A map
+         records a tree's leaf and never its path (rule 60), so About's *Analyse this
+         again* still opens blank -- there it would be a guess; here it is their words. */
       const name = again.getAttribute("data-anagain") || "";
+      const path = again.getAttribute("data-anagainpath") || "";
       ANALYSIS = null;
       paintAnalysis();
       /* **And the switch overlay, if that is where this was pressed.** It is drawn at 96/97
@@ -615,7 +628,7 @@
          defect the layer note in `tokens.css` was written from, and this is the second window
          that can open a third. */
       HOST.clearOverlays();
-      openAnalyze({ name: name });
+      openAnalyze({ name: name, path: path });
       return;
     }
     const open = t.closest("[data-anopen]");

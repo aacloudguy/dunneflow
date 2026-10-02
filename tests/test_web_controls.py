@@ -12488,8 +12488,14 @@ def test_picking_a_package_sets_a_subject() -> None:
     """
     js = _code(_read("shell.js"))
     routes = js.split("const NAV_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    lines = routes.splitlines()
     for kind in ("pkg", "b"):
-        line = next(ln for ln in routes.splitlines() if ln.strip().startswith(f"{kind}:"))
+        # The whole entry, not its first line: `b` spans several since it learned to answer
+        # for a kind whose plate was merged away.
+        at = next(i for i, ln in enumerate(lines) if ln.strip().startswith(f"{kind}:"))
+        end = next((j for j in range(at + 1, len(lines))
+                    if re.match(r"^  [\w\"]+\s*:", lines[j])), len(lines))
+        line = "\n".join(lines[at:end])
         assert "plate:" in line, (
             f"the `{kind}` route selects a plate in the picture and names no subject, so "
             f"the inspector will go on saying nothing is selected"

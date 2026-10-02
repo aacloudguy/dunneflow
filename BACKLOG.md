@@ -228,6 +228,101 @@ defend.
 operations, such as the operation's file, line and kind. Then show the reversal probe clean
 on that route.
 
+### 14 · A dataclass in this program is called EXTERNAL, once per call site
+
+*Found photographing the tutorial, 2026-10-02 (retake defect 5).*
+
+`resolve.entrypoints.binding_note` lists `BindingNote` as EXTERNAL six times in OUT 13.
+`BindingNote` is a dataclass in the same module. A call to a class with no `__init__` of
+its own resolves to no routine, so it falls through to external, which is not where it
+lives. OUT also counts call sites rather than callees and does not say so (rule 32).
+
+**Why not done.** Resolving a constructor to its structure changes `calls.resolved`, which
+moves the Society golden. It is a resolver change with a re-baseline, not a fix to make in
+a documentation pass.
+
+**What would settle it.** A call to a class this map holds resolves to that structure, with
+a confidence. The inspector either says "sites" or groups by callee. Society is
+re-baselined, and the move in `calls.resolved` is explained.
+
+### 15 · The graph can arrive framed for a size it no longer has
+
+*Retake defect 8.*
+
+Coming from Shape to Graph with a selection held, the stack drew as a thin row of dots
+behind the panels until **snap to fit** was pressed. `fitView` defers a fit when the
+container measures 0×0, but a fit taken at a transitional, non-zero size is kept.
+
+**What would settle it.** The engine keeps a fit nobody has moved since as a fit across
+container resizes, as the diagram now does (`dgmFitWhole`). It is reproduced first by
+measuring the container at mount.
+
+### 16 · Document opens scrolled past the selection
+
+*Retake defect 14.*
+
+Selecting a routine and switching to Document opened the Routines document about 25 wheel
+ticks below the selected row, which was highlighted but off screen. **Go to it** lands
+correctly. The likely cause is a scroll taken before the tables above had laid out
+(rule 73).
+
+**What would settle it.** The opening scroll is the same call **Go to it** makes, run after
+layout.
+
+### 17 · Hiding then re-dimming unselected nodes loses the lit colouring
+
+*Retake defect 26.*
+
+With `binding_note` selected, setting Plates › unselected to *hidden* and then back to
+*dimmed* drew the nine lit nodes grey, like the dimmed ones; only the links still showed
+the selection. Rule 68's shape: a restore is a setter.
+
+**What would settle it.** Going back to *dimmed* re-applies the lit colouring the way
+selecting does, with a test over the engine's colour buffer.
+
+### 18 · Counts beside each other that do not say what they count
+
+*Retake defects 6, 7, 10, 23, 32 and 39, each with its screenshot in the record.*
+
+- **BOUNDARIES:** the search note says "the nine kinds" while the group lists seven.
+- **SHAPE:** the inspector says "1 thing moves inside them" when its one boundary is
+  outside both loops.
+- **Overview:** the system-boundaries column (NETWORK 2, DATABASE 204) disagrees with the
+  cover (3, 287).
+- **Documents:** the glossary says "52 documents" and the stated-rules page "53".
+- **Changes:** the CHANGES group's 49 does not equal its parts.
+- **Cold open:** `/api/revisions` waits behind the page's other requests on a cold open.
+
+Each may be two true numbers about two populations. Rule 32 asks that each say which.
+
+**What would settle it.** Each pair is checked against its query, and is either reworded
+to name its population or fixed.
+
+### 19 · At 1,483 px with both panes open, the centre is too narrow for three of its views
+
+*Retake defects 9, 11, 12 and 37.*
+
+- **Graph:** the slider and plate panels cover the stack.
+- **Table:** CONNECTIONS and CHANGED are off to the right, and the header clips to
+  "CONNECTIO".
+- **Algorithms:** the lane tabs run off the edge.
+
+**What would settle it.** A judgement on the panes' default widths at a 1,440–1,500 px
+window (design rule 53), measured, not guessed.
+
+### 20 · Is `_Private` a PascalCase class?
+
+*Retake defect 24. This is Tom's call.*
+
+*Stated rules, checked* scores `classes · PascalCase` at 165 of 182. Fifteen of the 17
+exceptions are private classes with a leading underscore (`_Handler`, `_Clock`, …), and
+two have a trailing underscore (`ClassDef_`, `Field_`). If the underscore is a privacy or
+keyword marker rather than part of the case, these are false findings of the checker.
+
+**What would settle it.** Tom decides. If the underscores are to be stripped, then strip
+them before judging case, in both the derived and the checked lanes, with the population
+stated.
+
 ---
 
 ## Stated residues — known, bounded, and not defects

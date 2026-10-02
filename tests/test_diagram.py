@@ -620,3 +620,13 @@ def test_the_mermaid_source_carries_its_colours_with_it(analyzed: Store) -> None
         assert f"classDef dgrole_{role} " in src, role
     assert "dgrole_none" not in src, (
         "the untinted ground was given a classDef, which draws it as a colour")
+
+
+def test_a_box_label_agrees_with_its_count():
+    """"1 functions" sat on five boxes and "1 methods" on eight in DunneFlow's own map,
+    photographed for the tutorial. One helper words both drawings."""
+    from dunneflow.web.diagram import Box, _held
+    assert _held(Box(id="a", label="a.py", kind="file", holds=1)) == "1 function"
+    assert _held(Box(id="b", label="b.py", kind="file", holds=4)) == "4 functions"
+    assert _held(Box(id="c", label="C", kind="class", holds=1)) == "1 method"
+    assert _held(Box(id="d", label="D", kind="class", holds=0)) == "0 methods"

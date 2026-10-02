@@ -43,6 +43,12 @@ let STRUCTURES  = [];
  * does not exist is a control that renders and resolves to nothing (rule 30). */
 let PLATES      = new Set();
 let ANOMALIES   = [];   // the worklist; loaded on demand, not with the cover
+/* Whether `ANOMALIES` has been read at all. An empty list is a real answer -- a clean
+   program has no findings -- so emptiness cannot also mean "not asked yet". The worklist
+   drew Broken 0 · Suspect 0 · Info 0, "0 left to triage" and "Nothing here." for the ten
+   seconds the first read took, over a program the cover had just said has 55 (design rule
+   21: a blank must say why it is blank; found photographing the tutorial, 2026-10-02). */
+let ANOMALIES_READ = false;
 let STATS       = null; // files, lines, routines, when it was analysed
 
 /* `EXTERNALS`, `EDGES` and `EXT_EDGES` were here, awaiting the real graph. Chunk 2
@@ -1261,7 +1267,23 @@ const NAV_ROUTES = {
      is what the *stack* lights and `plate` is what the *inspector* answers about, and
      collapsing them would be reading a subject out of a selection (rule 30). */
   pkg: (b) => selectFromNav({ disks: navIds(b), plate: navIds(b)[0] || null }),
-  b:   (b) => selectFromNav({ disks: navIds(b), plate: navIds(b)[0] || null }),
+  b:   (b) => {
+    /* **A kind too small to have its own plate is still a kind.** NETWORK's three touches
+       are under the stack's merge threshold, so `ext:NETWORK` is not drawn -- its nodes sit
+       on `<small outside>` with their real plate kept as `home` -- and selecting the plate
+       answered "Not in this map" for a row the navigator had just counted. The row selects
+       what it counts instead: the nodes whose home it is. Found photographing the tutorial,
+       2026-10-02. */
+    const id = navIds(b)[0] || null;
+    const drawn = ((graphPayload && graphPayload.disks) || []).some(d => d.id === id);
+    if (id && graphPayload && !drawn) {
+      const nodes = graphPayload.nodes || {};
+      const homed = (nodes.id || []).filter((_, i) =>
+        !(nodes.shadow || [])[i] && ((nodes.detail || [])[i] || {}).home === id);
+      if (homed.length) return selectFromNav({ nodes: homed });
+    }
+    return selectFromNav({ disks: navIds(b), plate: id });
+  },
   /* **The one nav route that names its own step**, and it is in `NAV_NAMES_ITSELF` below
      for it. Every other selecting route sets its subject synchronously, so the dispatcher's
      `pushTrail` lands on the new subject and its label wins; this one asks the server which
@@ -3159,9 +3181,8 @@ const CODE_ROUTES = {
     /* Turned back on with nothing fetched: the file was opened while it was off, so the
        difference was never asked for. Fetch, then repaint — rather than repainting an
        overlay that is not there and leaving the switch looking broken. */
-    ensureFilePair();
     ensureChanges();
-    ensureFileDiff(state.codeFile).then(repaintCode);
+    Promise.all([ensureFilePair(), ensureFileDiff(state.codeFile)]).then(repaintCode);
   },
 };
 
@@ -4129,9 +4150,34 @@ function dgmFit(subset) {
   dgmView.x = (cw - box.w * k) / 2 - box.x * k;
   dgmView.y = (ch - box.h * k) / 2 - box.y * k;
   dgmNeedsFit = false;
+  dgmFitWhole = !subset;
   dgmApply();
   return true;
 }
+
+/* **A whole-drawing fit the reader has not moved since is kept as a fit when the pane
+ * changes size.** The fit was taken at draw time, before the toolbar above it had finished
+ * wrapping -- so the canvas it measured was not the canvas that stood a frame later, and a
+ * freshly chosen compartment sat small in one corner until *fit* was pressed (design rule
+ * 20; found photographing the tutorial, 2026-10-02). The guard is the reader: the first pan
+ * or zoom clears `dgmFitWhole`, and from then on a resize moves nothing, which is the
+ * promise `dgmFit`'s own note makes about the drawing never shifting under a cursor. A
+ * framed selection is never refitted to the whole either. */
+let dgmFitWhole = false;
+(function watchDiagramSize() {
+  if (typeof ResizeObserver === "undefined") return;
+  let pending = false;
+  const ro = new ResizeObserver(() => {
+    if (!dgmFitWhole || pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; if (dgmFitWhole) dgmFit(); });
+  });
+  const attach = () => {
+    const m = document.getElementById("diagramMount");
+    if (m) ro.observe(m); else requestAnimationFrame(attach);
+  };
+  attach();
+})();
 
 /* Which box the shared selection is in, marked on the drawing.
  *
@@ -4197,7 +4243,15 @@ function dgmSelectionNote(marked, anySelection) {
   if (!el) return;
   if (!anySelection) { el.innerHTML = ""; return; }
   if (!marked) {
-    el.innerHTML = ` · <span class="warnnote">what you picked is not in this compartment</span>`;
+    /* **Inside the box you picked, the picked box is the drawing.** Double-clicking a box
+       keeps it selected and opens it, so the note said the pick "is not in this
+       compartment" while the reader was looking at nothing else -- true of the box's
+       contents, false to anyone reading it (found photographing the tutorial,
+       2026-10-02). Said as what it is instead. */
+    const inside = state.diagramBox && state.fold === state.diagramBox;
+    el.innerHTML = inside
+      ? ` · <span class="hint">you are inside what you picked</span>`
+      : ` · <span class="warnnote">what you picked is not in this compartment</span>`;
     return;
   }
   el.innerHTML = ` · <b class="num">${marked}</b> box${marked === 1 ? "" : "es"} selected ` +
@@ -4524,6 +4578,7 @@ const DGM_DRAG_SLOP = 3;
     }
     dgmView.x = ev.clientX - from.x;
     dgmView.y = ev.clientY - from.y;
+    dgmFitWhole = false;
     dgmApply();
   });
   document.addEventListener("pointerup", () => {
@@ -4550,6 +4605,7 @@ const DGM_DRAG_SLOP = 3;
     dgmView.x = px - (px - dgmView.x) * (k / dgmView.k);
     dgmView.y = py - (py - dgmView.y) * (k / dgmView.k);
     dgmView.k = k;
+    dgmFitWhole = false;
     dgmApply();
   }, { passive: false });
 })();
@@ -5300,7 +5356,7 @@ function viewTable() {
   const marked = state.plate ? rows.filter(r => tableMarks.has(r.id)).length : 0;
   const subject = cur
     ? `<span class="tsub-name mono">${breakable(`${cur.module}.${cur.name}`)}</span>
-       <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${rows.length.toLocaleString()}</span>
+       <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${rows.length.toLocaleString()} as sorted here</span>
        <button class="linkbtn" data-tablego>Go to it</button>`
     : state.plate
       ? `<span class="tsub-name mono">${breakable(plateName(state.plate))}</span>
@@ -5981,6 +6037,10 @@ function applyDocFilter() {
  * moves when the *selection* moves rather than when the document does, and the branch in
  * `render()` writes it on its own — a second copy of the sentence would be the second
  * answer that drifts (rule 51). */
+/* **Each rank names its own order.** The table's is the sort in force and this one is the
+   document's section order, so one routine read "row 60 of 1,531" in Table and "row 73 of
+   1,531" here -- two true numbers in one sentence, neither saying what it counted (rule
+   32). Found photographing the tutorial, 2026-10-02. */
 function docSubjectHtml() {
   if (!state.selected) {
     return `<span class="tsub-none">Nothing selected — every row is shown, none is yours yet.</span>`;
@@ -5994,7 +6054,7 @@ function docSubjectHtml() {
      nothing, and the reader is owed which one it is (design rule 1). */
   if (at < 0) return `<span class="tsub-none">The selection has no row in this document.</span>`;
   return `<span class="tsub-name mono">${esc(labelFor(state.selected) || state.selected)}</span>
-     <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${all.length.toLocaleString()}</span>
+     <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${all.length.toLocaleString()} in this document</span>
      <button class="linkbtn" data-docgo>Go to it</button>`;
 }
 
@@ -6117,7 +6177,7 @@ function relDocsBlock() {
   if (!ids.length || !RELDOCS.total) {
     return `<div class="note">
       <b>No document in this map is about <span class="mono">${esc(subject)}</span>.</b>
-      ${esc(RELDOCS.reason || "")} What follows is the whole corpus — DunneFlow relates code
+      ${esc(ended(RELDOCS.reason))} What follows is the whole corpus — DunneFlow relates code
       to prose through the plan, ticket and decision ids they both name, and this one shares
       none.</div>`;
   }
@@ -6900,6 +6960,10 @@ function anomalyOnlyThereHtml() {
 }
 
 function viewAnomalies() {
+  if (!ANOMALIES_READ) {
+    return `<div class="worklist"><p class="chgnote">Reading this version's findings… the
+      list is fetched the first time it is opened, and the counts appear with it.</p></div>`;
+  }
   const counts = sevCounts();
   const list = worklistFor(state.sev);
   if (state.cursor >= list.length) state.cursor = 0;
@@ -8012,6 +8076,11 @@ function selectionSnapshot() {
 const SUBJECT_KEYS = ["selected", "fold", "flow", "plate", "diagramId", "diagramBox",
                       "codeFile", "wayIn", "wayInside"];
 
+function caughtUp(a, b) {
+  return !!a && !!b && SUBJECT_KEYS.every(k => (a[k] || null) === (b[k] || null)) &&
+         a.picks.length === 0 && b.picks.length === 1 && b.picks[0].kind === "node";
+}
+
 function sameSelection(a, b) {
   return !!a && !!b &&
          SUBJECT_KEYS.every(k => (a[k] || null) === (b[k] || null)) &&
@@ -8072,6 +8141,14 @@ function recordSelection(label, note, view) {
      made, and nothing is left over to adopt. */
   const at = state.trail[trailAt];
   if (at && at.view === step.view && sameSelection(at.subject, step.subject)) return;
+  /* **The graph catching up is not a move.** A routine picked from a list is recorded
+     with no picks, and a moment later the stack announces the same routine as its pick --
+     one act, two steps, and the trail read "cmd_serve › cmd_serve". The step is brought up
+     to date in place instead. Found photographing the tutorial, 2026-10-02. */
+  if (at && at.view === step.view && caughtUp(at.subject, step.subject)) {
+    at.subject = step.subject;
+    return;
+  }
   state.trail = state.trail.slice(0, trailAt + 1);   // a new move drops the forward branch
   state.trail.push(step);
   if (state.trail.length > TRAIL_CAP) state.trail.shift();
@@ -11320,7 +11397,13 @@ function subjectLabel() {
   /* A table is named by itself -- the one subject here whose id *is* the word for it,
      because the program minted the name and this map did not (rule 30). */
   if (state.dbtable) return state.dbtable;
-  return state.selected ? labelFor(state.selected) : "nothing selected";
+  if (!state.selected) return "nothing selected";
+  /* **A plate picked beside a routine is part of what is selected**, and a step that does
+     not say so reads as a repeat: picking `web` beside `cmd_serve` and dropping it again
+     left "cmd_serve › cmd_serve › cmd_serve" on the trail, three different selections
+     under one name (rule 30). */
+  const plates = (state.picks || []).filter(p => p.kind === "disk").map(p => plateName(p.id));
+  return [labelFor(state.selected), ...plates].join(" + ");
 }
 
 /* **Which rows the routine list marks.** One node when a node is selected; *every member*
@@ -12402,17 +12485,25 @@ function loopRow(r) {
     </div>`;
 }
 
+/* A served sentence, ended. The server's sentences carry no full stop of their own, and
+   every surface that runs one into a second sentence must supply it -- "not reached from
+   inside any loop Listed below" was what this section printed without it. */
+function ended(s) {
+  const t = String(s || "").trim();
+  return !t || /[.!?…:]$/.test(t) ? t : t + ".";
+}
+
 function loopsSection(b) {
   if (!b) return "";
   const rows = b.rows || [];
   const others = rows.length - b.loops;
   const body = rows.length
-    ? `<div class="hint">${esc(b.sentence)}${others > 0
+    ? `<div class="hint">${esc(ended(b.sentence))}${others > 0
         ? ` Listed below with ${others.toLocaleString()} other enclosing
             ${others === 1 ? "span" : "spans"} — a decision that writes is a fact about
             this, even though it is not a rate.` : ""}</div>
        <div class="looprows">${rows.map(loopRow).join("")}</div>`
-    : `<div class="hint">${esc(b.sentence)} Nothing in this program reads or writes it from
+    : `<div class="hint">${esc(ended(b.sentence))} Nothing in this program reads or writes it from
         inside a loop, a decision or a handler — every touch is written straight through.
         That is a fact about the program and not a gap in the map.</div>`;
   return sec("loops", "Reached from inside", b.loops || null, body);
@@ -14173,8 +14264,7 @@ function wire() {
       if (wantCompared) {
         refreshChanges();
         if (state.codeFile && overlayOn()) {
-          ensureFilePair();
-          ensureFileDiff(state.codeFile).then(repaintCode);
+          Promise.all([ensureFilePair(), ensureFileDiff(state.codeFile)]).then(repaintCode);
         } else {
           ensureFilePair().then(repaintCode);
         }
@@ -14440,8 +14530,9 @@ const WIRED_ATTRS = new Set([
   "epname", "wigroup", "wiback",
   /* The way out of a run, and the way back into one. `anstop` is drawn in two places -- on
      the running panel and inside the dialog's refusal -- and routed once, because they are
-     one act. `anagain` carries the program name, like `anopen` beside it. */
-  "anstop", "anagain",
+     one act. `anagain` carries the program name, like `anopen` beside it, and
+     `anagainpath` rides with it: the directory the run read, so the dialog reopens with it. */
+  "anstop", "anagain", "anagainpath",
   /* About this map: the topbar readout that opens it, and the dialog's two controls.
      `aboutopen` sits on the `.srcpath` button, which was a readout until there was
      something true to put in it -- see the markup. */
@@ -15481,9 +15572,12 @@ async function loadCodeFile(path) {
    * reader has moved on, so an answer about the previous file cannot land on this one. */
   if (overlayOn()) {
     FILEDIFF = null;
-    ensureFilePair();
     ensureChanges();
-    ensureFileDiff(path).then(() => {
+    /* **Both answers, then one repaint.** This waited for the file's own diff alone, so
+       when the comparison of every file landed second nothing repainted, and the note
+       above the lines said "comparing the files…" over a diff already drawn -- for as
+       long as the file stayed open. Found photographing the tutorial, 2026-10-02. */
+    Promise.all([ensureFilePair(), ensureFileDiff(path)]).then(() => {
       if (state.codeFile !== path) return;
       repaintCode();
     });
@@ -17041,6 +17135,12 @@ function setGroupOpen(id, open) {
   const g = NAV_GROUPS.find(x => x.id === id);
   if (open && g && g.onOpen) g.onOpen();
   buildNav();
+  /* **Which width is in force follows from which group is open** (`codeWidthInForce`), so
+     opening or closing Code is a width change and has to be applied like one. Without this
+     the navigator kept the Code pane's 44rem after the group closed, squeezing the centre,
+     until the pane was folded and unfolded. Found photographing the tutorial, 2026-10-02. */
+  applyNavWidth();
+  if (Graph.mounted()) Graph.resize();
 }
 
 /* A group restored **open** at boot still needs its rows.
@@ -17708,7 +17808,7 @@ async function loadRoutines() {
 }
 
 async function loadAnomalies() {
-  if (ANOMALIES.length) return;
+  if (ANOMALIES_READ) return;
   const r = await fetch("/api/anomalies");
   const d = await r.json();
   /* The prototype's findings used short keys. Mapped here rather than renamed in
@@ -17749,6 +17849,7 @@ async function loadAnomalies() {
     unenumerated: f.unenumerated || "",
     sev: sevKey(f.severity),
   }));
+  ANOMALIES_READ = true;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -17844,6 +17945,15 @@ function adoptSettings(name) {
   for (const k of PERSISTED) {
     if (k in settings) state[k] = settings[k];
   }
+  /* **A routine picked in the graph is half a selection, and only that half was saved.**
+     `picks` is persisted so the plates a reader chose come back; `selected` is not, because
+     a selection is a session's and reopens on the cover. So a reload restored the node pick
+     with nothing selected: the crumb said "nothing selected", the inspector was empty, and
+     the stack went on lighting the old routine and its links with a focus line naming it
+     (rule 51 -- two surfaces, two answers about one selection; rule 68's shape). Plate picks
+     stand on their own and stay; a node pick without its selection does not. Found
+     photographing the tutorial, 2026-10-02. */
+  if (Array.isArray(state.picks)) state.picks = state.picks.filter(p => p.kind !== "node");
   /* What a version bump carried over and what it had to drop. Not in `PERSISTED` and so
      never written back: it is a fact about *this* load, and a reader who has seen it once
      should not meet it again on the next one. The surface that lost something says so. */

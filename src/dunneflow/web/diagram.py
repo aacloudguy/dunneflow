@@ -422,6 +422,13 @@ def _role_class(roles: dict[str, str], b: Box) -> str:
     return f"dgrole-{roles.get(b.id, 'none')}"
 
 
+def _held(b: Box) -> str:
+    """What a box holds, counted in words that agree with the count: "1 function", not
+    "1 functions". One place, because the DOT and Mermaid labels are the same sentence."""
+    noun = "method" if b.kind == "class" else "function"
+    return f"{b.holds} {noun}" + ("" if b.holds == 1 else "s")
+
+
 def _quote(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -489,7 +496,7 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
     ]
     for b in c.boxes:
         n = ids[b.id]
-        held = f"\\n{b.holds} {'methods' if b.kind == 'class' else 'functions'}"
+        held = f"\\n{_held(b)}"
         if b.kind == "class":
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}", '
                        f'class="{_role_class(roles, b)}", shape=box, style="rounded,bold"];')
@@ -560,7 +567,7 @@ def mermaid(c: Compartment) -> str:
            "flowchart TD"]
     for b in c.boxes:
         n, lab = ids[b.id], b.label.replace('"', "'")
-        held = f"<br>{b.holds} {'methods' if b.kind == 'class' else 'functions'}"
+        held = f"<br>{_held(b)}"
         if b.kind == "touch":
             out.append(f'  {n}[("{lab}")]')
         elif b.kind == "routine":

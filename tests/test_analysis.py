@@ -344,7 +344,7 @@ def test_the_last_word_belongs_to_the_process_that_did_the_work(world: Any) -> N
     analysis.run(Path("/x"), "n", root, docs=False,
                  note=lambda **f: seen.append(f), popen=lambda *a, **k: Fake())
     assert seen[-1] == {"state": "done", "done_steps": 2, "steps": 2, "routines": 41,
-                        "program": "n"}, seen[-1]
+                        "program": "n", "source": str(Path("/x"))}, seen[-1]
     assert len(seen) == 2, f"the unparseable line was not skipped: {seen}"
 
 
@@ -1007,6 +1007,9 @@ def test_stopping_reaches_the_workers_the_child_started(tmp_path: Path) -> None:
     assert seen[-1]["state"] == "stopped", (
         f"a stopped run did not report itself stopped: {seen[-1]}"
     )
+    # And it names the tree it read, so "Analyse it again" reopens the dialog with the
+    # directory filled rather than blank.
+    assert seen[-1]["source"] == str(tree), seen[-1]
 
 
 # ----------------------------------------- the fourth argument, and who answers it --- #

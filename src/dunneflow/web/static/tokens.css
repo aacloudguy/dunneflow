@@ -1324,6 +1324,10 @@ body {
    its fan counts stay grey on it -- which is less legible than the state it replaced. */
 .nav-item[aria-current="true"] .navsub,
 .nav-item[aria-current="true"] .n { color: var(--on-accent); opacity: .85; }
+/* The badge count on a current row (Kept's `sevcount info`) kept its pale fill under the
+   white text this rule gives every count, and read as a blank box. The row is already
+   filled with the accent; the badge gives up its own. Found photographing the tutorial. */
+.nav-item[aria-current="true"] .n.sevcount { background: transparent; }
 .nav-item[aria-current="true"]:hover { background: var(--accent-text); }
 .nav-item .n { margin-left: auto; font-size: .68rem; color: var(--text-faint); }
 .nav-item .sevdot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; }
@@ -1542,11 +1546,17 @@ body {
  * filter is never silent -- so it is not muted. It borrows the suspect colour rather than
  * spending a new one (rule 4): this is the same "worth your attention, not broken" note. */
 .graphhud .warnnote { color: var(--sev-suspect); }
-.graphhud .gbtn { font: inherit; font-size: .7rem; background: var(--raised);
+/* **The diagram's toolbar uses the same class and was never in scope.** `fit`, `frame it`
+ * and `‹ out` are `.gbtn` in `.dgm-head`, and every rule here was `.graphhud`-only, so
+ * those three drew as the browser's own buttons at twice the toolbar's size -- found
+ * photographing the tutorial, 2026-10-02. A class name is global (rule 71); its rules have
+ * to follow it to every container that uses it. */
+.graphhud .gbtn, .dgm-head .gbtn {
+                  font: inherit; font-size: .7rem; background: var(--raised);
                   border: 1px solid var(--border); border-radius: .25rem;
                   padding: .12rem .4rem; margin-right: .25rem; cursor: pointer;
                   color: var(--text); }
-.graphhud .gbtn:hover { background: var(--sunken); }
+.graphhud .gbtn:hover, .dgm-head .gbtn:hover { background: var(--sunken); }
 /* A toggle that is ON must look it, and not by its wording alone.
  *
  * `focus` shipped with its label and its title changing and nothing else, so the one
@@ -2880,7 +2890,16 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .linkbtn.pinned { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
 
 .curigrid { display: grid; gap: .6rem; }
-@media (min-width: 768px) { .curigrid { grid-template-columns: 1fr 1fr; } }
+/* **`minmax(0, 1fr)`, not `1fr`.** A plain `1fr` track will not shrink below its widest
+ * unbreakable content, so expanding one card's query -- a `<pre>` of long SQL lines -- widened
+ * its column, pushed the other off the right edge and stretched the card beside it to the
+ * same height (rule 84: a grid does not overflow, it grows a row). The expanded card takes
+ * the whole row instead, where the query has room to be read. Found photographing the
+ * tutorial, 2026-10-02. */
+@media (min-width: 768px) {
+  .curigrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .curigrid > .curi:has(.sqlblock) { grid-column: 1 / -1; }
+}
 /* A card, not a button. It holds two buttons of its own -- follow, and the query that
    measured it -- and a button inside a button is not a thing the DOM has: the whole card
    was `<button>` while the panel had nothing in it to click. */

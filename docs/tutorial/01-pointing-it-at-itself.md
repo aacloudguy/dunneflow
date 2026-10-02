@@ -30,7 +30,7 @@ about *what* the program does, and often *why*.
 
 Now type the path to DunneFlow's own source, which is the thing this tutorial is about.
 
-![The Analyse a directory dialog over the dunneflow map. "Directory to read" holds /Volumes/Drive/DunneFlow/src/dunneflow, "Call it" has auto-filled to dunneflow, and below the "Read the documentation too" checkbox a refusal in red reads "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." The Analyse button is dimmed; Cancel is not](images/01-refuses-itself.jpg)
+![The Analyse a directory dialog over the dunneflow map. "Directory to read" holds /Volumes/BackupDrive/Documents2025/Developer/tour/DunneFlow/src/dunneflow, with a Choose… button beside it and the hint "The whole path, as this machine sees it — the server reads the tree itself, so a path relative to your terminal would mean nothing to it." "Call it" shows dunneflow, greyed, over the hint "This names the directory the map is written to, beside the programs already in the list." The "Read the documentation too" checkbox is ticked, and below it a refusal in red reads "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." The Analyse button is dimmed; Cancel is not, and beside them the dialog says "It runs behind this page — the map you are reading stays open and stays true."](images/01-refuses-itself.jpg)
 
 > **dunneflow is the program being read** — its graph is open here, and an analysis may
 > discard and re-extract it. Switch to another program first, or run this from a terminal.
@@ -70,7 +70,7 @@ being served.
 
 ## What it does while you wait
 
-About twelve seconds for DunneFlow's 78 files. If you run it through the dialog rather than
+A few seconds for DunneFlow's 142 files. If you run it through the dialog rather than
 the terminal you get a progress panel instead of scrolling text, and three things about it
 are worth knowing:
 
@@ -89,8 +89,8 @@ The reference chapter [Your first map](../04-your-first-map.md) walks the panel 
 ## What you get
 
 ```
-dunneflow: 925 routines · 2,056 internal calls · 487 boundary touches ·
-           115 structures · 19 ways in
+dunneflow: 1,550 routines · 3,261 internal calls · 526 boundary touches ·
+           207 structures · 24 ways in
 ```
 
 and a directory holding the graph, the documentation store, the source it read, and

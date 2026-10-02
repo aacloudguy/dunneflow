@@ -1,10 +1,10 @@
 # 4. The stack
 
-Press **Graph** and you get the whole program at once: 1,773 things, arranged on 22 plates,
-one plate per package or boundary kind. It is a stack of 2-dimensional knowledge graphs. 
+Press **Graph** and you get the whole program at once: 2,690 things, arranged on 25 plates,
+one plate per package or boundary kind. It is a stack of 2-dimensional knowledge graphs.
 Call it a 2.5D graph.
 
-![Graph mode with web.serve._reveal_linux selected. The HUD reads "60 fps · 1,773 nodes · 22 plates" and below it "on pkg:web, ext:<small outside> · _reveal_linux · 4 nodes · 2 within · 2 crossing · 1,769 dimmed · focus: only what it is answers". Controls for spacing 1.50×, spread 1.00/1.00/0.35 and plate width 1.00 are open, with nodes sized "by plate" and layout "by structure". On the right the plate list runs web 592, resolve 236, DATABASE 170, extractors 117, render 116, detectors 62, STDIO 54, schema 53, cli 45, sourcedb 45, store 39, anomalies 38, sql 35, FILE 28, ARTEFACT 27, docstore 26, migrate 23, revisions 18, small outside 14, small 13, walk 13, runtime 9. Below it "1,773 drawn · 7 plates merged into <small>, holding 27"](images/04-the-stack.jpg)
+![Graph mode with resolve.entrypoints.entrypoints_from_manifests selected, seen from the side as a tall column of grey nodes. The heads-up panel reads "60 fps · 2,690 nodes · 25 plates" and below it "on pkg:resolve, pkg:cli, pkg:store, ext:DATABASE · entrypoints_from_manifests · 9 nodes · 5 within · 3 crossing · 2,681 dimmed · focus: only what is lit answers", over the buttons undo, redo, you are here, focus (on), snap to fit, top-down, tilt, benchmark and clear. The spacing panel is folded to one line, "spacing 1.50× · spread 1.00 / 1.00 / 0.35 · plate width 1.00", and the plate list is folded to a rail on the right edge marked PLATES. A handful of lit nodes and the coloured edges between them run down the column; everything else is dimmed](images/04-the-stack.jpg)
 
 ## Why a stack and not a graph
 
@@ -18,47 +18,60 @@ different**, and the second kind is what you actually care about when you are or
 
 ## What the plate list tells you
 
-Read it as a table of contents, largest first:
+Open the **Plates** panel and read it as a table of contents, largest first:
 
 | | |
 |---|---|
-| `web` | 592 |
-| `resolve` | 236 |
-| `DATABASE` | 170 |
-| `extractors` | 117 |
-| `render` | 116 |
+| `web` | 609 |
+| `extractors` | 402 |
+| `resolve` | 356 |
+| `plugins` | 197 |
+| `DATABASE` | 184 |
+| `render` | 119 |
 
 Two kinds of thing are in that list and they are deliberately not separated. `web`,
-`resolve`, `extractors` are packages — code this program declares. `DATABASE`, `STDIO`,
+`extractors`, `resolve` are packages — code this program declares. `DATABASE`, `STDIO`,
 `FILE`, `ARTEFACT` are boundary kinds — the outside world, given plates of its own.
 
 That is the whole model in one list: **your code, and the things it touches, drawn on the
-same picture at the same scale.** `DATABASE` being the third largest plate tells you more
-about DunneFlow in one glance than any amount of reading would.
+same picture at the same scale.** `DATABASE` being the fifth largest plate — bigger than
+`render`, the package that writes every document the map produces — tells you more about
+DunneFlow in one glance than any amount of reading would.
 
-At the bottom: **7 plates merged into `<small>`, holding 27**. Plates too sparse to be worth
-their own disc are merged — and the merge *says so*, with the count. You are never quietly
+At the bottom: **2,690 drawn · 9 plates merged into `<small>`, holding 35**. Plates too sparse to be worth
+their own disc are merged — five small packages into `<small>`, four small boundary kinds
+into `<small outside>` — and the merge *says so*, with the count. You are never quietly
 shown a partial picture.
 
 ## Focus
 
 The selection from the last chapter is still live, and the HUD says what that costs:
 
-> on pkg:web, ext:`<small outside>` · `_reveal_linux` · **4 nodes** · 2 within · 2 crossing ·
-> **1,769 dimmed** · focus: only what it is answers
+> on pkg:resolve, pkg:cli, pkg:store, ext:DATABASE · `entrypoints_from_manifests` ·
+> **9 nodes** · 5 within · 3 crossing · **2,681 dimmed** · focus: only what is lit answers
 
-Four nodes are lit and 1,769 are dimmed. Two of the lit edges stay inside `web`; two cross
-to another plate.
+Nine nodes are lit, on four plates, and 2,681 are dimmed. Five of the lit edges stay inside
+a plate; three cross to another.
 
 **Dimmed, not hidden**, and the difference matters enough that DunneFlow has a rule about
 it. A hidden node is gone and you cannot tell whether it was ever there; a dimmed one is
 still in the picture, still in its place, still showing you how much of the program you are
-*not* looking at. `1,769 dimmed` is a useful number. `4 nodes` on an empty screen is not.
+*not* looking at. `2,681 dimmed` is a useful number. `9 nodes` on an empty screen is not.
+
+That is the default, and it is a default rather than a law. When the dimmed thousands are
+in the way of the few you are reading, the **Plates** panel has a control for it:
+**unselected**, set to **hidden** instead of **dimmed**, and the stack draws only what is
+lit.
+
+![Graph mode with cli.cmd_serve selected and unselected nodes set to hidden. The stack is gone except for about a dozen lit nodes and the coloured edges between them, drawn on an empty canvas; the heads-up panel still reads "60 fps · 2,690 nodes · 25 plates". The trail reads "dunneflow › entrypoints_from_manifests › Shape › Graph › cmd_serve", and the inspector on the right shows cli.cmd_serve, cli.py:2033–2100, with IN 2 and OUT 14 call sites](images/04-hidden-unselected.jpg)
+
+The heads-up panel still says 2,690 nodes. What is hidden is still counted; you have only
+asked not to see it.
 
 ## The controls, and the one that surprised me
 
 The HUD opens on sliders: **spacing**, three **spread** axes, **plate width**. They are
-worth a minute because they are not decoration — a stack of 1,773 dots has a legibility
+worth a minute because they are not decoration — a stack of 2,690 dots has a legibility
 problem and these are how you solve it for the question you happen to be asking.
 
 Two of the more interesting ones:
@@ -79,10 +92,19 @@ the same claim.
 
 ## Two drawings, one view
 
-Top left there are two buttons, **Stack** and **Overview**. They are not two modes — they
-are two drawings of the *same* view, which is why they sit inside Graph rather than beside
-it. Promoting a layout to a mode would say the two answer different questions, and they do
-not.
+Top right of the centre pane there are two buttons, **Stack** and **Overview**. They are not
+two modes — they are two drawings of the *same* view, which is why they sit inside Graph
+rather than beside it. Promoting a layout to a mode would say the two answer different
+questions, and they do not.
+
+![Overview, the other drawing of the same view, with entrypoints_from_manifests still selected in the inspector. A header reads "24 packages · 86 connections between them · 7 external systems", then "Drawing the 45 heaviest connections — the spine. 41 lighter ones and all 36 boundary touches are not drawn: click any package to see every connection it has, at any weight.", then "Columns are hops from a way in. Depth reads left to right; a rank too deep for one column wraps rather than growing taller." The first column holds the four ways in, highlighted: web 352 routines, ingest 91, mcp 59, cli 47, each marked "way in". The second holds extractors 296, resolve 199, render 103, detectors 56, store 49, sourcedb 36 and anomalies 26; the third revisions 14, schema 11, runtime 10, sql 9, macapp 4, canonical 3 and lookup 2, and the edge of a fourth shows at the right. Grey connections fan out from the first column to the second](images/04-overview.jpg)
+
+Overview is the stack flattened into packages, laid out left to right by how many hops each
+is from a way in: **24 packages · 86 connections between them · 7 external systems**. It
+draws the 45 heaviest connections and says, in the same breath, that 41 lighter ones and
+all 36 boundary touches are not drawn — and how to see them. It is the picture to start
+from on a program you have never seen; the stack is the one to come back to once you have
+picked something.
 
 ---
 

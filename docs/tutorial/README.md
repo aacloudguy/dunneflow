@@ -23,8 +23,8 @@ be helpful in understanding, there are a few places where we provide that servic
 ## Before you start
 
 You need DunneFlow [installed](../01-installing.md) and a checkout of its source to point
-it at — the [checkout section](../01-installing.md#the-checkout) of that chapter, which is
-a `git clone` and `uv sync`.
+it at — [Run from source](../../README.md#run-from-source) in the project's README, which
+is a `git clone` and `uv sync`.
 
 Then, from the checkout:
 
@@ -48,12 +48,12 @@ explains what it is doing on the way.
 | [1. Pointing it at itself](01-pointing-it-at-itself.md) | Reading a tree, and the refusal you meet first. |
 | [2. The cover](02-the-cover.md) | What it found: where to start, what it touches, what looks wrong. |
 | [3. One selection, six ways](03-one-selection-six-ways.md) | The three panes, the search that answers in every group, and a selection that travels. |
-| [4. The stack](04-the-stack.md) | 1,773 things on 22 plates, and why the third axis is there. |
+| [4. The stack](04-the-stack.md) | 2,690 things on 25 plates, and why the third axis is there. |
 | [5. Table and Code](05-table-and-code.md) | Every routine as a row with what its author said; then the source as measured. |
 | [6. Document](06-document.md) | Two lanes — the documents it writes, and the ones your program already had. |
-| [7. Diagram](07-diagram.md) | One compartment, thirty-one boxes, and **frame it**. |
+| [7. Diagram](07-diagram.md) | One compartment, forty boxes, and **frame it**. |
 | [8. Two versions](08-two-versions.md) | Held against each other — and the half a text diff cannot give you. |
-| [9. What looks wrong](09-what-looks-wrong.md) | Forty findings, three buttons, and the four this tool got wrong about itself. |
+| [9. What looks wrong](09-what-looks-wrong.md) | Forty-four findings, three buttons, and how to tell the program's mistakes from the tool's. |
 | [10. Words and names](10-words-and-names.md) | What its words mean, how its names are spelled, and whether anybody wrote that down. |
 | [11. Worth a look](11-worth-a-look.md) | Twelve measurements, each with its middle, and the query that returned it. |
 | [12. Threads and the trail](12-threads-and-the-trail.md) | Following a thought without losing the one you were on. |
@@ -74,29 +74,23 @@ a real program, that one tells you what every control does.
 
 **This is a recorded session, and it is dated.** Every figure quoted in these chapters came
 off the screen or out of a terminal, and all of them come from **one map**: DunneFlow
-reading its own source at `1e76c51` on **15 September 2026**, held against a snapshot of
-`875499c`. The screenshots were taken the same afternoon. Yours will differ the moment the
-source does — that is the fun of the tool, not a flaw in the tutorial — and where a number
-matters the chapter says how to get it yourself, several of them handing you the exact
-query.
+reading its own source from a clean clone at `5b737a0` on **2 October 2026**, by the
+released build of that same commit. The map holds three readings of DunneFlow — the clone
+itself, read at 19:59:52 UTC, and two snapshots sealed from earlier commits and read
+seconds before it: `1017ef4`, *before the Windows fix* (19:59:47), which is the one most
+chapters compare against, and `0804aa7`, *before parts* (19:59:41). The screenshots were
+taken the same day, the last few by the next release, which reads the same map. Yours will differ the moment the source does — that is the fun of the tool,
+not a flaw in the tutorial — and where a number matters the chapter says how to get it
+yourself, several of them handing you the exact query.
 
-**Two things have moved further than a number since**, and they are named here so that you
-meet them knowing rather than wondering:
+That day the tree was **142 files, 53,939 lines and 1,550 routines**, in **two
+languages**: 131 Python files and 11 TypeScript, the TypeScript being the plugin that
+teaches DunneFlow to read TypeScript. Both are read, so a figure that counts routines or
+spellings counts both. How that map was built, command by command, is recorded under *the
+screenshot map* in the repository's `GROUND-TRUTH.md`, so it can be built again.
 
-* **The tree has grown.** It was **78 files and 925 routines** that afternoon; the same
-  directory today is **118 files and 1,283 routines**. Every total in chapters 1, 2 and 9
-  is that afternoon's.
-* **DunneFlow reads two languages now**, and one of the pages has changed shape rather than
-  size. Its own `src/dunneflow` holds 107 Python files and 11 TypeScript, so the derived
-  naming standard measures spelling **per language** — fifteen conventions where the
-  screenshots in [chapter 10](10-words-and-names.md) show seven. That chapter has been
-  rewritten against a current run and says so; the screenshots in it are the old page, kept
-  because what they illustrate — a grade, a bar, an exception list, the reason a page
-  refuses to grade one thing against another — is unchanged.
-
-Everything else in the tour behaves exactly as it is shown. A control that is in a
-screenshot is in the product, and the reference guide is the half of this that is not
-dated.
+A control that is in a screenshot is in the product, and the reference guide is the half
+of this that is not dated.
 
 ---
 

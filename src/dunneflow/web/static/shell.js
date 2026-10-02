@@ -4242,7 +4242,12 @@ function markDiagramSelection() {
     g.classList.toggle("dgm-on", on);
     if (on) marked++;
   });
-  dgmSelectionNote(marked, want.size > 0);
+  /* **A fold is a selection too.** `want` holds routine ids, and a picked box puts none
+     there unless the stack is mounted to translate it into picks -- so on a session that
+     went straight to Diagram, opening the box you had picked wiped the note that says you
+     are inside it (found retaking the tutorial, 2026-10-02). Same lesson as the comment
+     above, one line further down. */
+  dgmSelectionNote(marked, want.size > 0 || !!state.fold);
   return marked;
 }
 

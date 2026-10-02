@@ -170,3 +170,10 @@ def test_a_usage_key_wraps_inside_its_own_column():
     js, css = _read("shell.js"), _read("tokens.css")
     assert '.split(":").join(":<wbr>")' in js
     assert re.search(r"\.usagebar \.usagekey \{[^}]*overflow-wrap: anywhere", css)
+
+
+def test_a_picked_box_counts_as_a_selection_without_the_stack():
+    """Found retaking the tutorial: straight to Diagram, pick a box, open it, and the note
+    saying you are inside what you picked was wiped, because nothing mounted the stack."""
+    mark = _code(_fn(_read("shell.js"), "markDiagramSelection"))
+    assert "dgmSelectionNote(marked, want.size > 0 || !!state.fold)" in mark

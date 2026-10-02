@@ -327,7 +327,7 @@ def _population(rule: StatedRule, globs: list[str], store: Store | None,
 
 def check_rule(rule: StatedRule, frontmatter: dict[str, str], source: str,
                store: Store | None, docs: DocStore | None,
-               langs: Sequence[str] = ()) -> list[RuleCheck]:
+               langs: Sequence[str] = (), private_prefix: bool = False) -> list[RuleCheck]:
     """One rule, checked -- or refused, with the reason it was refused.
 
     **A list, because one rule can be more than one question.** A map holding two languages
@@ -413,7 +413,7 @@ def check_rule(rule: StatedRule, frontmatter: dict[str, str], source: str,
         # command called `analyze` keeps a `kebab-case` rule and keeps a `snake_case` one,
         # and asking which it *is* condemns it to one of the two (rule 100).
         bad = [Exception_(name=n, where=w) for n, w in rows
-               if style not in styles_in(n, dotted)]
+               if style not in styles_in(n, dotted, private_prefix)]
         out.append(RuleCheck(
             rule=rule, source=source, verdict=CHECKED, population=label,
             scoped_by=scoped_by, lang=lang, blind_spot=blind, total=len(rows),
@@ -423,7 +423,8 @@ def check_rule(rule: StatedRule, frontmatter: dict[str, str], source: str,
 
 
 def check_stated(store: Store | None, docs: DocStore | None,
-                 standards: DocStore | None) -> list[RuleCheck]:
+                 standards: DocStore | None,
+                 private_prefix: bool = False) -> list[RuleCheck]:
     """Every stated rule this map can see, checked against what it holds.
 
     Both corpora, and each rule keeps the name of the one it came from: a rule the project
@@ -446,7 +447,7 @@ def check_stated(store: Store | None, docs: DocStore | None,
             # program, so its population is the program's own files -- never the standards
             # directory's own documents, which nobody is measuring.
             out.extend(check_rule(rule, _front(fronts.get(rule.doc, "")), source,
-                                  store, docs, langs))
+                                  store, docs, langs, private_prefix))
     # Checked first and worst first inside that, because the exceptions are the product.
     # `population` breaks the tie so a rule's languages keep a stable order beside each
     # other rather than one decided by whichever scored lower (rule 66).

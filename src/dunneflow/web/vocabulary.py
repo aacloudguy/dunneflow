@@ -44,7 +44,7 @@ from ..store import Store
 from . import threads
 
 
-def measure_naming(store: Store) -> dict[str, Any]:
+def measure_naming(store: Store, private_prefix: bool = False) -> dict[str, Any]:
     """The Form lane: what this program does about names, counted.
 
     Every convention travels with the query that produced it. Rule 13 is not decorative
@@ -52,8 +52,12 @@ def measure_naming(store: Store) -> dict[str, Any]:
     other than the number printed beside them, and a query that disagrees with its claim is
     worse than no query, because it invites a reader to check and then misleads them.
     """
-    m = naming_resolve.measure(store)
+    m = naming_resolve.measure(store, private_prefix)
     return {
+        # Whether a leading underscore was read as a privacy mark (the reader's Setting), so
+        # the page can say which reading it is showing rather than leave two screens to
+        # disagree silently.
+        "private_prefix": private_prefix,
         "conventions": [
             {
                 "kind": c.kind,
@@ -176,7 +180,7 @@ def stated_naming(docs: DocStore | None) -> dict[str, Any]:
 
 
 def checked_naming(store: Store, docs: DocStore | None,
-                   standards: DocStore | None) -> dict[str, Any]:
+                   standards: DocStore | None, private_prefix: bool = False) -> dict[str, Any]:
     """The **comparison**: every stated rule, measured over the population it governs.
 
     A third page rather than a column on either of the two above, and that is Tom's
@@ -196,9 +200,10 @@ def checked_naming(store: Store, docs: DocStore | None,
     given and states no rule, so `imported` travels beside the rules rather than being
     inferred from an empty list.
     """
-    checks = check_stated(store, docs, standards)
+    checks = check_stated(store, docs, standards, private_prefix)
     counted = [c for c in checks if c.verdict == CHECKED]
     return {
+        "private_prefix": private_prefix,
         # About the *analysis*, never the corpus -- the same distinction `stated_naming`'s
         # `read` draws, one store over. No count can stand in for either.
         "read": docs is not None,

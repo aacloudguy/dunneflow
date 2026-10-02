@@ -413,6 +413,7 @@ const DEFAULTS = {
   menuOrder: 'waysin',    // 'waysin' | 'explore' -- a genuine tie, so both exist
   trailShown: true,
   trailCap: 12,
+  namingUnderscore: false, // a leading underscore: counted as a violation, or allowed
   density: 'comfortable', // 'compact' | 'comfortable' | 'spacious'
   /* Whether the cover's two ranked lists draw a proportion bar beside their counts.
    *
@@ -839,6 +840,7 @@ function resetSettings(program, current) {
     theme: 'theme', palette: 'the colour set', scale: 'interface scale',
     startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'how many steps the trail shows',
+    namingUnderscore: 'whether a leading underscore is allowed in a name',
     density: 'row density', bandScroll: 'scrolling change bands',
     coverBars: 'proportion bars on the cover',
     rowTagsWrap: 'tags on their own line', coverWhatWrap: 'wrapped evidence lines',

@@ -464,6 +464,11 @@ const state = {
   startup: "cover",
   trailShown: true,
   trailCap: 12,          // pruned to this on every step, seen or not
+  /* Whether a leading underscore (`_Handler`) is read as a privacy mark rather than part of
+     a name's spelling, in both naming lanes. Off by default because strictly it is a
+     violation of PascalCase and camelCase; a Setting because it is also the commonest way a
+     codebase marks something private (design rule 2; Tom, 2026-10-02). */
+  namingUnderscore: false,
   menuOrder: "waysin",   // waysin | explore  — a genuine tie, so both exist       // cover | graph   ← the Setting standing in for a decision
   /* Which colour set carries the difference channel and severity. See `settings.js`, and
    * `tokens.css` for the values and how they were measured. */
@@ -7534,6 +7539,19 @@ function viewSettings() {
         </div>
 
         <div class="setrow">
+          <div><div class="lbl">A leading underscore in a name</div>
+            <div class="desc">Whether <code>_Handler</code> is a PascalCase class. Strictly it is
+              not — it does not begin with a capital — and it is also the commonest way a
+              codebase marks something private. <b>Counted as a violation</b> is the strict
+              reading; <b>allowed</b> reads the underscore as a privacy mark and judges the
+              rest. Both naming pages follow this, and every claim it changed says so.</div></div>
+          <div class="seg" role="group" aria-label="A leading underscore in a name">
+            <button data-namingus="0" aria-pressed="${!state.namingUnderscore}">Counted as a violation</button>
+            <button data-namingus="1" aria-pressed="${state.namingUnderscore}">Allowed</button>
+          </div>
+        </div>
+
+        <div class="setrow">
           <div><div class="lbl">Cursor over the diagram</div>
             <div class="desc">A diagram is a drawing you <i>aim</i> at, not a page of links.
               The link <b>hand</b> was here for every box: its hotspot is a fingertip whose
@@ -10116,7 +10134,7 @@ async function loadNaming() {
   if (VOCAB.naming) return;
   VOCAB.naming = "loading";
   try {
-    const r = await fetch("/api/naming");
+    const r = await fetch("/api/naming" + (state.namingUnderscore ? "?underscore=1" : ""));
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
     const d = await r.json();
     CONVENTIONS = d.conventions || [];
@@ -10166,7 +10184,7 @@ async function loadChecked() {
   if (VOCAB.checked) return;
   VOCAB.checked = "loading";
   try {
-    const r = await fetch("/api/checked");
+    const r = await fetch("/api/checked" + (state.namingUnderscore ? "?underscore=1" : ""));
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
     const d = await r.json();
     CHECKS = d.checks || [];
@@ -10921,6 +10939,11 @@ function viewChecked() {
       <b>derived naming standard</b> counts what the code does and quotes nobody. Here each
       stated rule is measured over the population its own document says it governs — and a
       rule this map cannot answer says so rather than passing quietly.
+      ${state.namingUnderscore
+        ? `<p class="hint">A leading underscore is <b>allowed</b> here — read as a privacy mark,
+            not part of the spelling. Strictly it is a violation; Settings has the choice.</p>`
+        : `<p class="hint">A leading underscore is <b>counted as a violation</b> here, which is
+            the strict reading. Settings can allow it as a privacy mark.</p>`}
       ${sum.checked.toLocaleString()} of ${sum.rules.toLocaleString()} rule${
         sum.rules === 1 ? "" : "s"} could be checked, finding
       ${sum.exceptions.toLocaleString()} exception${sum.exceptions === 1 ? "" : "s"}.</div>
@@ -10995,6 +11018,11 @@ function viewNaming() {
       it is measured against a standard your team wrote — that is <b>stated rules, checked</b>, and it
       measures a rule somebody stated rather than a convention found here. So a convention holding
       100% of the time means the code is consistent, not that it is correct.
+      ${state.namingUnderscore
+        ? `<p class="hint">A leading underscore is <b>allowed</b> here — read as a privacy mark,
+            not part of the spelling. Strictly it is a violation; Settings has the choice.</p>`
+        : `<p class="hint">A leading underscore is <b>counted as a violation</b> here, which is
+            the strict reading. Settings can allow it as a privacy mark.</p>`}
     </div>
 
     ${/* The other lane, named on this page because a reader who lands here is one step from
@@ -13583,6 +13611,18 @@ function wire() {
   $$("[data-scale-set]").forEach(b => b.addEventListener("click", () => {
     state.scale = parseFloat(b.dataset.scaleSet); applyScale(); render();
   }));
+  $$("[data-namingus]").forEach(b => b.addEventListener("click", () => {
+    const want = b.dataset.namingus === "1";
+    if (state.namingUnderscore === want) return;
+    state.namingUnderscore = want;
+    used("naming:underscore:" + (want ? "allowed" : "violation"));
+    persist();
+    /* Both lanes were read under the other answer, so both are asked again -- through the
+       loaders' own "not asked yet" state, never by patching what was fetched. */
+    VOCAB.naming = null;
+    VOCAB.checked = null;
+    render();
+  }));
   const tt = $("#trailToggle");
   if (tt) tt.addEventListener("click", () => { state.trailShown = !state.trailShown; render(); });
   $$("[data-trailcap]").forEach(b => b.addEventListener("click", () => {
@@ -14533,6 +14573,8 @@ const WIRED_ATTRS = new Set([
      one act. `anagain` carries the program name, like `anopen` beside it, and
      `anagainpath` rides with it: the directory the run read, so the dialog reopens with it. */
   "anstop", "anagain", "anagainpath",
+  /* The naming Setting: whether a leading underscore counts against a spelling. */
+  "namingus",
   /* About this map: the topbar readout that opens it, and the dialog's two controls.
      `aboutopen` sits on the `.srcpath` button, which was a readout until there was
      something true to put in it -- see the markup. */
@@ -17875,6 +17917,7 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
+  "namingUnderscore",
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "navName", "topFit", "verStrip", "paneFit", "paneAuto",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",

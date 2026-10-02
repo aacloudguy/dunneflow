@@ -448,3 +448,36 @@ def test_every_style_predicate_agrees_with_the_judge_that_produced_it() -> None:
                 f"it returns {sorted(returned)} where the judge refuses {sorted(expected)}"
             )
     conn.close()
+
+
+def test_a_leading_underscore_allowed_is_allowed_by_the_judge_and_its_query_alike() -> None:
+    """The reader's Setting, answered in both places a claim is made.
+
+    `_Handler` is strictly not PascalCase and is the commonest spelling of a private class,
+    so whether it counts is a Setting (Tom, 2026-10-02). With it on, the judge reads the
+    name without its leading underscores, and the SQL beside the claim must return exactly
+    the names the judge refuses (rule 13). Dunders stay what they are.
+    """
+    import sqlite3
+
+    names = ["_Handler", "__Private", "Handler", "_handler", "_loadWidget", "__init__",
+             "_", "__", "_WIDGET_HOME", "Field_", "_Field_"]
+    assert "PascalCase" not in styles_of("_Handler")
+    assert "PascalCase" in styles_of("_Handler", private_prefix=True)
+    assert "snake_case" in styles_of("__init__", private_prefix=True)
+    assert styles_of("__", private_prefix=True) == styles_of("__")
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE n (name TEXT)")
+    conn.executemany("INSERT INTO n VALUES (?)", [(x,) for x in names])
+    for style in STYLE_PREDICATE:
+        sql = (f"SELECT name FROM n WHERE "
+               f"{style_predicate(style, 'name', False, private_prefix=True)}")
+        returned = {str(r[0]) for r in conn.execute(sql)}
+        expected = {x for x in names
+                    if style not in styles_in(x, False, private_prefix=True)}
+        assert returned == expected, (
+            f"with a leading underscore allowed, the {style} query returns "
+            f"{sorted(returned)} where the judge refuses {sorted(expected)}"
+        )
+    conn.close()

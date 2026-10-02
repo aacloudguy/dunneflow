@@ -1346,7 +1346,7 @@ def cmd_naming(args: argparse.Namespace) -> int:
     else:
         print("STATED — nothing in this program's documentation states a naming rule")
 
-    m = measure(store)
+    m = measure(store, private_prefix=args.allow_leading_underscore)
     print("\nMEASURED — counted against the code")
     for c in m.conventions[: args.limit]:
         exc = (f"  ({len(c.exceptions)} exception"
@@ -1680,6 +1680,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="the naming standard as found: derived, and quoted")
     common(nm)
     nm.add_argument("--limit", type=int, default=15)
+    nm.add_argument("--allow-leading-underscore", action="store_true",
+                    help="read a leading underscore (`_Handler`) as a privacy mark rather "
+                         "than part of the spelling; strictly it is a violation, and the "
+                         "claims say when it was allowed")
     nm.set_defaults(func=cmd_naming)
 
     mr = sub.add_parser(

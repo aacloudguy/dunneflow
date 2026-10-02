@@ -321,6 +321,11 @@ def build_payload(store: Store, program: str,
     return payload
 
 
+def _relaxed(q: dict[str, list[str]]) -> bool:
+    """Whether a naming request asks for a leading underscore to be allowed."""
+    return (q.get("underscore") or [""])[0] == "1"
+
+
 @dataclass(frozen=True)
 class _Base:
     """Everything one version of the program decides, in one binding.
@@ -655,6 +660,11 @@ class _Live:
         # caveat every other cold row in this project carries. Bounded by the number of
         # revisions a reader visits, which is the number of graphs in one directory.
         self.findings: dict[str, list[dict[str, Any]]] = {}
+        # Both naming lanes read with a leading underscore allowed, which is a reader's
+        # Setting rather than the default the base is built with. Keyed by revision and
+        # lane, and filled the first time the page asks: a reader who never turns the
+        # Setting on pays nothing for it.
+        self.relaxed: dict[tuple[str, str], dict[str, Any]] = {}
         # A sidecar is optional by design -- `--no-source`, or a map handed over without
         # it. Absent is a state the inspector states plainly, never one it hides.
         #
@@ -2197,9 +2207,29 @@ class _Handler(BaseHTTPRequestHandler):
         self._json(answer)
 
     def _r_naming(self, q: dict[str, list[str]]) -> None:
-        """The Form lane: what this program does about names, counted."""
+        """The Form lane: what this program does about names, counted.
+
+        `?underscore=1` is the reader's Setting that a leading underscore marks privacy
+        rather than breaking a spelling. Answered from its own memo, never by rebuilding
+        the base, so the default the navigator counted stays the default."""
         with self._live.lock:
-            self._json(self._live.current.naming)
+            if _relaxed(q):
+                self._json(self._relaxed_lane("naming"))
+            else:
+                self._json(self._live.current.naming)
+
+    def _relaxed_lane(self, lane: str) -> dict[str, Any]:
+        """One naming lane with a leading underscore allowed, built once per revision.
+
+        Called under `self._live.lock`, which is what makes the memo safe to fill."""
+        live = self._live
+        key = (live.current.revision, lane)
+        if key not in live.relaxed:
+            live.relaxed[key] = (
+                measure_naming(live.current.store, private_prefix=True) if lane == "naming"
+                else checked_naming(live.current.store, live.current.docs, live.standards,
+                                    private_prefix=True))
+        return live.relaxed[key]
 
     def _r_reldocs(self, q: dict[str, list[str]]) -> None:
         """Which of the program's own documents have anything to do with this node.
@@ -2282,7 +2312,10 @@ class _Handler(BaseHTTPRequestHandler):
         population scan in the reading loop the first time anyone opened the page.
         """
         with self._live.lock:
-            self._json(self._live.current.checked)
+            if _relaxed(q):
+                self._json(self._relaxed_lane("checked"))
+            else:
+                self._json(self._live.current.checked)
 
     def _r_glossary(self, q: dict[str, list[str]]) -> None:
         """The Vocabulary lane: the program's words and who says what they mean.

@@ -310,19 +310,6 @@ to name its population or fixed.
 **What would settle it.** A judgement on the panes' default widths at a 1,440–1,500 px
 window (design rule 53), measured, not guessed.
 
-### 20 · Is `_Private` a PascalCase class?
-
-*Retake defect 24. This is Tom's call.*
-
-*Stated rules, checked* scores `classes · PascalCase` at 165 of 182. Fifteen of the 17
-exceptions are private classes with a leading underscore (`_Handler`, `_Clock`, …), and
-two have a trailing underscore (`ClassDef_`, `Field_`). If the underscore is a privacy or
-keyword marker rather than part of the case, these are false findings of the checker.
-
-**What would settle it.** Tom decides. If the underscores are to be stripped, then strip
-them before judging case, in both the derived and the checked lanes, with the population
-stated.
-
 ---
 
 ## Stated residues — known, bounded, and not defects

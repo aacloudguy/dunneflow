@@ -276,3 +276,26 @@ def test_the_route_answers_when_no_documentation_was_read(tmp_path: Path) -> Non
     assert body["read"] is False
     assert body["rules"] == [] and body["documents_seen"] == 0
     assert body["corpus"]["opens"] is False and body["corpus"]["reason"]
+
+
+def test_both_naming_routes_honour_the_leading_underscore_setting(tmp_path: Path) -> None:
+    """The reader's Setting reaches both lanes, and the default is the strict reading.
+
+    `?underscore=1` asks for a leading underscore to be read as a privacy mark. The base is
+    built strict and is never rebuilt for it: the relaxed answer is a memo beside it, so the
+    navigator's counts and the default pages stay what they were (Tom, 2026-10-02)."""
+    _served(tmp_path, with_docs=True)
+    out = tmp_path / "prog"
+    graph = revisions.db_path(out, revisions.GRAPH, "2026-09-05T10:00:00Z")
+    live = serve_mod._Live(out / "source.db", out)
+    live.open(graph)
+    cap = _Cap(live)
+    cap._relaxed_lane = (                                   # type: ignore[attr-defined]
+        lambda lane: serve_mod._Handler._relaxed_lane(cap, lane))  # type: ignore[arg-type]
+    for route in (serve_mod._Handler._r_naming, serve_mod._Handler._r_checked):
+        route(cap, {})                                       # type: ignore[arg-type]
+        assert cap.body["private_prefix"] is False, f"{route.__name__}: not strict by default"
+        route(cap, {"underscore": ["1"]})                    # type: ignore[arg-type]
+        assert cap.body["private_prefix"] is True, f"{route.__name__}: the Setting is ignored"
+    assert {k[1] for k in live.relaxed} == {"naming", "checked"}, (
+        "the relaxed lanes are not memoised")

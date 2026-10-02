@@ -76,7 +76,7 @@ STYLE_NAMES = {
 PREFERENCE = ("snake_case", "SCREAMING_SNAKE", "PascalCase", "camelCase", "kebab-case")
 
 
-def styles_of(name: str) -> set[str]:
+def styles_of(name: str, private_prefix: bool = False) -> set[str]:
     """**Every** spelling convention a name satisfies, not the first one tested.
 
     `case_style` below has to return one answer, and for a one-token name several are
@@ -91,6 +91,16 @@ def styles_of(name: str) -> set[str]:
     routine private. Decomposing it into "lowercase words joined by underscores" dropped
     `_helper` to `other` and cost Mensores 1,811 false exceptions in one population.
     """
+    if private_prefix and name.startswith("_") and not DUNDER.fullmatch(name):
+        # **A leading underscore read as a privacy mark rather than part of the spelling**,
+        # when the reader has said so (`private_prefix`). Strictly it is a violation of
+        # PascalCase and camelCase -- `_Handler` does not begin with a capital -- and it is
+        # also the commonest way a codebase marks a class private, so it is a Setting
+        # rather than a ruling (design rule 2; Tom, 2026-10-02). `SNAKE` already tolerates
+        # it; this makes the other styles agree when asked. A name that is all underscores
+        # is left as it is, because stripping it would leave nothing to judge and turn a
+        # name the default reading calls snake_case into none at all.
+        name = name.lstrip("_") or name
     if not name:
         return {"other"}
     out: set[str] = set()
@@ -111,7 +121,7 @@ def styles_of(name: str) -> set[str]:
     return out or {"other"}
 
 
-def styles_in(name: str, dotted: bool) -> set[str]:
+def styles_in(name: str, dotted: bool, private_prefix: bool = False) -> set[str]:
     """The styles a name satisfies, judging a dotted path **segment by segment**.
 
     A dotted name used to be judged by substituting `.` for `_` and asking the same
@@ -127,7 +137,10 @@ def styles_in(name: str, dotted: bool) -> set[str]:
     and the next in Pascal, and no single answer is true of it.
     """
     if not dotted:
-        return styles_of(name)
+        return styles_of(name, private_prefix)
+    # A dotted path is judged without the allowance: its populations are module paths,
+    # whose segments are snake_case and tolerate the underscore already, and a per-segment
+    # strip has no single SQL spelling to stand beside the claim (rule 13).
     segments = [s for s in name.split(".") if s]
     if not segments:
         return {"other"}
@@ -396,10 +409,22 @@ DOTTED_STYLE_PREDICATE = {
 }
 
 
-def style_predicate(style: str, column: str, dotted: bool) -> str:
-    """The SQL that finds a name in `column` which is *not* in `style`."""
-    table = DOTTED_STYLE_PREDICATE if dotted else STYLE_PREDICATE
-    return table[style].format(n=column)
+def style_predicate(style: str, column: str, dotted: bool,
+                    private_prefix: bool = False) -> str:
+    """The SQL that finds a name in `column` which is *not* in `style`.
+
+    `private_prefix` judges the name with its leading underscores trimmed, exactly as
+    `styles_of` does -- `ltrim` is SQLite's spelling of `lstrip`, and the dunder exemption
+    is kept so that `__init__` stays the snake_case name it is. Not for dotted paths, which
+    `styles_in` does not relax either.
+    """
+    if dotted:
+        return DOTTED_STYLE_PREDICATE[style].format(n=column)
+    if private_prefix:
+        n = (f"(CASE WHEN {column} GLOB '__*__' OR ltrim({column}, '_') = '' "
+             f"THEN {column} ELSE ltrim({column}, '_') END)")
+        return STYLE_PREDICATE[style].format(n=n)
+    return STYLE_PREDICATE[style].format(n=column)
 
 # The column each population's names actually live in, for the exception SQL.
 NAME_COLUMN = {
@@ -476,7 +501,7 @@ def _scoped(sql: str, clause: str, lang: str) -> str:
 
 
 def mine_case_conventions(
-    store: Store, langs: Sequence[str] = (),
+    store: Store, langs: Sequence[str] = (), private_prefix: bool = False,
 ) -> tuple[list[Convention], list[Gap]]:
     """How each population spells its names, counted once per language.
 
@@ -505,7 +530,7 @@ def mine_case_conventions(
             # Per row, not per distinct name. Keying the styles by name collapsed 3,849
             # routines into 3,063 and reported a 79% convention that actually holds in
             # every case -- a denominator counted one way and a numerator another.
-            sets = [styles_in(n, dotted) for n, _ in rows]
+            sets = [styles_in(n, dotted, private_prefix) for n, _ in rows]
             styled, firm = resolve_styles(sets)
             spread = Counter(styled)
             style, holds = spread.most_common(1)[0]
@@ -519,11 +544,15 @@ def mine_case_conventions(
             exceptions = [Exception_(n, w)
                           for (n, w), st in zip(rows, styled, strict=True) if st != style]
             column = NAME_COLUMN[label]
-            predicate = style_predicate(style, column, dotted)
+            predicate = style_predicate(style, column, dotted, private_prefix)
             where = _scoped(f"{from_clause} AND {predicate}", lang_clause, lang)
+            # The allowance is stated in the claim it changed, so a reader comparing two
+            # screens can see why one counts `_Handler` and the other does not.
+            allowed = (" (a leading underscore allowed)"
+                       if private_prefix and not dotted and style != "snake_case" else "")
             conventions.append(Convention(
                 kind="CASE",
-                claim=f"{leading(named, lang)} are named in {STYLE_NAMES[style]}.",
+                claim=f"{leading(named, lang)} are named in {STYLE_NAMES[style]}{allowed}.",
                 population=named,
                 lang=lang,
                 total=total,
@@ -944,7 +973,7 @@ def mine_house_prefix(store: Store, langs: Sequence[str] = ()) -> list[Conventio
     return out
 
 
-def measure(store: Store) -> NamingMeasurement:
+def measure(store: Store, private_prefix: bool = False) -> NamingMeasurement:
     """Everything the code says about its own naming, counted.
 
     **The language axis exists only where the map has one.** `languages.read` is the one
@@ -961,7 +990,7 @@ def measure(store: Store) -> NamingMeasurement:
     """
     langs = languages.read(store)
     split = langs if len(langs) > 1 else []
-    conventions, gaps = mine_case_conventions(store, split)
+    conventions, gaps = mine_case_conventions(store, split, private_prefix)
     conventions.extend(mine_house_prefix(store, split))
     conventions.extend(mine_affix_conventions(store))
     conventions.extend(mine_privacy_convention(store))

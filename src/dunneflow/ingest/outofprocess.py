@@ -290,6 +290,7 @@ class OutOfProcessPlugin:
         self.edges_unknown = 0
         self.edges_read_beyond: list[str] = []
         self.edges_not_present: list[str] = []
+        self.edges_test_only: list[str] = []
         # Fields an edge carried that this build does not read. Survivable by design — a
         # plugin built against a later schema knows about fields this one does not — but
         # never silent: a file can carry its dropped keys in `FileFacts.errors` and an
@@ -369,6 +370,7 @@ class OutOfProcessPlugin:
                 self.edges_unknown = int(frame.get("unknown") or 0)
                 self.edges_read_beyond = [str(x) for x in frame.get("read_beyond") or []]
                 self.edges_not_present = [str(x) for x in frame.get("not_present") or []]
+                self.edges_test_only = sorted(str(x) for x in frame.get("test_only") or [])
                 break
             if frame["t"] != "edge":
                 raise ProtocolError(

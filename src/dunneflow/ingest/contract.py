@@ -332,6 +332,11 @@ class IngestPlugin(Protocol):
     # dependency is a claim about code that is not in the map (design rule 1).
     edges_read_beyond: list[str]
     edges_not_present: list[str]
+    # **Files that are test code only a whole-program view can see** -- Rust's
+    # `#[cfg(test)] mod tests;`, which a parent file declares and the file it names cannot
+    # know. Relative paths, sorted; the walk leaves them out as it leaves out a test file
+    # (`walk._leave_out_test_modules`). Empty for every reader that has no such idiom.
+    edges_test_only: list[str]
     # What the reader said when `open` built its session — how it divided the file set
     # into compilations, how long that took, whatever else it has to declare. Empty for a
     # reader that opens nothing, and the `opened` frame carried both fields for three

@@ -911,3 +911,78 @@ def test_a_dependency_not_on_this_machine_is_said_and_never_fetched(with_deps):
     assert any("read from this machine, never fetched: 1 dependency — litedb 1.2.0" in r
                for r in residue), residue
     assert any("gone 2.0.0 (not in this machine's cargo cache)" in r for r in residue), residue
+
+
+# ------------------------------------------------------------------ test modules --- #
+
+TEST_MODULES = {
+    "Cargo.toml": '[package]\nname = "tm"\n',
+    "src/lib.rs": '''pub fn real() {}
+
+#[cfg(test)]
+mod checks;
+
+#[cfg(test)]
+#[path = "odd_name.rs"]
+mod discovery;
+
+#[cfg(windows)]
+mod win;
+''',
+    "src/checks.rs": "mod helpers;\n\nfn t() {\n    super::real();\n}\n",
+    "src/checks/helpers.rs": "pub fn h() {}\n",
+    "src/odd_name.rs": "fn d() {}\n",
+    "src/win.rs": "pub fn w() {}\n",
+}
+
+
+def _files_with_routines(store):
+    return sorted({r["file"] for r in store.query("SELECT DISTINCT file FROM routines")
+                   if not r["file"].endswith("Cargo.toml")})
+
+
+def test_a_file_a_test_module_declares_is_left_out_as_a_test(tmp_path):
+    """pdfcraft: 18 files reached only by `#[cfg(test)] mod x;` were read as production
+    code — half its DEAD_CODE list — because the declaration is in *another* file and only
+    the edge pass sees every file. DunneNote's two are `vectors.rs` and `test_audit.rs`,
+    which no file-name rule would catch. A `#[path]` one and a descendant are test code
+    too; a `#[cfg(windows)]` module is another platform's production code and stays."""
+    if PLUGIN is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree, walk_residue
+
+    root = tmp_path / "tm"
+    for rel, text in TEST_MODULES.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    production = ["src/lib.rs", "src/win.rs"]
+
+    stats = analyze_tree(root, store)
+    assert _files_with_routines(store) == production
+    assert stats.test_modules == {"rust": 3}
+    assert any("left out as tests: 3 files of rust" in line for line in walk_residue(stats))
+
+    # Warm: nothing is read again, and the files stay out and are still said to be.
+    stats = analyze_tree(root, store)
+    assert stats.parsed == 0
+    assert _files_with_routines(store) == production
+    assert stats.test_modules == {"rust": 3}
+
+    # --include-tests reads them; the run after it, changing nothing, leaves them out again.
+    stats = analyze_tree(root, store, include_tests=True)
+    assert "src/checks.rs" in _files_with_routines(store)
+    assert not stats.test_modules
+    analyze_tree(root, store)
+    assert _files_with_routines(store) == production
+
+    # The parent stops calling it a test: it comes back without being asked.
+    (root / "src/lib.rs").write_text(
+        TEST_MODULES["src/lib.rs"].replace("#[cfg(test)]\nmod checks;", "mod checks;"),
+        encoding="utf-8")
+    stats = analyze_tree(root, store)
+    assert _files_with_routines(store) == sorted(
+        production + ["src/checks.rs", "src/checks/helpers.rs"])
+    assert stats.test_modules == {"rust": 1}
+    store.close()

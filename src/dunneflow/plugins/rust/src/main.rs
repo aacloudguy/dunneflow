@@ -151,7 +151,8 @@ impl Reader {
         f.put("id", id).put("supplied", &supplied)
             .put("unresolved", &(found.outside + found.unknown))
             .put("outside", &found.outside).put("unknown", &found.unknown)
-            .put("read_beyond", &found.read_beyond).put("not_present", &found.not_present);
+            .put("read_beyond", &found.read_beyond).put("not_present", &found.not_present)
+            .put("test_only", &found.test_only);
         self.send(f.finish());
     }
 

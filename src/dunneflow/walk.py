@@ -19,6 +19,7 @@ from `ingest`, and nothing here names a language.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -207,11 +208,43 @@ class WalkStats:
     # looked for and did not find (`IngestPlugin.edges_read_beyond`).
     read_beyond: dict[str, list[str]] = field(default_factory=dict)
     not_present: dict[str, list[str]] = field(default_factory=dict)
+    # Language -> files left out as test code that only the reader's whole-program pass
+    # can name: a file a `#[cfg(test)] mod x;` declares. Said on **every** run that leaves
+    # them out, warm or cold, because the set is held in the store and not re-derived from
+    # what this run happened to read -- unlike `tests_dropped`, which counts items inside
+    # the files a run parsed.
+    test_modules: dict[str, int] = field(default_factory=dict)
     edges_unknown: dict[str, int] = field(default_factory=dict)
     # Fields an edge carried that this build does not read. Survivable -- a plugin built
     # against a later schema knows about fields this one does not -- and never silent: an
     # edge has no `errors` list of its own to carry them in, so they come out here.
     edge_notes: list[str] = field(default_factory=list)
+
+
+_TEST_MODULES = "test_modules:"
+
+
+def _test_modules(store: Store) -> dict[str, dict[str, str]]:
+    """Language -> the test-only module files its reader last named, each with its hash."""
+    out: dict[str, dict[str, str]] = {}
+    for r in store.conn.execute(
+        "SELECT key, value FROM meta WHERE key LIKE ? ORDER BY key", (f"{_TEST_MODULES}%",)
+    ):
+        out[str(r["key"])[len(_TEST_MODULES):]] = dict(json.loads(r["value"]))
+    return out
+
+
+def _leave_out_test_modules(store: Store, paths: Sequence[str]) -> None:
+    """Drop a test module's facts, and every edge a reader supplied into it.
+
+    `forget_file` keeps `supplied_edges` by design -- an edge into a file belongs to a
+    caller elsewhere -- but an edge into test code from production code is one this pass
+    is dropping the far end of, and an edge left pointing at a file with no facts is a
+    target nothing can open.
+    """
+    for p in paths:
+        store.forget_file(p)
+        store.conn.execute("DELETE FROM supplied_edges WHERE file = ?", (p,))
 
 
 def walk_languages(stats: WalkStats) -> str:
@@ -260,6 +293,10 @@ def walk_residue(stats: WalkStats) -> list[str]:
                            for lang, n in sorted(stats.tests_excluded.items()))
         out.append(f"left out as tests: {listed} — analyse again with --include-tests "
                    f"to read them")
+    for lang, n in sorted(stats.test_modules.items()):
+        out.append(f"left out as tests: {plural(n, 'file')} of {lang} that a test-only "
+                   f"module declaration names — analyse again with --include-tests to "
+                   f"read them")
     if stats.tests_dropped:
         listed = ", ".join(f"{n:,} {lang}"
                            for lang, n in sorted(stats.tests_dropped.items()))
@@ -860,6 +897,10 @@ def analyze_tree(
     stats.found = len(files)
 
     known = store.known_hashes()
+    held = _test_modules(store)
+    # Under --include-tests the set is ignored, so its files are read as any other.
+    left_out = {} if include_tests else {p: h for d in held.values() for p, h in d.items()}
+    hashes: dict[str, str] = {}
     todo: list[Path] = []
     live: list[str] = []
     for p in files:
@@ -877,12 +918,25 @@ def analyze_tree(
         except OSError:
             stats.failed += 1
             continue
-        if known.get(key) == hash_source(src):
+        hashes[key] = hash_source(src)
+        if known.get(key) == hashes[key]:
+            stats.cached += 1
+        elif left_out.get(key) == hashes[key]:
+            # A test module, unchanged since the pass that named it: nothing to read, and
+            # nothing in the store to keep. Its declaration lives in another file, and a
+            # change to that file is what re-opens the question (see below).
             stats.cached += 1
         else:
             todo.append(p)
 
     stats.removed = store.prune_missing(live)
+    if not include_tests:
+        # A run with --include-tests kept these files' facts; this one does not want them.
+        # Applied here, before the early return, because nothing may have changed at all.
+        _leave_out_test_modules(store, [p for p in left_out if p in known])
+        for lang, d in held.items():
+            if d:
+                stats.test_modules[lang] = len(d)
 
     if not todo:
         store.conn.commit()
@@ -917,27 +971,31 @@ def analyze_tree(
             # what the bound removes is the case the sentence above never had to cover,
             # which is a burst so long that SQLite can never checkpoint the log it is
             # writing. Unreal's 84,159 C++ files in one transaction is that case.
-            with store.batch():
-                for ff in plugin.extract(wanted, root, relay, jobs):
-                    _verify_lang(ff, lang)
+            def write(ffs: Iterator[FileFacts], _lang: str = lang,
+                      _plugin: ingest.IngestPlugin = plugin) -> None:
+                for ff in ffs:
+                    _verify_lang(ff, _lang)
                     # What a string *means* is decided here, for every language at once,
                     # and never by the reader that found it (rule 51). This is the one
                     # place both kinds of reader pass through, which is why it is here
                     # and not in each of the two wrappers.
-                    literals.judge(ff, plugin.manifest.reports_literals)
+                    literals.judge(ff, _plugin.manifest.reports_literals)
                     if ff.literals_dropped:
-                        stats.literals_dropped[lang] = (
-                            stats.literals_dropped.get(lang, 0) + ff.literals_dropped
+                        stats.literals_dropped[_lang] = (
+                            stats.literals_dropped.get(_lang, 0) + ff.literals_dropped
                         )
                     if ff.tests_dropped:
-                        stats.tests_dropped[lang] = (
-                            stats.tests_dropped.get(lang, 0) + ff.tests_dropped
+                        stats.tests_dropped[_lang] = (
+                            stats.tests_dropped.get(_lang, 0) + ff.tests_dropped
                         )
                     store.write_file_facts(ff)
                     store.settle_if_large()
                     stats.parsed += 1
                     if ff.errors:
                         stats.failed += 1
+
+            with store.batch():
+                write(plugin.extract(wanted, root, relay, jobs))
             # **Asked after the files and before `close`, and asked whether or not this
             # run read anything of this language.** A checker answers about the whole
             # compilation, so its answer is not a function of what changed -- and the set
@@ -957,6 +1015,23 @@ def analyze_tree(
                 if plugin.edges_not_present:
                     stats.not_present[lang] = list(plugin.edges_not_present)
                 stats.edge_notes.extend(f"{lang}: {n}" for n in plugin.edge_notes)
+                named = [p for p in plugin.edges_test_only if p in hashes]
+                store.set_meta(f"{_TEST_MODULES}{lang}",
+                               json.dumps({p: hashes[p] for p in named}, sort_keys=True))
+                if not include_tests:
+                    _leave_out_test_modules(store, named)
+                    if named:
+                        stats.test_modules[lang] = len(named)
+                    else:
+                        stats.test_modules.pop(lang, None)
+                    # **A file the last pass left out and this one does not** -- its
+                    # parent's `#[cfg(test)]` was removed. It was skipped above as a test
+                    # module, so it has no facts; read it now, while the reader is open.
+                    back = sorted(set(held.get(lang, {})) - set(named))
+                    back = [p for p in back if p in hashes]
+                    if back:
+                        with store.batch():
+                            write(plugin.extract([root / p for p in back], root, None, jobs))
                 store.conn.commit()
         finally:
             plugin.close()

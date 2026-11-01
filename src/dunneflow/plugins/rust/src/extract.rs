@@ -126,6 +126,8 @@ pub struct ModDecl {
     pub reference: cfg::Tri,
     /// `mod x { … }`, whose body is in this file.
     pub inline: bool,
+    /// `#[cfg(test)] mod x;`: the file it names, and everything under it, is test code.
+    pub test: bool,
 }
 
 /// A type the program declares, and the calls that build one: a tuple struct is called
@@ -395,6 +397,21 @@ impl<'a> Ex<'a> {
         if let Some(attrs) = item_attrs(item) {
             if cfg::is_test(attrs) {
                 self.facts.tests_dropped += 1;
+                // **A test module in another file is a declaration this file makes**, and
+                // the only place it is made: the file it names cannot know. The edge pass,
+                // which sees every file, tells the host which ones are test code.
+                if let Item::Mod(m) = item {
+                    if m.content.is_none() {
+                        self.mods.push(ModDecl {
+                            mod_path: self.mod_path.clone(),
+                            name: m.ident.to_string(),
+                            path_attr: path_attr(&m.attrs),
+                            reference: cfg::Tri::False,
+                            inline: false,
+                            test: true,
+                        });
+                    }
+                }
                 return;
             }
         }
@@ -673,6 +690,7 @@ impl<'a> Ex<'a> {
                             path_attr: None,
                             reference: cfg::item(&m.attrs, cfg::REFERENCE),
                             inline: true,
+                            test: false,
                         });
                         self.mod_path.push(name);
                         for it in items {
@@ -681,22 +699,13 @@ impl<'a> Ex<'a> {
                         self.mod_path.pop();
                     }
                     None => {
-                        let path_attr = m.attrs.iter().find(|a| a.path().is_ident("path")).and_then(|a| match &a.meta {
-                            Meta::NameValue(nv) => match &nv.value {
-                                Expr::Lit(l) => match &l.lit {
-                                    Lit::Str(s) => Some(s.value()),
-                                    _ => None,
-                                },
-                                _ => None,
-                            },
-                            _ => None,
-                        });
                         self.mods.push(ModDecl {
                             mod_path: self.mod_path.clone(),
                             name,
-                            path_attr,
+                            path_attr: path_attr(&m.attrs),
                             reference: cfg::item(&m.attrs, cfg::REFERENCE),
                             inline: false,
+                            test: false,
                         });
                     }
                 }
@@ -1385,6 +1394,20 @@ pub fn docs(attrs: &[Attribute]) -> Option<String> {
     }
     let joined = lines.join("\n").trim().to_owned();
     if joined.is_empty() { None } else { Some(joined) }
+}
+
+/// `#[path = "…"]` on a `mod x;`.
+fn path_attr(attrs: &[Attribute]) -> Option<String> {
+    attrs.iter().find(|a| a.path().is_ident("path")).and_then(|a| match &a.meta {
+        Meta::NameValue(nv) => match &nv.value {
+            Expr::Lit(l) => match &l.lit {
+                Lit::Str(s) => Some(s.value()),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    })
 }
 
 fn string_value(e: &Expr) -> Option<String> {

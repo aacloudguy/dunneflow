@@ -44,6 +44,9 @@ pub struct Found {
     pub read_beyond: Vec<String>,
     /// Dependencies that were not, each with why.
     pub not_present: Vec<String>,
+    /// The program's files that only a `#[cfg(test)] mod x;` reaches: test code, which the
+    /// host leaves out as it leaves out a test file. Sorted, relative.
+    pub test_only: Vec<String>,
 }
 
 /// A bound on the dependency files read, so a program that depends on half of crates.io
@@ -60,6 +63,8 @@ struct FileUnit {
     at: Option<(usize, Vec<String>)>,
     /// Which dependency this file is the source of, for a file outside the program.
     dep: Option<usize>,
+    /// Reached through a `#[cfg(test)] mod x;`, directly or from under one.
+    test: bool,
 }
 
 struct Crate {
@@ -161,7 +166,7 @@ pub fn collect(root: &Path, files: &[PathBuf], rules: &Rules) -> Found {
             Err(_) => abs.to_string_lossy().replace('\\', "/"),
         };
         let ex = extract::extract(&rel, &src, rules);
-        units.push(FileUnit { rel, abs, ex, at: None, dep: None });
+        units.push(FileUnit { rel, abs, ex, at: None, dep: None, test: false });
     }
     // The program's packages, and their direct dependencies where this machine has them.
     let mut packages: Vec<PathBuf> = Vec::new();
@@ -196,7 +201,7 @@ pub fn collect(root: &Path, files: &[PathBuf], rules: &Rules) -> Found {
             let rel = format!("{}-{}/{}", d.name, d.version,
                 abs.strip_prefix(&d.dir).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default());
             let ex = extract::extract(&rel, &src, rules);
-            units.push(FileUnit { rel, abs, ex, at: None, dep: Some(i) });
+            units.push(FileUnit { rel, abs, ex, at: None, dep: Some(i), test: false });
         }
         found.read_beyond.push(format!("{} {}", d.name, d.version));
         dep_meta.push((d.name, d.version, d.dir, d.aliases));
@@ -364,7 +369,7 @@ impl Program {
                     }
                 }
             }
-            prog.place(file, c, Vec::new(), true, &by_abs, &mut declared);
+            prog.place(file, c, Vec::new(), true, false, &by_abs, &mut declared);
         }
         // A file nobody declares is a crate of its own. One a `cfg` leaves out is not.
         let mut orphans = 0;
@@ -373,7 +378,7 @@ impl Program {
                 let pkg = packages.keys().filter(|d| prog.files[i].abs.starts_with(d)).max_by_key(|d| d.as_os_str().len()).cloned();
                 let c = prog.crates.len();
                 prog.crates.push(Crate { package: pkg, dep: None });
-                prog.place(i, c, Vec::new(), true, &by_abs, &mut declared);
+                prog.place(i, c, Vec::new(), true, false, &by_abs, &mut declared);
                 orphans += 1;
             }
         }
@@ -382,18 +387,30 @@ impl Program {
                 "{orphans} .rs file(s) are no crate's module and are read as crates of their own"
             ));
         }
+        found.test_only = prog.files.iter()
+            .filter(|f| f.test && f.dep.is_none())
+            .map(|f| f.rel.clone())
+            .collect();
+        found.test_only.sort();
         prog.index();
         prog.memo_on.set(true);
         prog
     }
 
     /// Put a file in its crate at `module`, and everything it declares under it.
-    fn place(&mut self, file: usize, c: usize, module: Vec<String>, is_root: bool,
+    /// `test`: the file is reached through a `#[cfg(test)] mod x;`, or from under one.
+    #[allow(clippy::too_many_arguments)]
+    fn place(&mut self, file: usize, c: usize, module: Vec<String>, is_root: bool, test: bool,
              by_abs: &HashMap<PathBuf, usize>, declared: &mut HashSet<usize>) {
         if self.files[file].at.is_some() {
+            // Reached a second way: production code wherever any way in is not a test's.
+            if !test {
+                self.files[file].test = false;
+            }
             return;
         }
         self.files[file].at = Some((c, module.clone()));
+        self.files[file].test = test;
         self.modules.insert((c, module.clone()));
         let abs = self.files[file].abs.clone();
         let parent = abs.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -424,7 +441,7 @@ impl Program {
                 let cand = normalise(&cand);
                 if let Some(&child) = by_abs.get(&cand) {
                     declared.insert(child);
-                    self.place(child, c, full.clone(), false, by_abs, declared);
+                    self.place(child, c, full.clone(), false, test || m.test, by_abs, declared);
                     break;
                 }
             }

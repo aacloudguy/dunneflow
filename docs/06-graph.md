@@ -96,6 +96,9 @@ because otherwise nothing on screen answers *which plate am I looking at*.
 
 ## Under the legend
 
+These sit at the foot of the Plates panel, and fold away with it: if you have folded Plates
+to its rail to make room for the stack, click the **PLATES** rail to get them back.
+
 **Detail** The altitude. `every routine` draws everything the program declares. `one node
 per file` folds each file into one node and each boundary kind into one. It is a second way
 of looking at the same facts and not a filter: nothing is dropped, and every folded node

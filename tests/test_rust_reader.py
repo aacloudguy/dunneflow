@@ -384,7 +384,8 @@ def test_file_entry_is_a_name_or_it_is_refused(tmp_path):
 WORKSPACE = {
     "Cargo.toml": '[workspace]\nmembers = ["core", "app"]\n',
     "core/Cargo.toml": '[package]\nname = "my-core"\n',
-    "core/src/lib.rs": '''pub mod util;
+    "core/src/lib.rs": '''pub mod typed;
+pub mod util;
 pub use util::helper as reexported;
 
 pub fn top() {
@@ -450,6 +451,48 @@ pub fn build() {
     let _ = E::A(1);
     let _ = P(1, 2);
     let _ = Some(1);
+}
+''',
+    "core/src/typed.rs": '''use crate::util::T;
+
+pub struct Conn;
+
+impl Conn {
+    pub fn open() -> Result<Conn, ()> {
+        Ok(Conn)
+    }
+
+    pub fn exec(&self) {}
+}
+
+pub struct Db {
+    pub conn: Conn,
+}
+
+impl Db {
+    pub fn conn(&self) -> &Conn {
+        &self.conn
+    }
+
+    fn go(&self) {
+        self.conn.exec();
+        self.conn().exec();
+    }
+}
+
+pub fn typed(db: &Db, tx: &rusqlite::Transaction, shared: std::sync::Arc<Db>, t: &dyn T) {
+    db.conn.exec();
+    tx.exec();
+    shared.conn().exec();
+    let c = Conn::open().unwrap();
+    c.exec();
+    let d = Conn::open()?;
+    d.exec();
+    t.t();
+    t.missing();
+    for row in rows {
+        row.exec();
+    }
 }
 ''',
     "app/Cargo.toml": '[package]\nname = "app"\n',
@@ -555,3 +598,26 @@ def test_a_variant_or_a_tuple_struct_builds_the_program_s_own_type(edges):
     assert edges[("constructs", "E.A")][0] == "core.src.util.E"
     assert edges[("constructs", "P")][0] == "core.src.util.P"
     assert ("constructs", "Some") not in edges
+
+
+def test_a_receiver_s_declared_type_names_its_method(edges):
+    """`types.rs`: a field's type, a parameter's (through `&` and `Arc`), a constructor's
+    declared return, `?` and `.unwrap()` on it, and a method's declared return."""
+    for caller in ("go", "typed"):
+        exec_calls = {k: v for k, v in edges.items() if k[0] == caller and k[1].endswith(".exec")}
+        assert exec_calls, caller
+    assert edges[("go", "self.conn.exec")][0] == "core.src.typed.Conn.exec"
+    assert edges[("go", "self.conn.exec")][0] == "core.src.typed.Conn.exec"
+    assert edges[("typed", "db.conn.exec")][0] == "core.src.typed.Conn.exec"
+    assert edges[("typed", "shared.conn.exec")][0] == "core.src.typed.Conn.exec"
+    assert edges[("typed", "c.exec")][0] == "core.src.typed.Conn.exec"
+    assert edges[("typed", "d.exec")][0] == "core.src.typed.Conn.exec"
+
+
+def test_what_the_declared_type_cannot_say_is_still_not_guessed(edges):
+    """A dependency's type is outside; `dyn T` with two implementors is ambiguous; an
+    iterator's item has no hint and `exec` is a name this program defines, so unknown."""
+    assert edges[("typed", "tx.exec")][0] is None
+    callee, ambiguous = edges[("typed", "t.t")]
+    assert callee is None and ambiguous
+    assert edges[("typed", "row.exec")][0] is None

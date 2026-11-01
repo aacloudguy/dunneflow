@@ -30,6 +30,7 @@ use crate::cfg::Tri;
 use crate::extract::{self, Def, Extracted, SiteKind};
 use crate::facts::SuppliedEdge;
 use crate::rules::Rules;
+use crate::types::Hint;
 use crate::text;
 
 #[derive(Default)]
@@ -67,8 +68,24 @@ enum Res {
     Construct(usize, usize),
     Module(usize, Vec<String>),
     Type(usize, String),
-    Outside,
+    /// Not this program's: the path it went outside by, as far as it is known.
+    Outside(String),
     Unknown,
+}
+
+/// Where a type or a definition is written, which is what its names are resolved in.
+#[derive(Clone)]
+struct Ctx {
+    c: usize,
+    module: Vec<String>,
+    self_type: Option<String>,
+}
+
+/// What a receiver's declared type comes to.
+enum TyRes {
+    Local(usize, String),
+    Trait(usize, String),
+    Outside(String),
 }
 
 struct Program {
@@ -389,21 +406,21 @@ impl Program {
                 Some(t) => (Res::Type(c, t.to_owned()), &segs[1..]),
                 None => return Res::Unknown,
             },
-            "std" | "core" | "alloc" => return Res::Outside,
+            "std" | "core" | "alloc" => return Res::Outside(segs.join("::")),
             first => {
                 let r = self.lookup(c, module, first, depth);
                 match r {
                     Res::Unknown if segs.len() > 1 => {
                         // A path whose first segment is nothing of this program's — a
                         // crate it depends on — goes outside it.
-                        return Res::Outside;
+                        return Res::Outside(segs.join("::"));
                     }
                     Res::Unknown => {
                         // A bare name nothing here declares: the prelude, a glob from a
                         // dependency, or a name this resolver could not follow. Outside
                         // only where no function of that name exists anywhere in the
                         // program; otherwise it is ours and unnamed.
-                        return if self.fn_names.contains(first) { Res::Unknown } else { Res::Outside };
+                        return if self.fn_names.contains(first) { Res::Unknown } else { Res::Outside(first.to_owned()) };
                     }
                     other => (other, &segs[1..]),
                 }
@@ -427,7 +444,11 @@ impl Program {
                     }
                     return self.method(tc, &t, seg);
                 }
-                Res::Outside => return Res::Outside,
+                Res::Outside(p) => {
+                    let mut full = vec![p];
+                    full.extend(rest[i..].iter().cloned());
+                    return Res::Outside(full.join("::"));
+                }
                 _ => return Res::Unknown,
             };
         }
@@ -510,8 +531,9 @@ impl Program {
     /// `Type::m`: inherent first, else the one trait impl that has it.
     fn method(&self, c: usize, ty: &str, name: &str) -> Res {
         let Some(all) = self.methods.get(&(c, ty.to_owned(), name.to_owned())) else {
-            // Derived, blanket or from a trait this program did not write.
-            return Res::Outside;
+            // Derived, blanket, or from a trait or a `Deref` target this program did not
+            // write: the method is not here, so neither is its far end.
+            return Res::Outside(format!("{ty}::{name}"));
         };
         let pick = |want_trait: bool| -> Vec<DefRef> {
             all.iter().copied().filter(|r| self.def(*r).trait_name.is_some() == want_trait).collect()
@@ -547,7 +569,7 @@ impl Program {
                 let mut at = module.clone();
                 at.extend(s.mod_path.iter().cloned());
                 let res = match s.kind {
-                    SiteKind::Macro => Res::Outside,
+                    SiteKind::Macro => Res::Outside(format!("{}!", s.path.join("::"))),
                     SiteKind::Path => self.called(self.resolve_path(*c, &at, s.self_type.as_deref(), &s.path, 0)),
                     SiteKind::SelfMethod => match &s.self_type {
                         Some(t) if self.traits.contains(&(*c, t.clone())) => {
@@ -562,7 +584,23 @@ impl Program {
                         None => Res::Unknown,
                     },
                     SiteKind::Method => {
-                        if self.method_names.contains(&s.path[0]) { Res::Unknown } else { Res::Outside }
+                        let ctx = Ctx { c: *c, module: at.clone(), self_type: s.self_type.clone() };
+                        match s.recv.as_ref().and_then(|h| self.receiver(h, &ctx)) {
+                            Some(TyRes::Local(tc, t)) => self.method(tc, &t, &s.path[0]),
+                            Some(TyRes::Trait(tc, t)) => match self.implementors(tc, &t, &s.path[0]) {
+                                // No implementor and no default body here: a supertrait's
+                                // or another crate's method, so not this program's.
+                                0 => Res::Outside(format!("{t}::{}", s.path[0])),
+                                n => {
+                                    found.unknown += 1;
+                                    edges.push(ambiguous(s, n));
+                                    continue;
+                                }
+                            },
+                            Some(TyRes::Outside(p)) => Res::Outside(format!("{p}::{}", s.path[0])),
+                            None if self.method_names.contains(&s.path[0]) => Res::Unknown,
+                            None => Res::Outside(String::new()),
+                        }
                     }
                 };
                 match res {
@@ -572,11 +610,13 @@ impl Program {
                         match kept.len() {
                             1 => {
                                 let d = self.def(kept[0]);
-                                let how = if defs.len() > 1 {
-                                    format!("{HOW}; the linux/x86_64 one of {} cfg variants", defs.len())
-                                } else {
-                                    HOW.to_owned()
-                                };
+                                let mut how = HOW.to_owned();
+                                if s.kind == SiteKind::Method {
+                                    how.push_str("; by the receiver's declared type");
+                                }
+                                if defs.len() > 1 {
+                                    how.push_str(&format!("; the linux/x86_64 one of {} cfg variants", defs.len()));
+                                }
                                 edges.push(SuppliedEdge {
                                     site_id: s.site_id.clone(),
                                     caller_id: s.caller_id.clone(),
@@ -607,12 +647,110 @@ impl Program {
                             ..Default::default()
                         });
                     }
-                    Res::Outside => found.outside += 1,
+                    Res::Outside(_) => found.outside += 1,
                     Res::Module(..) | Res::Type(..) | Res::Unknown => found.unknown += 1,
                 }
             }
         }
         found.edges = edges;
+    }
+
+    // ------------------------------------------------------------- receivers --- //
+
+    /// What a receiver's declared type comes to, or nothing where the source does not say.
+    fn receiver(&self, h: &Hint, ctx: &Ctx) -> Option<TyRes> {
+        let (h, ctx) = self.expand(h, ctx, 0)?;
+        self.ty(&h, &ctx)
+    }
+
+    /// Follow a hint through declared return types and fields until it is a written type.
+    fn expand(&self, h: &Hint, ctx: &Ctx, depth: usize) -> Option<(Hint, Ctx)> {
+        if depth > 8 {
+            return None;
+        }
+        match h {
+            Hint::Ty { .. } | Hint::Dyn(_) => Some((h.clone(), ctx.clone())),
+            Hint::SelfTy => {
+                let t = ctx.self_type.clone()?;
+                Some((Hint::Ty { segs: vec![t], args: Vec::new() }, ctx.clone()))
+            }
+            Hint::Ret(path) => match self.called(self.resolve_path(ctx.c, &ctx.module, ctx.self_type.as_deref(), path, 0)) {
+                Res::Fns(defs) => self.returned(&defs, depth),
+                Res::Construct(fi, ti) => {
+                    let t = &self.files[fi].ex.types[ti];
+                    Some((Hint::Ty { segs: vec![t.name.clone()], args: Vec::new() }, self.type_ctx(fi, ti)))
+                }
+                _ => None,
+            },
+            Hint::RetM(recv, m) => match self.receiver(recv, ctx)? {
+                TyRes::Local(c, t) => match self.method(c, &t, m) {
+                    Res::Fns(defs) => self.returned(&defs, depth),
+                    _ => None,
+                },
+                _ => None,
+            },
+            Hint::Field(base, f) => match self.receiver(base, ctx)? {
+                TyRes::Local(c, t) => {
+                    let (fi, ti) = self.one_type(c, &t)?;
+                    let (_, fh) = self.files[fi].ex.types[ti].fields.iter().find(|(n, _)| n == f)?;
+                    Some((fh.clone(), self.type_ctx(fi, ti)))
+                }
+                _ => None,
+            },
+            Hint::Unwrap(inner) => {
+                let (h, ctx) = self.expand(inner, ctx, depth + 1)?;
+                match h {
+                    Hint::Ty { segs, args } => {
+                        let last = segs.last()?;
+                        // `Result`, `Option`, and a crate's own `Result<T>` alias.
+                        if (last == "Option" || last.ends_with("Result")) && !args.is_empty() {
+                            let first = args.into_iter().next()?;
+                            self.expand(&first, &ctx, depth + 1)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    /// The declared return type of the one definition kept on the reference target.
+    fn returned(&self, defs: &[DefRef], depth: usize) -> Option<(Hint, Ctx)> {
+        let kept: Vec<DefRef> = defs.iter().copied().filter(|r| self.def(*r).reference != Tri::False).collect();
+        let [one] = kept.as_slice() else { return None };
+        let d = self.def(*one);
+        let ret = d.ret.clone()?;
+        let (c, module) = self.files[one.0].at.clone()?;
+        let mut m = module;
+        m.extend(d.mod_path.iter().cloned());
+        self.expand(&ret, &Ctx { c, module: m, self_type: d.owner.clone() }, depth + 1)
+    }
+
+    fn type_ctx(&self, fi: usize, ti: usize) -> Ctx {
+        let t = &self.files[fi].ex.types[ti];
+        let (c, mut module) = self.files[fi].at.clone().unwrap_or((0, Vec::new()));
+        module.extend(t.mod_path.iter().cloned());
+        Ctx { c, module, self_type: Some(t.name.clone()) }
+    }
+
+    /// A written type, resolved in the module it is written in.
+    fn ty(&self, h: &Hint, ctx: &Ctx) -> Option<TyRes> {
+        let (segs, dynamic) = match h {
+            Hint::Ty { segs, .. } => (segs, false),
+            Hint::Dyn(segs) => (segs, true),
+            _ => return None,
+        };
+        if segs.is_empty() {
+            return None;
+        }
+        match self.resolve_path(ctx.c, &ctx.module, ctx.self_type.as_deref(), segs, 0) {
+            Res::Type(c, t) if dynamic || self.traits.contains(&(c, t.clone())) => Some(TyRes::Trait(c, t)),
+            Res::Type(c, t) => Some(TyRes::Local(c, t)),
+            Res::Outside(p) if !p.is_empty() => Some(TyRes::Outside(p)),
+            _ => None,
+        }
     }
 
     /// How many types in this crate could answer `self.m()` in trait `t`'s default body.

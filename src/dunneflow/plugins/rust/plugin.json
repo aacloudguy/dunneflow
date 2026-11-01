@@ -70,6 +70,7 @@
     "src/main.rs",
     "src/rules.rs",
     "src/text.rs",
+    "src/types.rs",
     "vendor/proc-macro2/.cargo-checksum.json",
     "vendor/proc-macro2/.cargo_vcs_info.json",
     "vendor/proc-macro2/.github/FUNDING.yml",

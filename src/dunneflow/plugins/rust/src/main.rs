@@ -25,6 +25,7 @@ mod ids;
 mod json;
 mod rules;
 mod text;
+mod types;
 
 use json::{Frame, Value};
 use std::io::{BufRead, Write};

@@ -42,6 +42,7 @@ use crate::comments;
 use crate::facts::*;
 use crate::ids::{call_site_id, control_point_id, definition_id, entrypoint_id, hash_source};
 use crate::rules::{BoundaryRule, Rules};
+use crate::types::{self, Hint};
 
 pub const MODULE_SCOPE: &str = "<module>";
 const LITERAL_MIN: usize = 3;
@@ -69,6 +70,8 @@ pub struct Site {
     pub self_type: Option<String>,
     pub at_boundary: bool,
     pub bound_locally: bool,
+    /// What the receiver of `x.m()` is declared to be, where the source says (`types.rs`).
+    pub recv: Option<Hint>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +97,8 @@ pub struct Def {
     pub trait_name: Option<String>,
     /// `#[cfg]` evaluated against the reference target.
     pub reference: cfg::Tri,
+    /// The declared return type, where there is one.
+    pub ret: Option<Hint>,
 }
 
 /// One name a `use` brings into scope.
@@ -124,8 +129,11 @@ pub struct TypeDef {
     pub name: String,
     pub qualname: String,
     pub line: i64,
+    pub mod_path: Vec<String>,
     pub tuple: bool,
     pub variants: Vec<String>,
+    /// Named fields and their declared types, for `self.db.m()`.
+    pub fields: Vec<(String, Hint)>,
 }
 
 #[derive(Default)]
@@ -209,7 +217,7 @@ struct Ex<'a> {
     /// Names each open routine binds itself — its parameters and every `let` — innermost
     /// last. Over the whole routine rather than per block, which declines a few calls it
     /// could have resolved and never resolves one it should not (rule 1).
-    locals: Vec<HashSet<String>>,
+    locals: Vec<HashMap<String, Option<Hint>>>,
     sites: Vec<Site>,
     defs: Vec<Def>,
     uses: Vec<UseRec>,
@@ -373,6 +381,7 @@ impl<'a> Ex<'a> {
                     owner: None,
                     trait_name: None,
                     reference: cfg::item(&f.attrs, cfg::REFERENCE),
+                    ret: ret_hint(&f.sig),
                 });
                 let public = matches!(f.vis, Visibility::Public(_));
                 let r = self.routine(
@@ -420,6 +429,7 @@ impl<'a> Ex<'a> {
                                 trait_name: tr.clone(),
                                 reference: cfg::item(&m.attrs, cfg::REFERENCE)
                                     .and(cfg::item(&imp.attrs, cfg::REFERENCE)),
+                                ret: ret_hint(&m.sig),
                             });
                             // A trait's method is as visible as the trait, whatever the impl
                             // writes (it can write nothing).
@@ -459,6 +469,7 @@ impl<'a> Ex<'a> {
                                 owner: Some(name.clone()),
                                 trait_name: Some(name.clone()),
                                 reference: cfg::item(&m.attrs, cfg::REFERENCE),
+                                ret: ret_hint(&m.sig),
                             });
                             self.routine(
                                 &m.sig, Some(body), &m.attrs, true,
@@ -485,8 +496,13 @@ impl<'a> Ex<'a> {
                     name: name.clone(),
                     qualname: format!("{}.{}", self.prefix(), name),
                     line: ds.line,
+                    mod_path: self.mod_path.clone(),
                     tuple: matches!(s.fields, syn::Fields::Unnamed(_)),
                     variants: Vec::new(),
+                    fields: s.fields.iter().enumerate().filter_map(|(i, f)| {
+                        let name = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_else(|| i.to_string());
+                        types::type_hint(&f.ty).map(|h| (name, h))
+                    }).collect(),
                 });
                 self.facts.classes.push(ClassDef_ {
                     name: name.clone(),
@@ -529,7 +545,9 @@ impl<'a> Ex<'a> {
                     name: name.clone(),
                     qualname: format!("{}.{}", self.prefix(), name),
                     line: ds.line,
+                    mod_path: self.mod_path.clone(),
                     tuple: false,
+                    fields: Vec::new(),
                     variants: e.variants.iter()
                         .filter(|v| matches!(v.fields, syn::Fields::Unnamed(_)))
                         .map(|v| v.ident.to_string()).collect(),
@@ -702,10 +720,17 @@ impl<'a> Ex<'a> {
         if sig.variadic.is_some() {
             r.params.push(Param { name: "...".into(), kind: "vararg".into(), ..Default::default() });
         }
-        let mut bound: HashSet<String> = r.params.iter().map(|p| p.name.clone()).collect();
-        if let Some(b) = body {
-            collect_lets(b, &mut bound);
-        }
+        let typed: Vec<(String, Option<Hint>)> = sig.inputs.iter().filter_map(|a| match a {
+            FnArg::Typed(pt) => match &*pt.pat {
+                Pat::Ident(pi) => Some((pi.ident.to_string(), types::type_hint(&pt.ty))),
+                _ => None,
+            },
+            FnArg::Receiver(_) => None,
+        }).collect();
+        let bound = match body {
+            Some(b) => types::bindings(&typed, b),
+            None => typed.into_iter().collect(),
+        };
         self.routines.push(r);
         let idx = self.routines.len() - 1;
         self.scope.push(idx);
@@ -824,6 +849,11 @@ impl<'a> Ex<'a> {
     }
 
     fn call(&mut self, expr: String, kind: SiteKind, path: Vec<String>, span: Span, args: &[&Expr]) {
+        self.call_with(expr, kind, path, span, args, None);
+    }
+
+    fn call_with(&mut self, expr: String, kind: SiteKind, path: Vec<String>, span: Span,
+                 args: &[&Expr], recv: Option<Hint>) {
         if expr.is_empty() {
             return;
         }
@@ -836,7 +866,7 @@ impl<'a> Ex<'a> {
         // closure, a function pointer, a parameter — and never to a function elsewhere
         // that shares the name (`CallSite.bound_locally`, schema 16).
         let bound = kind == SiteKind::Path && path.len() == 1
-            && self.locals.last().is_some_and(|l| l.contains(&path[0]));
+            && self.locals.last().is_some_and(|l| l.contains_key(&path[0]));
         let (caller, site_id) = self.record_call(&expr, line, rule.is_some(), call_args);
         if bound {
             if let Some(c) = self.facts.calls.last_mut() {
@@ -869,6 +899,7 @@ impl<'a> Ex<'a> {
             self_type: self.imp.as_ref().map(|(t, _)| t.clone()),
             at_boundary: rule.is_some(),
             bound_locally: bound,
+            recv,
         });
     }
 
@@ -1084,7 +1115,14 @@ impl<'ast> Visit<'ast> for Walker<'_, '_> {
         let expr = if base.is_empty() { String::new() } else { format!("{base}.{}", m.method) };
         let kind = if is_self(&m.receiver) { SiteKind::SelfMethod } else { SiteKind::Method };
         let args: Vec<&Expr> = m.args.iter().collect();
-        self.ex.call(expr, kind, vec![m.method.to_string()], m.span(), &args);
+        let recv = match kind {
+            SiteKind::Method => {
+                let empty = HashMap::new();
+                types::expr_hint(&m.receiver, self.ex.locals.last().unwrap_or(&empty))
+            }
+            _ => None,
+        };
+        self.ex.call_with(expr, kind, vec![m.method.to_string()], m.span(), &args, recv);
         self.visit_expr(&m.receiver);
         for a in &m.args {
             self.visit_expr(a);
@@ -1177,18 +1215,12 @@ impl<'ast> Visit<'ast> for Walker<'_, '_> {
 
 // ------------------------------------------------------------------ helpers --- //
 
-/// Every name a `let` (or a closure's parameter) binds anywhere in a body, not descending
-/// into nested items, which are routines of their own.
-fn collect_lets(b: &syn::Block, out: &mut HashSet<String>) {
-    struct Lets<'o>(&'o mut HashSet<String>);
-    impl<'ast> Visit<'ast> for Lets<'_> {
-        fn visit_item(&mut self, _: &'ast Item) {}
-        fn visit_pat_ident(&mut self, p: &'ast syn::PatIdent) {
-            self.0.insert(p.ident.to_string());
-            visit::visit_pat_ident(self, p);
-        }
+/// A signature's declared return type, as a hint. `-> ()` and no `->` are no type at all.
+fn ret_hint(sig: &syn::Signature) -> Option<Hint> {
+    match &sig.output {
+        ReturnType::Default => None,
+        ReturnType::Type(_, t) => types::type_hint(t),
     }
-    Lets(out).visit_block(b);
 }
 
 fn item_attrs(item: &Item) -> Option<&[Attribute]> {

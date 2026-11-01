@@ -79,3 +79,44 @@ impl Rules {
         r
     }
 }
+
+impl BoundaryRule {
+    /// `BoundaryRule.matches_call`: the four tests and nothing else.
+    pub fn matches_call(&self, dotted: &str) -> bool {
+        if dotted.is_empty() {
+            return false;
+        }
+        if self.exact.iter().any(|x| x == dotted) {
+            return true;
+        }
+        if self.prefix.iter().any(|p| dotted.starts_with(p.as_str())) {
+            return true;
+        }
+        if self.contains.iter().any(|c| dotted.contains(c.as_str())) {
+            return true;
+        }
+        // A bare name is a plain function call, not a method on something.
+        if let Some(i) = dotted.rfind('.') {
+            if self.method.iter().any(|m| m == &dotted[i + 1..]) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl Rules {
+    /// The first matching rule, so order in the YAML is meaningful.
+    pub fn match_call(&self, dotted: &str) -> Option<&BoundaryRule> {
+        self.boundaries.iter().find(|b| b.matches_call(dotted))
+    }
+
+    /// `RuleSet.network_profile`, including the clause that makes a bare key exact: a key
+    /// with a dot is a prefix and a key without one is a name (rule 5).
+    pub fn match_network(&self, dotted: &str) -> Option<&NetLibrary> {
+        if dotted.is_empty() {
+            return None;
+        }
+        self.net.iter().find(|n| dotted == n.prefix || (n.prefix.contains('.') && dotted.starts_with(n.prefix.as_str())))
+    }
+}

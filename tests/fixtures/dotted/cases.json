@@ -10,7 +10,8 @@
     "the reader must record **no call at all** — rule 3, where the chain cannot be named.",
     "A case with no snippet for a language is a rule that language has no syntax for; the",
     "runner names it unexercised and never counts it as passing.",
-    "Go has no syntax for clauses 5, 7 and 8: no optional chain, no constructor (`new(T)` is a builtin call and `T{}` is not a call at all), and a receiver named per method rather than a fixed word."
+    "Go has no syntax for clauses 5, 7 and 8: no optional chain, no constructor (`new(T)` is a builtin call and `T{}` is not a call at all), and a receiver named per method rather than a fixed word.",
+    "Rust has no syntax for clauses 5 and 7: no optional chain (`?` propagates an error and is read as nullability is, by taking it off), and no constructor (`Foo { .. }` runs no code and is not a call; `Foo::new()` is an ordinary call to `Foo.new`). It adds one spelling the contract did not have: a macro keeps its `!`."
   ],
   "cases": [
     {
@@ -21,7 +22,8 @@
       "source": {
         "python": "import a\na.b.c()\n",
         "typescript": "declare const a: { b: { c(): void } };\na.b.c();\n",
-        "go": "package p\n\nfunc f() {\n\ta.b.c()\n}\n"
+        "go": "package p\n\nfunc f() {\n\ta.b.c()\n}\n",
+        "rust": "fn f() {\n    a::b::c();\n}\n"
       }
     },
     {
@@ -32,7 +34,8 @@
       "source": {
         "python": "def helper():\n    pass\n\nhelper()\n",
         "typescript": "function helper(): void {}\nhelper();\n",
-        "go": "package p\n\nfunc helper() {}\n\nfunc f() {\n\thelper()\n}\n"
+        "go": "package p\n\nfunc helper() {}\n\nfunc f() {\n\thelper()\n}\n",
+        "rust": "fn helper() {}\n\nfn f() {\n    helper();\n}\n"
       }
     },
     {
@@ -43,7 +46,8 @@
       "source": {
         "python": "from pathlib import Path\n\ndef f(p):\n    return Path(p).read_text()\n",
         "typescript": "declare function Path(p: string): { read_text(): string };\nexport function f(p: string) {\n  return Path(p).read_text();\n}\n",
-        "go": "package p\n\nfunc f(p string) {\n\tPath(p).read_text()\n}\n"
+        "go": "package p\n\nfunc f(p string) {\n\tPath(p).read_text()\n}\n",
+        "rust": "fn f(p: &str) {\n    Path(p).read_text();\n}\n"
       }
     },
     {
@@ -54,7 +58,8 @@
       "source": {
         "python": "import a\na.b(1).c(2).d()\n",
         "typescript": "declare const a: any;\na.b(1).c(2).d();\n",
-        "go": "package p\n\nfunc f() {\n\ta.b(1).c(2).d()\n}\n"
+        "go": "package p\n\nfunc f() {\n\ta.b(1).c(2).d()\n}\n",
+        "rust": "fn f() {\n    a.b(1).c(2).d();\n}\n"
       }
     },
     {
@@ -65,7 +70,8 @@
       "source": {
         "python": "d = {}\nd['k']()\n",
         "typescript": "const d: Record<string, () => void> = {};\nd['k']();\n",
-        "go": "package p\n\nfunc f() {\n\td[\"k\"]()\n}\n"
+        "go": "package p\n\nfunc f() {\n\td[\"k\"]()\n}\n",
+        "rust": "fn f() {\n    d[\"k\"]();\n}\n"
       }
     },
     {
@@ -76,7 +82,8 @@
       "source": {
         "python": "import reg\nreg.handlers['x'].run()\n",
         "typescript": "declare const reg: any;\nreg.handlers['x'].run();\n",
-        "go": "package p\n\nfunc f() {\n\treg.handlers[\"x\"].run()\n}\n"
+        "go": "package p\n\nfunc f() {\n\treg.handlers[\"x\"].run()\n}\n",
+        "rust": "fn f() {\n    reg.handlers[\"x\"].run();\n}\n"
       }
     },
     {
@@ -87,7 +94,8 @@
       "source": {
         "python": "import numpy as np\nnp.array([1])\n",
         "typescript": "import * as np from 'numpy';\nnp.array([1]);\n",
-        "go": "package p\n\nimport np \"example.com/numpy\"\n\nfunc f() {\n\tnp.array(1)\n}\n"
+        "go": "package p\n\nimport np \"example.com/numpy\"\n\nfunc f() {\n\tnp.array(1)\n}\n",
+        "rust": "use numpy as np;\n\nfn f() {\n    np::array(1);\n}\n"
       }
     },
     {
@@ -98,7 +106,8 @@
       "source": {
         "python": "from json import loads\nloads('{}')\n",
         "typescript": "import { loads } from 'json';\nloads('{}');\n",
-        "go": "package p\n\nimport . \"example.com/json\"\n\nfunc f() {\n\tloads(\"{}\")\n}\n"
+        "go": "package p\n\nimport . \"example.com/json\"\n\nfunc f() {\n\tloads(\"{}\")\n}\n",
+        "rust": "use json::loads;\n\nfn f() {\n    loads(\"{}\");\n}\n"
       }
     },
     {
@@ -117,7 +126,8 @@
       "why": "a type argument is not part of the name",
       "source": {
         "typescript": "declare function foo<T>(): void;\nfoo<string>();\n",
-        "go": "package p\n\nfunc f() {\n\tfoo[string]()\n}\n"
+        "go": "package p\n\nfunc f() {\n\tfoo[string]()\n}\n",
+        "rust": "fn f() {\n    foo::<String>();\n}\n"
       }
     },
     {
@@ -136,7 +146,8 @@
       "expect": "self.other",
       "why": "the receiver word as written; each language declares its own in receiver_words",
       "source": {
-        "python": "class C:\n    def m(self):\n        self.other()\n\n    def other(self):\n        pass\n"
+        "python": "class C:\n    def m(self):\n        self.other()\n\n    def other(self):\n        pass\n",
+        "rust": "struct S;\n\nimpl S {\n    fn f(&self) {\n        self.other();\n    }\n}\n"
       }
     },
     {
@@ -155,6 +166,15 @@
       "why": "TypeScript's receiver word is `this`, written as written and never expanded",
       "source": {
         "typescript": "class C {\n  m(): void {\n    this.other();\n  }\n\n  other(): void {}\n}\n"
+      }
+    },
+    {
+      "id": "macro-bang",
+      "rule": 1,
+      "expect": "println!",
+      "why": "Rust: a macro is not a function and is spelt with its `!`, so no rule written for a function of the same name can match it (rules 3 and 5).",
+      "source": {
+        "rust": "fn f() {\n    println!(\"{}\", 1);\n}\n"
       }
     }
   ]

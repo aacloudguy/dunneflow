@@ -48,7 +48,10 @@ from typing import Literal
 # 16: `CallSite.bound_locally`, and `calls.constructs`. A bare call to a name the routine
 #     binds itself is not a call to whatever else in the program shares the name, and a
 #     call that builds one of this program's own classes is not external (BACKLOG 24, 14).
-SCHEMA_VERSION = 16
+# 17: `FileFacts.tests_dropped` -- test code a reader leaves out *inside* a file, for Rust's
+#     `#[cfg(test)] mod tests`; and, with the Tauri edge, a way in a client in the same
+#     application calls by name, and the link that names it.
+SCHEMA_VERSION = 17
 
 
 # --------------------------------------------------------------------------- #
@@ -912,6 +915,13 @@ class FileFacts:
     # filter nobody can see is design rule 1's subject, and this one runs in a process the
     # host cannot look inside.
     literals_dropped: int = 0
+    # Items a reader left out **inside** a file because they are test code: Rust's
+    # `#[cfg(test)] mod tests` and `#[test] fn`, which are that language's test file
+    # written into the program file. The walk leaves test *files* out and counts them; a
+    # reader that leaves test *items* out has to say so the same way, or a map of a tree
+    # that keeps its tests inline reads as one with none (design rule 1). Added for Rust,
+    # with schema 17.
+    tests_dropped: int = 0
     errors: list[str] = field(default_factory=list)
 
 

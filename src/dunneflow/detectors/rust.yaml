@@ -189,8 +189,16 @@ unawaited_async: inert
 # not fire, which is the declared answer rather than a default (rule 49).
 redefinition: ""
 
-# `fn main` in a binary crate's root, and never a method: the reader enforces both.
+# `fn main` at a file's top level, and never a method or a function inside a module: the
+# reader enforces both. `build.rs` is left out: Cargo's build script is a way into the
+# build, not into the program it builds.
 entry_names: [main]
+
+# **A binary's file runs its `main`, never its top level.** A `[[bin]]` in `Cargo.toml` names
+# a file, and the way in it declares is that file's `fn main` (`RuleSet.file_entry`). Python
+# and TypeScript leave this out, and their binaries run the module scope, which is where
+# their code runs.
+file_entry: main
 
 # The prelude, and the std macros a program cannot shadow by accident. A bare call to one
 # of these is never a routine of yours (rule 3) even where a crate declares a function of

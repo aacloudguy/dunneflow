@@ -291,6 +291,17 @@ class RuleSet:
     # **Empty means the detector does not fire**, as above. A language nobody has answered
     # this for gets no claim made on its behalf.
     redefinition: str = ""
+    # **What a file runs when a manifest says it is a program.** A `bin` in `package.json`
+    # or a `[[bin]]` in `Cargo.toml` names a file, and for Python and TypeScript what runs
+    # is that file's top level, so the way in is its module scope. A Rust file's top level
+    # runs nothing at all: `fn main` does. Bound to the module scope, every Rust binary DunneNote
+    # declares would reach nothing while its `main` reached the whole program — a claim
+    # about somebody else's program that is not true, and a branch on the language in
+    # `resolve/entrypoints.py` would be the host naming one (rule 98's remedy: declare it).
+    #
+    # **Empty means the module scope**, which is the answer every language had before this
+    # key existed; a name means the routine of that name at the file's top level.
+    file_entry: str = ""
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
         """(protocol, is_async_library) for a call, by longest matching prefix.
@@ -526,6 +537,7 @@ def load_rules(lang: str) -> RuleSet:
         builtins=_builtins(data.get("builtins", []) or [], lang, path),
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
         redefinition=_redefinition(data.get("redefinition", ""), lang, path),
+        file_entry=_file_entry(data.get("file_entry", ""), lang, path),
     )
 
 
@@ -564,6 +576,20 @@ def _redefinition(raw: Any, lang: str, path: Path) -> str:
         raise RulesMissing(
             f"the {lang} rules at {path} declare `redefinition` as {raw!r}; it has to "
             f"be one of {', '.join(_REDEFINITION)}, or be left out to say nobody has decided"
+        )
+    return raw
+
+
+def _file_entry(raw: Any, lang: str, path: Path) -> str:
+    """A routine's name, or nothing. Refused rather than read if it is anything else,
+    because a way in bound to a name nobody can define is a declared program that leads
+    nowhere, said about every program in that language (rule 49)."""
+    if raw in ("", None):
+        return ""
+    if not isinstance(raw, str) or not raw.isidentifier():
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `file_entry` as {raw!r}; it has to be the "
+            f"name of a function, or be left out to mean the file's top level"
         )
     return raw
 

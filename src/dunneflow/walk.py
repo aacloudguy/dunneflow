@@ -160,6 +160,12 @@ class WalkStats:
     # process the host cannot look inside, so the count is the only way it can be seen at
     # all. It is per language because the bound is applied by each reader in turn.
     literals_dropped: dict[str, int] = field(default_factory=dict)
+    # Language -> test items a reader left out **inside** files it read: Rust's
+    # `#[cfg(test)] mod tests` and `#[test] fn`. `tests_excluded`'s claim one level down,
+    # and listed beside it, because a tree that keeps its tests inline would otherwise read
+    # as one with none (design rule 1). Counted as `literals_dropped` is -- off the files
+    # this run read -- so a warm run that read none of them says nothing.
+    tests_dropped: dict[str, int] = field(default_factory=dict)
     # Language -> files this build can read and was told not to. **Its own counter and
     # never `unclaimed`'s**, because they are two different facts that look identical in a
     # map (design rule 21): *no reader here claims `.go`* is answered by a build that has
@@ -250,6 +256,11 @@ def walk_residue(stats: WalkStats) -> list[str]:
                            for lang, n in sorted(stats.tests_excluded.items()))
         out.append(f"left out as tests: {listed} — analyse again with --include-tests "
                    f"to read them")
+    if stats.tests_dropped:
+        listed = ", ".join(f"{n:,} {lang}"
+                           for lang, n in sorted(stats.tests_dropped.items()))
+        out.append(f"test code inside source files left out: {listed} — items the reader "
+                   f"marks as tests; --include-tests reads test files, not these")
     if stats.lang_skipped:
         listed = ", ".join(f"{n:,} {lang}"
                            for lang, n in sorted(stats.lang_skipped.items()))
@@ -904,6 +915,10 @@ def analyze_tree(
                     if ff.literals_dropped:
                         stats.literals_dropped[lang] = (
                             stats.literals_dropped.get(lang, 0) + ff.literals_dropped
+                        )
+                    if ff.tests_dropped:
+                        stats.tests_dropped[lang] = (
+                            stats.tests_dropped.get(lang, 0) + ff.tests_dropped
                         )
                     store.write_file_facts(ff)
                     store.settle_if_large()

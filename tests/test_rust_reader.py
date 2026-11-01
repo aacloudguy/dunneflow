@@ -151,3 +151,229 @@ def test_paths_and_modules_are_spelled_as_every_reader_spells_them(read):
     assert set(facts) == {"main.rs", "broken.rs", "src/net/mod.rs"}
     assert facts["src/net/mod.rs"].module == "src.net.mod"
     assert all(ff.lang == "rust" for ff in facts.values())
+
+
+# ------------------------------------------------------------- the facts ------ #
+
+SNIPPETS = {
+    "lib.rs": '''//! The store.
+
+use std::fs::{self, File as F};
+use crate::net::*;
+
+/// Keeps the orders.
+pub struct Store {
+    /// the handle
+    pub path: String,
+}
+
+pub enum Color { Red = 1, Blue }
+
+pub trait Saver {
+    fn save(&self) -> bool { self.flush() }
+    fn flush(&self) -> bool;
+}
+
+impl Store {
+    /// Opens one.
+    pub fn open(path: &str) -> Self {
+        let _ = fs::read_to_string(path); // read it
+        Store { path: path.to_owned() }
+    }
+
+    fn helper(&self) {}
+}
+
+impl std::fmt::Display for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { write!(f, "{}", self.path) }
+}
+
+impl std::fmt::Debug for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { Ok(()) }
+}
+
+mod inner {
+    pub fn deep() {
+        fn nested() {}
+        nested();
+    }
+}
+
+#[tauri::command]
+async fn fetch(url: String) {
+    reqwest::get(&url);
+    let kept = reqwest::get(&url);
+    kept.await;
+}
+
+fn dispatch(x: Option<u8>) -> u8 {
+    with_unlocked!(state, |s| { s.unlock(); helper_call(s) });
+    match x {
+        Some(1) => 1,
+        Some(n) if n > 5 => n,
+        _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {}
+}
+
+#[test]
+fn stray_test() {}
+''',
+    "build.rs": "fn main() { println!(\"cargo:rerun-if-changed=x\"); }\n",
+    "bom.rs": "﻿#!/usr/bin/env run-cargo-script\nfn main() { std::env::var(\"HOME\"); }\n",
+}
+
+
+@pytest.fixture(scope="module")
+def facts(tmp_path_factory):
+    if PLUGIN is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    root = tmp_path_factory.mktemp("rustfacts")
+    for name, text in SNIPPETS.items():
+        (root / name).write_text(text, encoding="utf-8")
+    files = sorted(root.rglob("*.rs"))
+    PLUGIN.probe()
+    PLUGIN.open(root, files)
+    try:
+        return {ff.path: ff for ff in PLUGIN.extract(files, root)}
+    finally:
+        PLUGIN.close()
+
+
+def _routines(ff):
+    return {r.qualname: r for r in ff.routines}
+
+
+def test_a_trait_method_carries_its_trait_so_two_fmts_are_two_routines(facts):
+    rs = _routines(facts["lib.rs"])
+    assert "lib.Store.Display.fmt" in rs and "lib.Store.Debug.fmt" in rs
+    assert "lib.Store.open" in rs and "lib.Store.helper" in rs
+    assert rs["lib.Store.helper"].is_method and not rs["lib.Store.open"].is_method
+    assert rs["lib.Store.open"].class_name == "Store"
+    assert rs["lib.Saver.save"].class_name == "Saver", "a trait's default body is a routine"
+    assert "lib.Saver.flush" not in rs, "a declaration with no body is not a routine"
+
+
+def test_an_inline_module_and_a_nested_function_are_segments(facts):
+    rs = _routines(facts["lib.rs"])
+    assert "lib.inner.deep" in rs
+    assert rs["lib.inner.deep.nested"].is_nested
+
+
+def test_test_code_inside_a_file_is_left_out_and_counted(facts):
+    ff = facts["lib.rs"]
+    assert not any("it_works" in q or "stray_test" in q for q in _routines(ff))
+    assert ff.tests_dropped == 2, "the `mod tests` and the stray `#[test]`, one each"
+
+
+def test_every_routine_declares_what_it_returns(facts):
+    """No `->` is `()`, never *undeclared* — Go's `MISSING_RETURN_TYPE` lesson (rule 98)."""
+    rs = _routines(facts["lib.rs"])
+    assert rs["lib.inner.deep"].returns == ""
+    assert rs["lib.Store.open"].returns == "Self"
+    assert rs["lib.Store.open"].docstring == "Opens one."
+    assert rs["lib.Store.open"].visibility == "public"
+    assert rs["lib.Store.helper"].visibility == "private"
+    assert rs["lib.Store.Display.fmt"].visibility == "public", "a trait method is the trait's"
+    assert rs["lib.fetch"].decorators == ["tauri.command"] and rs["lib.fetch"].is_async
+
+
+def test_a_macro_s_arguments_are_code_and_its_name_keeps_its_bang(facts):
+    calls = {c.callee_expr for c in facts["lib.rs"].calls}
+    assert {"with_unlocked!", "s.unlock", "helper_call", "write!"} <= calls
+    assert "Store" not in calls, "a struct literal runs no constructor and is not a call"
+
+
+def test_a_discarded_future_is_unawaited_and_a_bound_one_is_not(facts):
+    """`inert`: only a future whose value is thrown away never runs."""
+    net = [(n.expr, n.line, n.awaited) for n in facts["lib.rs"].network]
+    assert [a for _, _, a in net] == [False, True], net
+    assert all(n.in_async_routine for n in facts["lib.rs"].network)
+
+
+def test_structures_imports_and_comments(facts):
+    ff = facts["lib.rs"]
+    kinds = {s.name: s.kind.value for s in ff.structures}
+    assert kinds == {"Store": "CLASS", "Color": "ENUM", "Saver": "INTERFACE"}
+    color = next(s for s in ff.structures if s.name == "Color")
+    assert [(f.name, f.default) for f in color.fields] == [("Red", "1"), ("Blue", None)]
+    assert ff.doc == "The store."
+    imports = {(i.module, i.name, i.alias) for i in ff.imports}
+    assert ("std", "fs", "") in imports and ("std::fs", "File", "F") in imports
+    assert ("crate", "net", "") in imports, "a glob imports its module"
+    open_ = _routines(ff)["lib.Store.open"]
+    assert [c.text for c in open_.comments] == ["read it"]
+
+
+def test_a_match_is_a_decision_with_its_arms(facts):
+    ff = facts["lib.rs"]
+    m = next(p for p in ff.control if p.word == "match")
+    arms = [(a.kind.value, a.header) for a in ff.control_arms if a.point_id == m.point_id]
+    assert arms == [("case", "Some(1)"), ("case", "Some(n) if n > 5"), ("default", "")]
+
+
+def test_a_build_script_is_not_a_way_into_the_program(facts):
+    assert facts["build.rs"].entrypoints == []
+
+
+def test_a_bom_and_a_shebang_move_no_offset(facts):
+    """`syn` strips both and reports offsets into what is left; the reader strips them
+    itself so a byte range is into the file the host read (rule 75's shape)."""
+    ff = facts["bom.rs"]
+    assert ff.errors == []
+    [b] = ff.boundaries
+    assert (b.kind.value, b.target, b.line) == ("ENV", "HOME", 2)
+    assert [e.name for e in ff.entrypoints] == ["main"]
+
+
+# -------------------------------------------------- through the whole walk ---- #
+
+@needs_plugin
+@needs_cargo
+def test_a_declared_binary_runs_its_main_and_not_its_top_level(tmp_path):
+    """`file_entry: main`. Bound to the module scope, DunneNote's three binaries reached
+    nothing while their `main`s reached the program (`RuleSet.file_entry`)."""
+    from dunneflow import walk
+    from dunneflow.resolve import manifests
+    from dunneflow.resolve.entrypoints import entrypoints_from_manifests
+    from dunneflow.store import Store
+
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "host"\n[[bin]]\nname = "host"\n')
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.rs").write_text("fn main() {\n    run();\n}\n\nfn run() {}\n")
+    store = Store(tmp_path / "g.db")
+    stats = walk.analyze_tree(tmp_path, store)
+    _, found = manifests.find_package_root(tmp_path)
+    readings = manifests.read_all(found, stats.manifests, relative_to=tmp_path)
+    eps = entrypoints_from_manifests(readings, store)
+    bound = store.query("SELECT qualname FROM routines WHERE id = ?", (eps[0].routine_id,))
+    assert [r["qualname"] for r in bound] == ["src.main.main"]
+    store.close()
+
+
+@needs_plugin
+@needs_cargo
+def test_test_code_inside_files_reaches_the_report(tmp_path):
+    from dunneflow import walk
+    from dunneflow.store import Store
+
+    (tmp_path / "lib.rs").write_text("pub fn a() {}\n#[cfg(test)]\nmod tests {}\n")
+    store = Store(tmp_path / "g.db")
+    stats = walk.analyze_tree(tmp_path, store)
+    store.close()
+    assert stats.tests_dropped == {"rust": 1}
+    assert any(line.startswith("test code inside source files left out: 1 rust")
+               for line in walk.walk_residue(stats)), walk.walk_residue(stats)
+
+
+def test_file_entry_is_a_name_or_it_is_refused(tmp_path):
+    from dunneflow.detectors import RulesMissing, _file_entry
+
+    assert _file_entry("", "x", tmp_path) == "" and _file_entry("main", "x", tmp_path) == "main"
+    with pytest.raises(RulesMissing):
+        _file_entry("src/main.rs", "x", tmp_path)

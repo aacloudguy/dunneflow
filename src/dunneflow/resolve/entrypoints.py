@@ -131,9 +131,28 @@ def _target_file(store: Store, where: str, target: str) -> str | None:
     separators are too -- both `package.json` and `Cargo.toml` spell a path with forward
     slashes whatever platform wrote the file.
     """
+    rel = _resolved(where, target)
+    # **What runs is the language's to say** (`RuleSet.file_entry`): a Rust binary's file
+    # runs its `main`, never its top level. Read per file off `files.lang`, as
+    # `unawaited_async` is, so nothing here names a language.
+    lang = store.query("SELECT lang FROM files WHERE path = ?", (rel,))
+    entry = ""
+    if lang and lang[0]["lang"]:
+        from ..detectors import load_rules
+
+        entry = load_rules(str(lang[0]["lang"])).file_entry
+    if entry:
+        row = store.query(
+            "SELECT r.id FROM routines r WHERE r.file = ? AND r.name = ?"
+            " AND r.qualname = (SELECT module FROM files WHERE path = ?) || '.' || r.name"
+            " ORDER BY r.line_start LIMIT 1",
+            (rel, entry, rel),
+        )
+        if row:
+            return str(row[0]["id"])
     row = store.query(
         "SELECT id FROM routines WHERE file = ? AND name = '<module>' LIMIT 1",
-        (_resolved(where, target),),
+        (rel,),
     )
     return str(row[0]["id"]) if row else None
 

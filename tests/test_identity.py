@@ -135,8 +135,9 @@ def test_two_languages_in_one_directory_do_not_collide_on_an_id(tmp_path):
     """The tree that could not be analysed at all, analysed — rule 106.
 
     `tests/fixtures/polyglot/` holds `probe.py`, `probe.ts`, `probe.cpp`, `probe.kt` and,
-    since 2026-11-01, `probe.go`. Every reader derives a module name from the path with the
-    suffix dropped, so all five are module `probe` and four of them declare `probe.main`.
+    since 2026-11-01, `probe.go` and `probe.rs`. Every reader derives a module name from the
+    path with the suffix dropped, so all six are module `probe` and five of them declare
+    `probe.main`.
     Keyed on the name alone that was one id in three languages, and the store said so:
 
         sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
@@ -154,11 +155,11 @@ def test_two_languages_in_one_directory_do_not_collide_on_an_id(tmp_path):
     assert len({r["id"] for r in rows}) == len(rows), "two definitions share one identity"
 
     mains = sorted(r["lang"] for r in rows if r["qualname"] == "probe.main")
-    assert mains == ["go", "kotlin", "python", "typescript"], (
-        "one module name, one routine name, four languages — all four must be here"
+    assert mains == ["go", "kotlin", "python", "rust", "typescript"], (
+        "one module name, one routine name, five languages — all five must be here"
     )
     settings = list(store.query("SELECT id FROM structures WHERE name = 'Setting'"))
-    assert len({r["id"] for r in settings}) == len(settings) == 4
+    assert len({r["id"] for r in settings}) == len(settings) == 5
     store.close()
 
 

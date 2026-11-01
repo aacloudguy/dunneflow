@@ -16,6 +16,8 @@
 //! record, because a reader that has just crashed on a file is not the right authority on
 //! what that file is.
 
+mod cfg;
+mod comments;
 mod edges;
 mod extract;
 mod facts;

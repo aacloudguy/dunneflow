@@ -3,7 +3,7 @@
   "display": "Python",
   "version": "1.2.0",
   "protocol": 1,
-  "schema_version": 16,
+  "schema_version": 17,
   "rules": "python.yaml",
   "in_process": true,
   "reader": "extractors/python",

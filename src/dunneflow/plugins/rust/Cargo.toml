@@ -5,17 +5,20 @@
 # `build`), so reading Rust never fetches anything (design rule 14). Every file here is in
 # the fingerprint, by name; `tools/gen_facts_rs.py --write` keeps that list.
 #
-# No serde and no `quote`: the wire is written by `src/json.rs` and `src/facts.rs`, which
-# is generated from `schema.py`.
+# No serde: the wire is written by `src/json.rs` and `src/facts.rs`, which
+# is generated from `schema.py`. `quote` is here only because `syn`'s `Spanned` (a node's whole
+# source span, which every header and argument is read from) needs `printing`.
 
 [package]
 name = "dunneflow-rust-reader"
 version = "0.1.0"
 edition = "2021"
+# plugin.json's `min_version`, said where clippy reads it.
+rust-version = "1.79"
 publish = false
 
 [dependencies]
-syn = { version = "2", default-features = false, features = ["full", "parsing", "visit"] }
+syn = { version = "2", default-features = false, features = ["full", "parsing", "printing", "visit"] }
 proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
 
 [profile.release]

@@ -3,7 +3,7 @@
   "display": "Go",
   "version": "0.1.0",
   "protocol": 1,
-  "schema_version": 16,
+  "schema_version": 17,
   "rules": "go.yaml",
   "in_process": false,
   "workers": 1,

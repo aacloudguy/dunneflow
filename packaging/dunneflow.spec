@@ -254,10 +254,16 @@ def _plugin_files() -> list[tuple[str, str]]:
     the bytes its language's stamp is computed from. A file a plugin needs at runtime and
     does not fingerprint is a file whose change does not discard a map (rule 12), so there
     is deliberately no third category.
+
+    **A name keeps its directory.** Until Rust every fingerprinted file sat beside its
+    manifest, so every one was shipped to the plugin's own directory — and a vendored crate
+    tree is a hundred files of which a dozen are called `lib.rs` and `mod.rs`, which would
+    have overwritten one another in the bundle and passed every gate here, because each
+    name *is* present. Each lands where `_tree` would put it.
     """
     out: list[tuple[str, str]] = []
     for manifest in sorted((PKG / "plugins").glob("*/plugin.json")):
-        dest = f"dunneflow/plugins/{manifest.parent.name}"
+        base = f"dunneflow/plugins/{manifest.parent.name}"
         wanted = {"plugin.json"}
         wanted.update(json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint", []))
         for name in sorted(wanted):
@@ -268,7 +274,8 @@ def _plugin_files() -> list[tuple[str, str]]:
                     f"has no such file at {path}. A plugin ships the bytes it is stamped "
                     f"from; build it before building the application."
                 )
-            out.append((str(path), dest))
+            parent = Path(name).parent.as_posix()
+            out.append((str(path), base if parent == "." else f"{base}/{parent}"))
     return out
 
 

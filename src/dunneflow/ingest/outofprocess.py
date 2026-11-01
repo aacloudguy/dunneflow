@@ -94,10 +94,17 @@ def built_reader(manifest: PluginManifest) -> Path:
     at once can both build and neither can run a half-written file: the rename is atomic
     and the loser's copy simply replaces an identical one.
 
-    The build runs with `GOTOOLCHAIN=local` and `GOFLAGS` emptied, which are Go's names
-    and are inert for any other toolchain. Without the first, a `go.mod` that asks for a
-    newer Go than the one installed makes `go` **download one**, and egress is scoped,
-    never a side effect of reading somebody's code (design rule 14).
+    **The environment is the plugin's `build_env`**, never names spelt here: Go's says
+    `GOTOOLCHAIN=local`, without which a `go.mod` asking for a newer Go makes `go`
+    **download one**, and egress is scoped, never a side effect of reading somebody's code
+    (design rule 14). Those four names lived in this function until Rust, which is the host
+    naming a language one layer below where rule 92 looked.
+
+    **A build that cannot be told where to write** is given `{workdir}`, a scratch
+    directory beside the cache entry and never inside the package — a signed application's
+    package is read-only and a checkout's would be left dirty — and `product` is the file
+    in it that is copied to the temporary name. The directory goes once the program is
+    out of it: it is the bulk of a build and nothing reads it again (BACKLOG 34's shape).
     """
     from ..detectors import lang_fingerprint
 
@@ -120,20 +127,37 @@ def built_reader(manifest: PluginManifest) -> Path:
     fd, tmp_name = tempfile.mkstemp(prefix=f".{name}.", dir=target.parent)
     os.close(fd)
     tmp = Path(tmp_name)
-    argv = [tmp_name if a == "{output}" else a for a in manifest.build]
-    env = {**os.environ, "GOTOOLCHAIN": "local", "GOFLAGS": "", "GOWORK": "off",
-           "CGO_ENABLED": "0"}
+    workdir = (
+        Path(tempfile.mkdtemp(prefix=f".{manifest.lang}-work.", dir=target.parent))
+        if manifest.product else None
+    )
+    argv = [_placeholder(a, tmp_name, workdir) for a in manifest.build]
+    env = dict(os.environ)
+    for name_, value in manifest.build_env:
+        if value is None:
+            env.pop(name_, None)
+        else:
+            env[name_] = value
     try:
         out = subprocess.run(  # noqa: S603 — argv is the manifest's, never a shell
             argv, cwd=manifest.root, capture_output=True, text=True, timeout=600,
             check=False, env=env,
         )
+        if out.returncode == 0 and workdir is not None:
+            product = workdir / manifest.product
+            if sys.platform == "win32" and not product.is_file():
+                product = product.with_name(product.name + ".exe")
+            if product.is_file():
+                shutil.copyfile(product, tmp)
     except (OSError, subprocess.TimeoutExpired) as exc:
         tmp.unlink(missing_ok=True)
         raise PluginRefused(
             f"the {manifest.lang} reader is shipped as source and building it failed to "
             f"start: `{' '.join(manifest.build)}` in {manifest.root} said {exc}."
         ) from exc
+    finally:
+        if workdir is not None:
+            shutil.rmtree(workdir, ignore_errors=True)
     if out.returncode != 0 or tmp.stat().st_size == 0:
         tmp.unlink(missing_ok=True)
         tail = (out.stderr or out.stdout).strip()[-2000:]
@@ -148,6 +172,16 @@ def built_reader(manifest: PluginManifest) -> Path:
         tmp.chmod(0o755)
     os.replace(tmp, target)
     return target
+
+
+def _placeholder(arg: str, output: str, workdir: Path | None) -> str:
+    """One build argument with its placeholder filled. Whole arguments only: a
+    `--x={output}` is not substituted, so a manifest can never half-spell one."""
+    if arg == "{output}":
+        return output
+    if arg == "{workdir}" and workdir is not None:
+        return str(workdir)
+    return arg
 
 
 def _toolchain_says(command: str, probe: Sequence[str]) -> str:

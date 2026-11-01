@@ -60,13 +60,13 @@ def test_a_map_records_what_the_walk_left_out(tmp_path: Path) -> None:
     knowing what was not. So the account is a fact **about the map**, stored with it, and
     not only a thing said while it was being made.
     """
-    store = _analysed(tmp_path, files={"m.py": TINY, "notes.rs": "fn main() {}\n"})
+    store = _analysed(tmp_path, files={"m.py": TINY, "notes.zig": "pub fn main() void {}\n"})
     try:
         lines = json.loads(store.get_meta("walk_residue") or "null")
     finally:
         store.close()
     assert isinstance(lines, list) and lines, "nothing was recorded over an unread suffix"
-    assert any(".rs" in line for line in lines), lines
+    assert any(".zig" in line for line in lines), lines
     assert any("unread" in line for line in lines), lines
 
 
@@ -94,7 +94,7 @@ def test_the_recorded_lines_are_the_walks_own_words(tmp_path: Path) -> None:
     becomes a sentence naming a flag that has been renamed.
     """
     store = _analysed(tmp_path, files={"m.py": TINY, "m_test.py": TINY,
-                                       "notes.rs": "fn main() {}\n"})
+                                       "notes.zig": "pub fn main() void {}\n"})
     try:
         lines = json.loads(store.get_meta("walk_residue") or "[]")
     finally:
@@ -148,7 +148,7 @@ def test_an_analysis_really_puts_it_on_the_machine_channel(tmp_path: Path) -> No
     tree = tmp_path / "src"
     tree.mkdir()
     (tree / "m.py").write_text(TINY, encoding="utf-8")
-    (tree / "notes.rs").write_text("fn main() {}\n", encoding="utf-8")
+    (tree / "notes.zig").write_text("pub fn main() void {}\n", encoding="utf-8")
     args = build_parser().parse_args(
         ["analyze", str(tree), "--name", "r", "--output", str(tmp_path / "out"),
          "--no-docs", "--no-render", "--quiet", "--progress-json"])
@@ -159,7 +159,7 @@ def test_an_analysis_really_puts_it_on_the_machine_channel(tmp_path: Path) -> No
     objects = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
     carrying = [o for o in objects if "residue" in o]
     assert len(carrying) == 1, f"the residue was sent {len(carrying)} times"
-    assert any(".rs" in line for line in carrying[0]["residue"]), carrying[0]
+    assert any(".zig" in line for line in carrying[0]["residue"]), carrying[0]
 
 
 # --------------------------------------------------------------------------- #
@@ -272,7 +272,7 @@ def test_a_key_this_build_cannot_read_says_it_cannot_say(tmp_path: Path) -> None
 
 def test_about_reports_it_for_a_map_that_records_it(tmp_path: Path) -> None:
     """The row a reader actually sees, from a map a real analysis wrote."""
-    store = _analysed(tmp_path, files={"m.py": TINY, "notes.rs": "fn main() {}\n"})
+    store = _analysed(tmp_path, files={"m.py": TINY, "notes.zig": "pub fn main() void {}\n"})
     try:
         got = said_residue(store.get_meta("walk_residue"))
     finally:
@@ -282,7 +282,7 @@ def test_about_reports_it_for_a_map_that_records_it(tmp_path: Path) -> None:
     # it. The wording is `walk_residue`'s and is asserted there; what matters here is that
     # nothing between the walk and this row shortened one into a label (rule 30).
     assert got["lines"] and all(" " in line for line in got["lines"]), got
-    assert any(".rs" in line for line in got["lines"]), got
+    assert any(".zig" in line for line in got["lines"]), got
 
 
 # --------------------------------------------------------------------------- #

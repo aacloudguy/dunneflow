@@ -134,8 +134,8 @@ def test_a_language_that_contributed_no_rows_is_a_refusal_and_not_a_pass():
 def test_a_language_this_checkout_cannot_read_at_all_is_its_own_answer():
     """The binary is a different program, and that is not a stale stamp."""
     mine = fp.mine()
-    theirs = _stamps(mine.core, {**mine.langs, "rust": "0.1.0:beef"},
-                     {**{lang: 1 for lang in mine.langs}, "rust": 12})
+    theirs = _stamps(mine.core, {**mine.langs, "zig": "0.1.0:beef"},
+                     {**{lang: 1 for lang in mine.langs}, "zig": 12})
     bad = fp.compare(theirs, mine, Path("."))
     assert len(bad) == 1
     assert "not the same program" in bad[0]

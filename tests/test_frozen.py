@@ -1204,3 +1204,34 @@ def test_the_release_script_and_the_spec_name_the_same_executable():
             f"{line.strip()} reaches into the bundle by a name the spec does not build — "
             f"the executable is {spec_name}, and only a case-insensitive filesystem hides "
             f"the difference")
+
+
+def test_a_plugins_nested_files_ship_to_their_own_directories(tmp_path):
+    """A vendored crate tree holds a dozen `lib.rs`; flattened they overwrite each other.
+
+    `_plugin_files` is lifted out of the spec and run against a plugin of nested names,
+    because what it returns *is* the bundle's layout and nothing else checks it before a
+    build: every name is present either way, so only the destinations can tell.
+    """
+    import json as json_
+
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    func = next(n for n in tree.body
+                if isinstance(n, ast.FunctionDef) and n.name == "_plugin_files")
+    pkg = tmp_path / "dunneflow"
+    plugin = pkg / "plugins" / "nested"
+    for name in ("own.rs", "vendor/a/src/lib.rs", "vendor/b/src/lib.rs"):
+        (plugin / name).parent.mkdir(parents=True, exist_ok=True)
+        (plugin / name).write_text(name, encoding="utf-8")
+    (plugin / "plugin.json").write_text(json_.dumps(
+        {"fingerprint": ["own.rs", "vendor/a/src/lib.rs", "vendor/b/src/lib.rs"]}))
+    scope: dict = {"PKG": pkg, "Path": Path, "json": json_}
+    exec(compile(ast.Module(body=[func], type_ignores=[]), str(SPEC), "exec"), scope)
+    shipped = {Path(src).relative_to(plugin).as_posix(): dest
+               for src, dest in scope["_plugin_files"]()}
+    assert shipped == {
+        "plugin.json": "dunneflow/plugins/nested",
+        "own.rs": "dunneflow/plugins/nested",
+        "vendor/a/src/lib.rs": "dunneflow/plugins/nested/vendor/a/src",
+        "vendor/b/src/lib.rs": "dunneflow/plugins/nested/vendor/b/src",
+    }

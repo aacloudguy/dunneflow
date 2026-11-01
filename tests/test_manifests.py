@@ -558,19 +558,19 @@ def test_a_target_is_resolved_against_its_own_manifest(tmp_path):
 
 
 def test_a_declaration_in_a_language_this_build_cannot_read_is_a_known_limit(tmp_path):
-    """DunneNote's three Rust binaries. Every one is a real front door of that
-    application, and reporting them as *leads nowhere* would be chunk 11's 83 false
-    BROKENs one surface over."""
+    """DunneNote's three Rust binaries, when Rust was not read. Every one is a real
+    front door of that application, and reporting them as *leads nowhere* would be chunk
+    11's 83 false BROKENs one surface over. A `bin` in Ruby since Rust has a reader."""
     root = _tree(tmp_path, {
-        "Cargo.toml": '[package]\nname = "host"\n[[bin]]\nname = "host"\n',
-        "src/main.rs": "fn main() {}\n",
+        "package.json": '{"name": "host", "bin": {"host": "./bin/host.rb"}}',
+        "bin/host.rb": "puts 1\n",
         "a.py": "x = 1\n"})
     store = Store(tmp_path / "g.db")
     analyze_tree(root, store)
     eps = entrypoints_from_manifests(_read(root), store)
     note = binding_note(store, eps[0].id)
     assert eps[0].routine_id is None
-    assert note.known_limit and "claims `.rs`" in note.sentence
+    assert note.known_limit and "claims `.rb`" in note.sentence
     store.close()
 
 

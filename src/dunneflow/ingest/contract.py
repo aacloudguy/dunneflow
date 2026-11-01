@@ -278,6 +278,16 @@ class PluginManifest:
     # platform instead would give one `fingerprint` per platform, and a map written on one
     # machine would then be refused as stale on another (rule 12).
     build: tuple[str, ...] = ()
+    # **Where a build that cannot be told where to write leaves its program.** Added for
+    # Rust: `cargo build` writes `<target-dir>/release/<bin>` and nothing on stable can name
+    # that file, so such a build is given `{workdir}`, a scratch directory outside the
+    # package, and `product` is the path inside it that the host copies to `{output}`. One
+    # of the two placeholders always says where the program lands; the `.exe` is the host's.
+    product: str = ""
+    # **The environment a build runs under, declared by the language it belongs to.** A
+    # value of `None` removes that variable. It was Go's four names spelt in the host until
+    # Rust, which is the host naming a language one layer below where rule 92 looked.
+    build_env: tuple[tuple[str, str | None], ...] = ()
     root: Path = field(default=Path("."), compare=False)
 
 

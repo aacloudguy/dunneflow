@@ -206,12 +206,39 @@ def read_manifest(path: Path) -> PluginManifest:
             f"the {lang} plugin at {path} runs in this interpreter and declares a `build`. "
             f"Nothing is built for a reader that is part of this program."
         )
-    if build and "{output}" not in build:
+    product = str(data.get("product", "")).strip()
+    if build and not product and "{output}" not in build:
         raise PluginRefused(
             f"the {lang} plugin at {path} declares a `build` that never says where to write "
-            f"the program: none of its arguments is `{{output}}`. A build whose product "
-            f"this host cannot find is a build that ran for nothing, every time."
+            f"the program: none of its arguments is `{{output}}`, and it names no "
+            f"`product`. A build whose product this host cannot find is a build that ran "
+            f"for nothing, every time."
         )
+    if product and (not build or "{workdir}" not in build):
+        raise PluginRefused(
+            f"the {lang} plugin at {path} names a `product` ({product}) and no `build` "
+            f"argument is `{{workdir}}`, so the build is never told the directory that "
+            f"product is relative to."
+        )
+    if product and (Path(product).is_absolute() or ".." in Path(product).parts):
+        raise PluginRefused(
+            f"the {lang} plugin at {path} names a `product` ({product}) outside the "
+            f"build's own directory. It is relative to `{{workdir}}` and stays inside it."
+        )
+    raw_env = data.get("build_env", {})
+    if not isinstance(raw_env, dict) or not all(
+        isinstance(v, str) or v is None for v in raw_env.values()
+    ):
+        raise PluginRefused(
+            f"the {lang} plugin at {path} declares a `build_env` that is not a table of "
+            f"names to strings (or null, to remove one)."
+        )
+    if raw_env and not build:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} declares a `build_env` and no `build`, so it "
+            f"is the environment of nothing."
+        )
+    build_env = tuple(sorted((str(k), v) for k, v in raw_env.items()))
 
     tc = data.get("toolchain")
     toolchain = None
@@ -241,6 +268,8 @@ def read_manifest(path: Path) -> PluginManifest:
         reports_literals=bool(data.get("reports_literals", False)),
         fingerprint=fingerprint,
         build=build,
+        product=product,
+        build_env=build_env,
         root=path.parent,
     )
 

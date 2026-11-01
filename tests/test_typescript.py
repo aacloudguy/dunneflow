@@ -446,7 +446,7 @@ def test_the_suffixes_are_claimed_and_the_ones_nobody_reads_are_not():
     assert ingest.language_of("a/b/c.tsx") == LANG
     # The two DunneNote reports by name and count, and neither is claimed by accident.
     assert ingest.language_of("a/b/c.svelte") is None
-    assert ingest.language_of("a/b/c.rs") is None
+    assert ingest.language_of("a/b/c.zig") is None
 
 
 def test_the_reader_needs_node_and_says_so_with_both_ways_forward():

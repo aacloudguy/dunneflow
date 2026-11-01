@@ -96,3 +96,83 @@ def test_a_build_that_names_no_output_is_refused_when_it_is_read(tmp_path):
     with pytest.raises(PluginRefused) as exc:
         read_manifest(_plugin(tmp_path, build=[sys.executable, "compile.py"]))
     assert "{output}" in str(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# A build that cannot be told where to write: `{workdir}` and `product` (added for Rust,
+# whose `cargo build` writes `<target-dir>/release/<bin>` and nothing else).
+
+_WORKDIR_COMPILER = (
+    "import os, pathlib, sys\n"
+    "work = pathlib.Path(sys.argv[1])\n"
+    "assert work.is_dir(), 'the workdir must exist before the build is started'\n"
+    "(work / 'release').mkdir()\n"
+    "(work / 'release' / 'reader').write_text('built in ' + os.environ.get('SAY', '-'))\n"
+    "pathlib.Path('saw-env').write_text(repr(os.environ.get('DROP')))\n"
+)
+
+
+def _workdir_plugin(tmp_path: Path, **extra) -> Path:
+    path = _plugin(tmp_path, build=[sys.executable, "compile.py", "{workdir}"],
+                   compiler=_WORKDIR_COMPILER)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update({"product": "release/reader", **extra})
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def test_a_product_is_copied_out_of_the_workdir_and_the_workdir_is_removed(
+        tmp_path, cache):
+    m = read_manifest(_workdir_plugin(tmp_path))
+    built = built_reader(m)
+    assert built.read_text().startswith("built in")
+    assert built.is_relative_to(cache)
+    left = [p for p in cache.rglob("*") if p.is_dir() and "work" in p.name]
+    assert not left, "the build's scratch directory outlived the build"
+    assert not (m.root / "release").exists(), "the build wrote inside the package"
+
+
+def test_the_build_environment_is_the_manifests_and_null_removes_a_name(
+        tmp_path, cache, monkeypatch):
+    monkeypatch.setenv("DROP", "inherited")
+    m = read_manifest(_workdir_plugin(tmp_path, build_env={"SAY": "here", "DROP": None}))
+    assert built_reader(m).read_text() == "built in here"
+    assert (m.root / "saw-env").read_text() == "None"
+
+
+def test_the_host_names_no_toolchains_environment():
+    """Go's four names lived in `built_reader` until Rust. They are Go's `build_env` now."""
+    import inspect
+
+    from dunneflow.ingest import outofprocess
+
+    source = inspect.getsource(outofprocess.built_reader)
+    code = "\n".join(line for line in source.splitlines()
+                     if not line.strip().startswith(("#", '"', "`")))
+    for name in ("GOTOOLCHAIN", "GOFLAGS", "GOWORK", "CGO_ENABLED", "CARGO", "RUSTFLAGS"):
+        assert f'"{name}"' not in code, f"the host spells {name}, which is a language's"
+
+
+def test_a_product_that_failed_to_appear_is_a_refusal_not_an_empty_program(tmp_path, cache):
+    path = _plugin(tmp_path, build=[sys.executable, "-c", "pass", "{workdir}"])
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["product"] = "release/reader"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(PluginRefused):
+        built_reader(read_manifest(path))
+
+
+@pytest.mark.parametrize("change, said", [
+    ({"product": "release/reader"}, "{workdir}"),              # product, no workdir
+    ({"product": "../escape", "build": ["x", "{workdir}"]}, "outside"),
+    ({"build_env": {"A": 1}}, "build_env"),
+])
+def test_a_build_that_cannot_find_its_product_is_refused_when_it_is_read(
+        tmp_path, change, said):
+    path = _plugin(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(change)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(PluginRefused) as exc:
+        read_manifest(path)
+    assert said in str(exc.value)

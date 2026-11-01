@@ -377,3 +377,158 @@ def test_file_entry_is_a_name_or_it_is_refused(tmp_path):
     assert _file_entry("", "x", tmp_path) == "" and _file_entry("main", "x", tmp_path) == "main"
     with pytest.raises(RulesMissing):
         _file_entry("src/main.rs", "x", tmp_path)
+
+
+# ------------------------------------------------------------- the edges ------ #
+
+WORKSPACE = {
+    "Cargo.toml": '[workspace]\nmembers = ["core", "app"]\n',
+    "core/Cargo.toml": '[package]\nname = "my-core"\n',
+    "core/src/lib.rs": '''pub mod util;
+pub use util::helper as reexported;
+
+pub fn top() {
+    util::helper();
+    top();
+}
+''',
+    "core/src/util.rs": '''pub fn helper() {
+    plat();
+}
+
+#[cfg(target_os = "linux")]
+fn plat() {}
+
+#[cfg(target_os = "macos")]
+fn plat() {}
+
+pub struct S;
+
+impl S {
+    pub fn new() -> S {
+        S
+    }
+
+    fn m(&self) {
+        self.n();
+    }
+
+    fn n(&self) {}
+}
+
+pub trait T {
+    fn t(&self);
+
+    fn twice(&self) {
+        self.t();
+    }
+}
+
+impl T for S {
+    fn t(&self) {}
+}
+
+pub struct S2;
+
+impl T for S2 {
+    fn t(&self) {}
+}
+
+pub fn dynamic(x: &dyn T) {
+    x.t();
+    x.len();
+}
+''',
+    "app/Cargo.toml": '[package]\nname = "app"\n',
+    "app/src/main.rs": '''use my_core::util::S;
+
+mod key;
+
+fn main() {
+    my_core::top();
+    my_core::reexported();
+    S::new();
+    key::Store::open();
+    let helper = |x: u8| x;
+    helper(1);
+    serde_json::to_string(&1);
+    with!(my_core::top());
+}
+''',
+    "app/src/key/mod.rs": '''#[cfg(target_os = "macos")]
+mod mac;
+#[cfg(target_os = "linux")]
+mod lin;
+
+#[cfg(target_os = "macos")]
+pub use mac::MacStore as Store;
+#[cfg(target_os = "linux")]
+pub use lin::LinStore as Store;
+''',
+    "app/src/key/mac.rs": "pub struct MacStore;\n\nimpl MacStore {\n    pub fn open() {}\n}\n",
+    "app/src/key/lin.rs": "pub struct LinStore;\n\nimpl LinStore {\n    pub fn open() {}\n}\n",
+}
+
+
+@pytest.fixture(scope="module")
+def edges(tmp_path_factory):
+    if PLUGIN is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path_factory.mktemp("rustws")
+    for rel, text in WORKSPACE.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    store = Store(tmp_path_factory.mktemp("db") / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)    # as `cmd_analyze` does: the walk stores, resolution follows
+    rows = store.query(
+        "SELECT r.qualname AS caller, c.callee_expr AS expr, t.qualname AS callee,"
+        " c.ambiguous AS ambiguous, c.external AS external"
+        " FROM calls c JOIN routines r ON r.id = c.caller_id"
+        " LEFT JOIN routines t ON t.id = c.callee_id")
+    got = {(r["caller"].rsplit(".", 1)[-1], r["expr"]): (r["callee"], r["ambiguous"])
+           for r in rows}
+    store.close()
+    return got
+
+
+@pytest.mark.parametrize("caller, expr, callee", [
+    ("top", "util.helper", "core.src.util.helper"),                 # a child module
+    ("top", "top", "core.src.lib.top"),                             # recursion: an edge to itself
+    ("main", "my_core.top", "core.src.lib.top"),                    # another workspace crate
+    ("main", "my_core.reexported", "core.src.util.helper"),         # a renamed re-export
+    ("main", "S.new", "core.src.util.S.new"),                       # a `use`d type's method
+    ("main", "key.Store.open", "app.src.key.lin.LinStore.open"),    # the reference target's module
+    ("helper", "plat", "core.src.util.plat"),                       # the reference target's fn
+    ("m", "self.n", "core.src.util.S.n"),                           # `self` in an impl
+])
+def test_a_path_names_one_definition(edges, caller, expr, callee):
+    assert edges[(caller, expr)][0] == callee, edges[(caller, expr)]
+
+
+def test_a_call_inside_a_macro_argument_resolves(edges):
+    """DunneNote's `with_unlocked!(…)` wraps the dispatch calls: they are still calls."""
+    tops = [k for k in edges if k == ("main", "my_core.top")]
+    assert tops and edges[tops[0]][0] == "core.src.lib.top"
+
+
+def test_what_needs_a_type_is_never_guessed(edges):
+    """Rule 1. A trait call with two impls, `self` in a trait's default body, and a method
+    on a value of unknown type get no edge; the first two say how many could answer."""
+    assert edges[("dynamic", "x.t")][0] is None
+    assert edges[("dynamic", "x.len")][0] is None
+    callee, ambiguous = edges[("twice", "self.t")]
+    assert callee is None and ambiguous
+
+
+def test_a_closure_shadows_a_function_of_the_same_name(edges):
+    """`let helper = |x| x; helper(1)` calls the closure, never `util::helper`."""
+    assert edges[("main", "helper")][0] is None
+
+
+def test_a_dependency_s_path_goes_outside(edges):
+    assert edges[("main", "serde_json.to_string")][0] is None

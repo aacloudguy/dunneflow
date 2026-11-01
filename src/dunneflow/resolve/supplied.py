@@ -112,7 +112,7 @@ class Report:
         if self.ambiguous:
             parts.append(f"{self.ambiguous:,} had several declarations — no edge")
         if self.unsupplied:
-            parts.append(f"{self.unsupplied:,} the checker could not resolve")
+            parts.append(f"{self.unsupplied:,} the reader could not resolve")
         return f"{self.lang} edges: " + ", ".join(parts)
 
 

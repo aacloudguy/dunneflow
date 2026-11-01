@@ -157,16 +157,6 @@ pub fn is_test(attrs: &[Attribute]) -> bool {
     harness || item(attrs, SHIPPED) == Tri::False && item(attrs, World { test: Some(true), reference_target: false }) != Tri::False
 }
 
-/// Whether a platform predicate names the reference target at all: an item with such a
-/// predicate is one of a per-platform set, and `how` counts the set.
-pub fn platform_shaped(attrs: &[Attribute]) -> bool {
-    attrs.iter().filter(|a| a.path().is_ident("cfg")).any(|a| {
-        let t = a.parse_args::<Meta>().map(|m| eval(&m, REFERENCE)).unwrap_or(Tri::Unknown);
-        let s = a.parse_args::<Meta>().map(|m| eval(&m, SHIPPED)).unwrap_or(Tri::Unknown);
-        t != Tri::Unknown && s == Tri::Unknown
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,7 +186,5 @@ mod tests {
         assert_eq!(item(&attrs("#[cfg(feature = \"x\")]"), REFERENCE), Tri::Unknown);
         assert_eq!(item(&attrs("#[cfg(all(unix, feature = \"x\"))]"), REFERENCE), Tri::Unknown);
         assert_eq!(item(&attrs("#[cfg(all(windows, feature = \"x\"))]"), REFERENCE), Tri::False);
-        assert!(platform_shaped(&attrs("#[cfg(target_os = \"macos\")]")));
-        assert!(!platform_shaped(&attrs("#[cfg(feature = \"x\")]")));
     }
 }

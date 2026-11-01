@@ -226,12 +226,6 @@ impl Parser<'_> {
 /// Something that can put itself on the wire.
 pub trait ToJson {
     fn write_json(&self, out: &mut String);
-
-    fn to_json(&self) -> String {
-        let mut s = String::new();
-        self.write_json(&mut s);
-        s
-    }
 }
 
 /// One escaped string, quotes included. ASCII out, so the frame survives any pipe.
@@ -414,7 +408,9 @@ mod tests {
         assert_eq!(v.get("t").and_then(Value::as_str), Some("open"));
         assert_eq!(v.get("id").and_then(Value::as_i64), Some(3));
         assert_eq!(v.get("files").unwrap().strings(), vec!["a.rs", "bé.rs"]);
-        let back = parse(&v.to_json()).unwrap();
+        let mut text = String::new();
+        v.write_json(&mut text);
+        let back = parse(&text).unwrap();
         assert_eq!(back, v);
     }
 

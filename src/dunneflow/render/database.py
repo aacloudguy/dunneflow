@@ -113,7 +113,10 @@ def render_database(store: Store, out: Path, program: str, stamp: Stamp) -> Path
             )
         for t in defs:
             cols = store.query(
-                "SELECT * FROM db_columns WHERE tbl = ? AND file = ? ORDER BY idx, name",
+                # `type` and `constraints` close the tie: a file that creates one table
+                # twice holds two columns at one `idx` with one name (rule 66).
+                "SELECT * FROM db_columns WHERE tbl = ? AND file = ?"
+                " ORDER BY idx, name, type, constraints",
                 (name, t["file"]),
             )
             where = f"{t['file']}:{t['line']}"

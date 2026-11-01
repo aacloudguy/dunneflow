@@ -58,6 +58,10 @@ RESOLVERS: dict[str, Resolver] = {
     # none of them: the lookup is the same whoever did the checking.
     "typescript": supplied.resolve,
     "go": supplied.resolve,
+    # Not a checker: a path resolver inside the reader, which answers only where a path
+    # names exactly one definition, as rustc's own path resolution does, and sends no
+    # edge for anything that would need a type (`plugins/rust/src/edges.rs`).
+    "rust": supplied.resolve,
 }
 
 

@@ -50,14 +50,14 @@ def _esc(text: str | None) -> str:
 CONSTANTS_SQL = """
 SELECT module, name, value, type, is_final, comment, private, file, line
   FROM constants
- ORDER BY module, name
+ ORDER BY module, name, line, value
 """.strip()
 
 ALIASES_SQL = """
 SELECT module, name, bases, line, file
   FROM structures
  WHERE kind = 'TYPE_ALIAS'
- ORDER BY module, name
+ ORDER BY module, name, file, line
 """.strip()
 
 
@@ -210,6 +210,6 @@ def _reproducing() -> list[str]:
         "```sql",
         "SELECT module, name, value FROM constants\n"
         " WHERE trim(comment) = ''\n"
-        " ORDER BY module, name",
+        " ORDER BY module, name, line, value",
         "```\n",
     ]

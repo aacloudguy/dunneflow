@@ -60,7 +60,6 @@ pub fn module_name(rel: &str) -> String {
 pub struct Site {
     pub site_id: String,
     pub caller_id: String,
-    pub line: i64,
     pub kind: SiteKind,
     /// The path as written, segment by segment (`crate`, `super` and `Self` included).
     pub path: Vec<String>,
@@ -69,6 +68,7 @@ pub struct Site {
     /// The type of the `impl` the call is written in, if any.
     pub self_type: Option<String>,
     pub at_boundary: bool,
+    pub bound_locally: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,16 +87,13 @@ pub enum SiteKind {
 #[derive(Debug, Clone)]
 pub struct Def {
     pub name: String,
-    pub qualname: String,
     pub line: i64,
     pub mod_path: Vec<String>,
     /// `Some(type)` for a method, with the trait if it is a trait impl's.
     pub owner: Option<String>,
     pub trait_name: Option<String>,
-    pub has_self: bool,
     /// `#[cfg]` evaluated against the reference target.
     pub reference: cfg::Tri,
-    pub platform: bool,
 }
 
 /// One name a `use` brings into scope.
@@ -106,7 +103,7 @@ pub struct UseRec {
     /// The local name, or `*` for a glob.
     pub local: String,
     pub target: Vec<String>,
-    pub public: bool,
+    pub reference: cfg::Tri,
 }
 
 /// `mod x;` — a module whose body is another file.
@@ -116,6 +113,8 @@ pub struct ModDecl {
     pub name: String,
     pub path_attr: Option<String>,
     pub reference: cfg::Tri,
+    /// `mod x { … }`, whose body is in this file.
+    pub inline: bool,
 }
 
 #[derive(Default)]
@@ -195,6 +194,10 @@ struct Ex<'a> {
     imp: Option<(String, Option<String>)>,
     /// Calls whose value is thrown away, by byte offset (see `rust.yaml` on `inert`).
     discarded: HashSet<usize>,
+    /// Names each open routine binds itself — its parameters and every `let` — innermost
+    /// last. Over the whole routine rather than per block, which declines a few calls it
+    /// could have resolved and never resolves one it should not (rule 1).
+    locals: Vec<HashSet<String>>,
     sites: Vec<Site>,
     defs: Vec<Def>,
     uses: Vec<UseRec>,
@@ -238,6 +241,7 @@ impl<'a> Ex<'a> {
             mod_path: Vec::new(),
             imp: None,
             discarded: HashSet::new(),
+            locals: Vec::new(),
             sites: Vec::new(),
             defs: Vec::new(),
             uses: Vec::new(),
@@ -349,14 +353,11 @@ impl<'a> Ex<'a> {
                 let top = self.mod_path.is_empty();
                 self.defs.push(Def {
                     name: f.sig.ident.to_string(),
-                    qualname: qual.clone(),
                     line: self.line(start),
                     mod_path: self.mod_path.clone(),
                     owner: None,
                     trait_name: None,
-                    has_self: false,
                     reference: cfg::item(&f.attrs, cfg::REFERENCE),
-                    platform: cfg::platform_shaped(&f.attrs),
                 });
                 let public = matches!(f.vis, Visibility::Public(_));
                 let r = self.routine(
@@ -398,15 +399,12 @@ impl<'a> Ex<'a> {
                             let has_self = matches!(m.sig.inputs.first(), Some(FnArg::Receiver(_)));
                             self.defs.push(Def {
                                 name: m.sig.ident.to_string(),
-                                qualname: qual.clone(),
                                 line: self.line(vis_or(&m.vis, m.sig.span())),
                                 mod_path: self.mod_path.clone(),
                                 owner: Some(ty.clone()),
                                 trait_name: tr.clone(),
-                                has_self,
                                 reference: cfg::item(&m.attrs, cfg::REFERENCE)
                                     .and(cfg::item(&imp.attrs, cfg::REFERENCE)),
-                                platform: cfg::platform_shaped(&m.attrs) || cfg::platform_shaped(&imp.attrs),
                             });
                             // A trait's method is as visible as the trait, whatever the impl
                             // writes (it can write nothing).
@@ -441,14 +439,11 @@ impl<'a> Ex<'a> {
                             let has_self = matches!(m.sig.inputs.first(), Some(FnArg::Receiver(_)));
                             self.defs.push(Def {
                                 name: m.sig.ident.to_string(),
-                                qualname: qual.clone(),
                                 line: self.line(m.sig.span()),
                                 mod_path: self.mod_path.clone(),
                                 owner: Some(name.clone()),
                                 trait_name: Some(name.clone()),
-                                has_self,
                                 reference: cfg::item(&m.attrs, cfg::REFERENCE),
-                                platform: false,
                             });
                             self.routine(
                                 &m.sig, Some(body), &m.attrs, true,
@@ -524,7 +519,7 @@ impl<'a> Ex<'a> {
                 self.constant(&s.ident, Some(&s.ty), &s.expr, fin, &s.vis, &s.attrs);
             }
             Item::Use(u) => {
-                let public = matches!(u.vis, Visibility::Public(_));
+                let reference = cfg::item(&u.attrs, cfg::REFERENCE);
                 let line = self.line(u.span());
                 let mut found = Vec::new();
                 flatten_use(&u.tree, &mut Vec::new(), &mut found);
@@ -542,13 +537,20 @@ impl<'a> Ex<'a> {
                         is_from: target.len() > 1,
                         line,
                     });
-                    self.uses.push(UseRec { mod_path: self.mod_path.clone(), local, target, public });
+                    self.uses.push(UseRec { mod_path: self.mod_path.clone(), local, target, reference });
                 }
             }
             Item::Mod(m) => {
                 let name = m.ident.to_string();
                 match &m.content {
                     Some((_, items)) => {
+                        self.mods.push(ModDecl {
+                            mod_path: self.mod_path.clone(),
+                            name: name.clone(),
+                            path_attr: None,
+                            reference: cfg::item(&m.attrs, cfg::REFERENCE),
+                            inline: true,
+                        });
                         self.mod_path.push(name);
                         for it in items {
                             self.item(it);
@@ -571,6 +573,7 @@ impl<'a> Ex<'a> {
                             name,
                             path_attr,
                             reference: cfg::item(&m.attrs, cfg::REFERENCE),
+                            inline: false,
                         });
                     }
                 }
@@ -668,9 +671,14 @@ impl<'a> Ex<'a> {
         if sig.variadic.is_some() {
             r.params.push(Param { name: "...".into(), kind: "vararg".into(), ..Default::default() });
         }
+        let mut bound: HashSet<String> = r.params.iter().map(|p| p.name.clone()).collect();
+        if let Some(b) = body {
+            collect_lets(b, &mut bound);
+        }
         self.routines.push(r);
         let idx = self.routines.len() - 1;
         self.scope.push(idx);
+        self.locals.push(bound);
         let saved = self.depth;
         self.depth = 0;
         if let Some(b) = body {
@@ -678,6 +686,7 @@ impl<'a> Ex<'a> {
         }
         self.depth = saved;
         self.scope.pop();
+        self.locals.pop();
         idx
     }
 
@@ -792,7 +801,17 @@ impl<'a> Ex<'a> {
         let call_args: Vec<CallArg> = args.iter().enumerate()
             .map(|(i, a)| CallArg { idx: i as i64, expr: self.text(a.span()), ..Default::default() })
             .collect();
+        // **A bare call to a name this routine binds is a call to that binding** — a
+        // closure, a function pointer, a parameter — and never to a function elsewhere
+        // that shares the name (`CallSite.bound_locally`, schema 16).
+        let bound = kind == SiteKind::Path && path.len() == 1
+            && self.locals.last().is_some_and(|l| l.contains(&path[0]));
         let (caller, site_id) = self.record_call(&expr, line, rule.is_some(), call_args);
+        if bound {
+            if let Some(c) = self.facts.calls.last_mut() {
+                c.bound_locally = true;
+            }
+        }
         if let Some(rule) = &rule {
             let target = self.target(args, rule);
             let mut hit = BoundaryHit {
@@ -813,12 +832,12 @@ impl<'a> Ex<'a> {
         self.sites.push(Site {
             site_id,
             caller_id: caller,
-            line,
             kind,
             path,
             mod_path: self.mod_path.clone(),
             self_type: self.imp.as_ref().map(|(t, _)| t.clone()),
             at_boundary: rule.is_some(),
+            bound_locally: bound,
         });
     }
 
@@ -1126,6 +1145,20 @@ impl<'ast> Visit<'ast> for Walker<'_, '_> {
 }
 
 // ------------------------------------------------------------------ helpers --- //
+
+/// Every name a `let` (or a closure's parameter) binds anywhere in a body, not descending
+/// into nested items, which are routines of their own.
+fn collect_lets(b: &syn::Block, out: &mut HashSet<String>) {
+    struct Lets<'o>(&'o mut HashSet<String>);
+    impl<'ast> Visit<'ast> for Lets<'_> {
+        fn visit_item(&mut self, _: &'ast Item) {}
+        fn visit_pat_ident(&mut self, p: &'ast syn::PatIdent) {
+            self.0.insert(p.ident.to_string());
+            visit::visit_pat_ident(self, p);
+        }
+    }
+    Lets(out).visit_block(b);
+}
 
 fn item_attrs(item: &Item) -> Option<&[Attribute]> {
     Some(match item {

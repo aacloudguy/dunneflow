@@ -47,6 +47,14 @@ built the Go reader, 3.4 to 3.6 MB each. Not done because nothing yet decides wh
 longer wanted. *Settled by* keeping the newest few per language, or the ones whose stamp a map
 on this machine still holds.
 
+**35. A table created twice in one file shows both sets of columns under each definition.**
+`db_columns` is keyed on `(tbl, file)` and holds no line, so DunneNote's migrations — which
+`CREATE TABLE` one table twice in one file as the schema moves — list the union of both
+column sets beside each `CREATE`. Found by `tools/ordering.py` on 2026-11-01, as a tie the
+Rust reader's SQL literals were the first to reach (rule 98); the tie is closed and the
+attribution is not. *Settled by* a `line` on `db_columns`, written by `ingest/literals.py`,
+and `render/database.py` asking for the columns of one statement.
+
 ---
 
 ## Stated residues — known, bounded, and not defects

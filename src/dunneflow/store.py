@@ -178,7 +178,8 @@ CREATE TABLE IF NOT EXISTS supplied_edges (
     line       INTEGER NOT NULL DEFAULT 0,
     name       TEXT NOT NULL DEFAULT '',
     how        TEXT NOT NULL DEFAULT '',
-    candidates INTEGER NOT NULL DEFAULT 0
+    candidates INTEGER NOT NULL DEFAULT 0,
+    constructs TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS boundaries (
@@ -1114,11 +1115,12 @@ class Store:
         """
         c = self.conn
         c.execute("DELETE FROM supplied_edges WHERE lang = ?", (lang,))
-        rows = [(lang, e.site_id, e.caller_id, e.file, e.line, e.name, e.how, e.candidates)
+        rows = [(lang, e.site_id, e.caller_id, e.file, e.line, e.name, e.how, e.candidates,
+                 e.constructs)
                 for e in edges]
         c.executemany(
-            "INSERT INTO supplied_edges(lang,site_id,caller_id,file,line,name,how,candidates)"
-            " VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO supplied_edges(lang,site_id,caller_id,file,line,name,how,candidates,"
+            "constructs) VALUES(?,?,?,?,?,?,?,?,?)",
             rows,
         )
         return len(rows)

@@ -397,6 +397,12 @@ class SuppliedEdge:
     name: str = ""
     how: str = ""
     candidates: int = 0
+    # **The call builds one of this program's own types, which has no routine to point at**
+    # -- an enum variant, a tuple struct (`NoEdge.constructs`, BACKLOG 14's shape one reader
+    # over). The qualname of the type; `file`, `line` and `name` are then the *structure's*
+    # location, and the host checks the map holds a structure there before it believes it,
+    # exactly as it checks a routine's name (rule 1). Added for Rust, with schema 17.
+    constructs: str = ""
 
 
 class ControlKind(StrEnum):

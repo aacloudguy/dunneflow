@@ -1247,6 +1247,7 @@ pub struct SuppliedEdge {
     pub name: String,
     pub how: String,
     pub candidates: i64,
+    pub constructs: String,
 }
 
 impl ToJson for SuppliedEdge {
@@ -1270,6 +1271,9 @@ impl ToJson for SuppliedEdge {
         }
         if self.candidates != zero.candidates {
             crate::json::field(out, &mut first, "candidates", &self.candidates);
+        }
+        if self.constructs != zero.constructs {
+            crate::json::field(out, &mut first, "constructs", &self.constructs);
         }
         out.push('}');
     }

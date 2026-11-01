@@ -438,6 +438,19 @@ pub fn dynamic(x: &dyn T) {
     x.t();
     x.len();
 }
+
+pub enum E {
+    A(u8),
+    B,
+}
+
+pub struct P(u8, u8);
+
+pub fn build() {
+    let _ = E::A(1);
+    let _ = P(1, 2);
+    let _ = Some(1);
+}
 ''',
     "app/Cargo.toml": '[package]\nname = "app"\n',
     "app/src/main.rs": '''use my_core::util::S;
@@ -487,11 +500,13 @@ def edges(tmp_path_factory):
     resolve_calls(store)    # as `cmd_analyze` does: the walk stores, resolution follows
     rows = store.query(
         "SELECT r.qualname AS caller, c.callee_expr AS expr, t.qualname AS callee,"
-        " c.ambiguous AS ambiguous, c.external AS external"
+        " c.ambiguous AS ambiguous, c.external AS external, c.constructs AS constructs"
         " FROM calls c JOIN routines r ON r.id = c.caller_id"
         " LEFT JOIN routines t ON t.id = c.callee_id")
     got = {(r["caller"].rsplit(".", 1)[-1], r["expr"]): (r["callee"], r["ambiguous"])
            for r in rows}
+    for r in store.query("SELECT callee_expr, constructs FROM calls WHERE constructs != ''"):
+        got[("constructs", r["callee_expr"])] = (r["constructs"], 0)
     store.close()
     return got
 
@@ -532,3 +547,11 @@ def test_a_closure_shadows_a_function_of_the_same_name(edges):
 
 def test_a_dependency_s_path_goes_outside(edges):
     assert edges[("main", "serde_json.to_string")][0] is None
+
+
+def test_a_variant_or_a_tuple_struct_builds_the_program_s_own_type(edges):
+    """`E::A(1)` and `P(1, 2)` run no routine and build one of this program's types; they
+    are constructions (`calls.constructs`), not calls to nothing. `Some(1)` is std's."""
+    assert edges[("constructs", "E.A")][0] == "core.src.util.E"
+    assert edges[("constructs", "P")][0] == "core.src.util.P"
+    assert ("constructs", "Some") not in edges

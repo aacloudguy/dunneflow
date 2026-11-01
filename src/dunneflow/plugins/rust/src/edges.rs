@@ -63,6 +63,8 @@ struct DefRef(usize, usize);
 #[derive(Clone)]
 enum Res {
     Fns(Vec<DefRef>),
+    /// Builds one of the program's own types: `(file, index into its types)`.
+    Construct(usize, usize),
     Module(usize, Vec<String>),
     Type(usize, String),
     Outside,
@@ -91,6 +93,8 @@ struct Program {
     /// Method names the program defines anywhere.
     method_names: HashSet<String>,
     fn_names: HashSet<String>,
+    /// `(crate, type name)` -> the declarations of that name.
+    typedefs: HashMap<(usize, String), Vec<(usize, usize)>>,
 }
 
 pub fn collect(root: &Path, files: &[PathBuf], rules: &Rules) -> Found {
@@ -165,6 +169,7 @@ impl Program {
             globs: HashMap::new(),
             method_names: HashSet::new(),
             fn_names: HashSet::new(),
+            typedefs: HashMap::new(),
         };
         let by_abs: HashMap<PathBuf, usize> =
             prog.files.iter().enumerate().map(|(i, f)| (f.abs.clone(), i)).collect();
@@ -328,6 +333,9 @@ impl Program {
                     }
                 }
             }
+            for (ti, t) in f.ex.types.iter().enumerate() {
+                self.typedefs.entry((*c, t.name.clone())).or_default().push((fi, ti));
+            }
             for (t, tr) in &f.ex.impls {
                 self.types.insert((*c, t.clone()));
                 if let Some(tr) = tr {
@@ -413,12 +421,45 @@ impl Program {
                         r => r,
                     }
                 }
-                Res::Type(tc, t) if last => return self.method(tc, &t, seg),
+                Res::Type(tc, t) if last => {
+                    if let Some(at) = self.variant(tc, &t, seg) {
+                        return at;
+                    }
+                    return self.method(tc, &t, seg);
+                }
                 Res::Outside => return Res::Outside,
                 _ => return Res::Unknown,
             };
         }
         cur
+    }
+
+    /// A call whose path ends at a type calls the type: a tuple struct's constructor. Asked
+    /// of a call site only, never of a `use`, which names the type itself.
+    fn called(&self, r: Res) -> Res {
+        if let Res::Type(tc, t) = &r {
+            if let Some((fi, ti)) = self.one_type(*tc, t) {
+                if self.files[fi].ex.types[ti].tuple {
+                    return Res::Construct(fi, ti);
+                }
+            }
+            return Res::Unknown;
+        }
+        r
+    }
+
+    /// The single declaration of a type name in a crate, or nothing where it is not one.
+    fn one_type(&self, c: usize, name: &str) -> Option<(usize, usize)> {
+        match self.typedefs.get(&(c, name.to_owned())).map(Vec::as_slice) {
+            Some([one]) => Some(*one),
+            _ => None,
+        }
+    }
+
+    /// `Enum::Variant(..)`, where `Variant` is one of the enum's tuple variants.
+    fn variant(&self, c: usize, ty: &str, seg: &str) -> Option<Res> {
+        let (fi, ti) = self.one_type(c, ty)?;
+        self.files[fi].ex.types[ti].variants.iter().any(|v| v == seg).then_some(Res::Construct(fi, ti))
     }
 
     /// One name in one module: its functions, its child modules, its types, its `use`s,
@@ -507,7 +548,7 @@ impl Program {
                 at.extend(s.mod_path.iter().cloned());
                 let res = match s.kind {
                     SiteKind::Macro => Res::Outside,
-                    SiteKind::Path => self.resolve_path(*c, &at, s.self_type.as_deref(), &s.path, 0),
+                    SiteKind::Path => self.called(self.resolve_path(*c, &at, s.self_type.as_deref(), &s.path, 0)),
                     SiteKind::SelfMethod => match &s.self_type {
                         Some(t) if self.traits.contains(&(*c, t.clone())) => {
                             // A trait's default body: `self` is whichever type implements
@@ -543,7 +584,7 @@ impl Program {
                                     line: d.line,
                                     name: d.name.clone(),
                                     how,
-                                    candidates: 0,
+                                    ..Default::default()
                                 });
                             }
                             0 => found.unknown += 1,
@@ -552,6 +593,19 @@ impl Program {
                                 edges.push(ambiguous(s, n as i64));
                             }
                         }
+                    }
+                    Res::Construct(fi, ti) => {
+                        let t = &self.files[fi].ex.types[ti];
+                        edges.push(SuppliedEdge {
+                            site_id: s.site_id.clone(),
+                            caller_id: s.caller_id.clone(),
+                            file: self.files[fi].rel.clone(),
+                            line: t.line,
+                            name: t.name.clone(),
+                            how: format!("{HOW}; builds {}", t.name),
+                            constructs: t.qualname.clone(),
+                            ..Default::default()
+                        });
                     }
                     Res::Outside => found.outside += 1,
                     Res::Module(..) | Res::Type(..) | Res::Unknown => found.unknown += 1,

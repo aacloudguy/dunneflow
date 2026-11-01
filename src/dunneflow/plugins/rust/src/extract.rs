@@ -117,8 +117,20 @@ pub struct ModDecl {
     pub inline: bool,
 }
 
+/// A type the program declares, and the calls that build one: a tuple struct is called
+/// like a function, and so is an enum's tuple variant.
+#[derive(Debug, Clone)]
+pub struct TypeDef {
+    pub name: String,
+    pub qualname: String,
+    pub line: i64,
+    pub tuple: bool,
+    pub variants: Vec<String>,
+}
+
 #[derive(Default)]
 pub struct Extracted {
+    pub types: Vec<TypeDef>,
     pub facts: FileFacts,
     pub sites: Vec<Site>,
     pub defs: Vec<Def>,
@@ -203,6 +215,7 @@ struct Ex<'a> {
     uses: Vec<UseRec>,
     mods: Vec<ModDecl>,
     impls: Vec<(String, Option<String>)>,
+    types: Vec<TypeDef>,
 }
 
 impl<'a> Ex<'a> {
@@ -247,6 +260,7 @@ impl<'a> Ex<'a> {
             uses: Vec::new(),
             mods: Vec::new(),
             impls: Vec::new(),
+            types: Vec::new(),
         }
     }
 
@@ -280,6 +294,7 @@ impl<'a> Ex<'a> {
             uses: self.uses,
             mods: self.mods,
             impls: self.impls,
+            types: self.types,
         }
     }
 
@@ -466,6 +481,13 @@ impl<'a> Ex<'a> {
                         ..Default::default()
                     });
                 }
+                self.types.push(TypeDef {
+                    name: name.clone(),
+                    qualname: format!("{}.{}", self.prefix(), name),
+                    line: ds.line,
+                    tuple: matches!(s.fields, syn::Fields::Unnamed(_)),
+                    variants: Vec::new(),
+                });
                 self.facts.classes.push(ClassDef_ {
                     name: name.clone(),
                     qualname: format!("{}.{}", self.prefix(), name),
@@ -503,6 +525,15 @@ impl<'a> Ex<'a> {
                         self.walk_expr(x);
                     }
                 }
+                self.types.push(TypeDef {
+                    name: name.clone(),
+                    qualname: format!("{}.{}", self.prefix(), name),
+                    line: ds.line,
+                    tuple: false,
+                    variants: e.variants.iter()
+                        .filter(|v| matches!(v.fields, syn::Fields::Unnamed(_)))
+                        .map(|v| v.ident.to_string()).collect(),
+                });
                 self.facts.structures.push(ds);
             }
             Item::Type(t) => {

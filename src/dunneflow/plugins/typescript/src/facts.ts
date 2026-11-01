@@ -321,4 +321,5 @@ export interface SuppliedEdge {
   name?: string;
   how?: string;
   candidates?: number;
+  constructs?: string;
 }

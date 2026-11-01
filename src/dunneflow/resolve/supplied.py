@@ -89,6 +89,7 @@ class Report:
     no_routine: int = 0      # a location this map holds no routine at: external
     name_mismatch: int = 0   # a location whose routine is called something else
     ambiguous: int = 0       # several declarations competed: no edge
+    constructions: int = 0   # builds one of the program's own types, which has no routine
     unsupplied: int = 0      # call sites the reader said nothing about
 
     def sentence(self) -> str:
@@ -109,6 +110,8 @@ class Report:
         if self.no_routine:
             parts.append(f"{self.no_routine:,} named a place this map holds no routine — "
                          f"external")
+        if self.constructions:
+            parts.append(f"{self.constructions:,} built one of the program's own types")
         if self.ambiguous:
             parts.append(f"{self.ambiguous:,} had several declarations — no edge")
         if self.unsupplied:
@@ -176,8 +179,8 @@ def _containing(ix: _Routines, file: str, line: int) -> tuple[str, str] | None:
     return None
 
 
-def _supplied(store: Store, lang: str) -> dict[str, tuple[str, int, str, int]]:
-    """`site_id -> (file, line, name, candidates)`, as this language's reader said it.
+def _supplied(store: Store, lang: str) -> dict[str, tuple[str, int, str, int, str]]:
+    """`site_id -> (file, line, name, candidates, constructs)`, as the reader said it.
 
     One statement and one dictionary rather than a query per call site: `calls` and
     `supplied_edges` are two tables written by two passes, and joining them in SQL would
@@ -185,9 +188,9 @@ def _supplied(store: Store, lang: str) -> dict[str, tuple[str, int, str, int]]:
     whole TypeScript answer is a few thousand rows.
     """
     return {
-        r["site_id"]: (r["file"], r["line"], r["name"], r["candidates"])
+        r["site_id"]: (r["file"], r["line"], r["name"], r["candidates"], r["constructs"])
         for r in store.query(
-            "SELECT site_id, file, line, name, candidates FROM supplied_edges"
+            "SELECT site_id, file, line, name, candidates, constructs FROM supplied_edges"
             " WHERE lang = ?", (lang,)
         )
     }
@@ -208,6 +211,11 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> list[Decision]:
     report = Report(lang=lang)
     supplied = _supplied(store, lang)
     ix = _index(store, lang)
+    structures = {
+        (r["file"], r["line"], r["name"])
+        for r in store.query(
+            "SELECT file, line, name FROM structures WHERE lang = ?", (lang,))
+    }
 
     for row in rows:
         found = supplied.get(row.site_id)
@@ -219,7 +227,17 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> list[Decision]:
             out.append(NoEdge())
             continue
 
-        file, line, name, candidates = found
+        file, line, name, candidates, constructs = found
+        if constructs:
+            # A construction of the program's own type: believed only where the map holds
+            # a structure of that name at that place, as a routine's name is checked.
+            if (file, line, name) in structures:
+                report.constructions += 1
+                out.append(NoEdge(constructs=constructs))
+            else:
+                report.name_mismatch += 1
+                out.append(NoEdge())
+            continue
         if not file:
             # Several declarations competed, or the checker declined. `candidates` is the
             # number; the driver turns >1 into `ambiguous` and 0 into a plain external.

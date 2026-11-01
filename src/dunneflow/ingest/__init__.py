@@ -200,6 +200,19 @@ def read_manifest(path: Path) -> PluginManifest:
             f"move when somebody edits it (rule 30)."
         )
 
+    build = tuple(str(x) for x in data.get("build", []))
+    if build and in_process:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} runs in this interpreter and declares a `build`. "
+            f"Nothing is built for a reader that is part of this program."
+        )
+    if build and "{output}" not in build:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} declares a `build` that never says where to write "
+            f"the program: none of its arguments is `{{output}}`. A build whose product "
+            f"this host cannot find is a build that ran for nothing, every time."
+        )
+
     tc = data.get("toolchain")
     toolchain = None
     if isinstance(tc, dict):
@@ -227,6 +240,7 @@ def read_manifest(path: Path) -> PluginManifest:
         supplies_edges=bool(data.get("supplies_edges", False)),
         reports_literals=bool(data.get("reports_literals", False)),
         fingerprint=fingerprint,
+        build=build,
         root=path.parent,
     )
 

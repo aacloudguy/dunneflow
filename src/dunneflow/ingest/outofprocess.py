@@ -18,12 +18,17 @@ describe the wreck would put its guess in the map under the file's own name.
 
 from __future__ import annotations
 
+import hashlib
+import os
+import platform
 import shutil
 import subprocess
+import sys
+import tempfile
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
-from ..runtime import host_interpreter
+from ..runtime import host_interpreter, reader_cache_root
 from ..schema import FileFacts, SuppliedEdge, hash_source, stored_path
 from .codec import CodecError, decode, decode_facts
 from .contract import (
@@ -53,8 +58,12 @@ def plugin_argv(manifest: PluginManifest) -> list[str]:
     """The command that runs this plugin. **The one place that is decided** (rule 51).
 
     `entry` is relative to the plugin's own directory, like `fingerprint`, because the
-    plugin is a bundle and a path out of it is a path to somebody else's file.
+    plugin is a bundle and a path out of it is a path to somebody else's file. A plugin
+    that declares a `build` is the program that build wrote, and is built here first if
+    this machine has not built this version of it before.
     """
+    if manifest.build:
+        return [str(built_reader(manifest))]
     tc = manifest.toolchain
     if tc is None or not tc.command:
         raise PluginRefused(
@@ -69,6 +78,90 @@ def plugin_argv(manifest: PluginManifest) -> list[str]:
         )
     command = host_interpreter() if tc.command == SELF else tc.command
     return [command, str(manifest.root / manifest.entry)]
+
+
+def built_reader(manifest: PluginManifest) -> Path:
+    """The reader `manifest.build` writes, built now if it has not been built before.
+
+    **Keyed by everything the program's behaviour depends on** (rule 81): the reader's own
+    stamp, which is its declared version and the hash of its source; this platform and
+    machine, because the product is a native program; and what the toolchain says it is,
+    because a type checker is the toolchain's standard library and two versions of it can
+    answer the same question differently. A key that left any of those out would hand one
+    of them a program built for another.
+
+    **Written to a temporary name and then renamed into place**, so two analyses starting
+    at once can both build and neither can run a half-written file: the rename is atomic
+    and the loser's copy simply replaces an identical one.
+
+    The build runs with `GOTOOLCHAIN=local` and `GOFLAGS` emptied, which are Go's names
+    and are inert for any other toolchain. Without the first, a `go.mod` that asks for a
+    newer Go than the one installed makes `go` **download one**, and egress is scoped,
+    never a side effect of reading somebody's code (design rule 14).
+    """
+    from ..detectors import lang_fingerprint
+
+    tc = manifest.toolchain
+    if tc is None or not tc.command or tc.command == SELF:
+        raise PluginRefused(
+            f"the {manifest.lang} plugin at {manifest.root} declares a `build` and no "
+            f"toolchain to run it with. A build is a command, and a command has to be named."
+        )
+    said = _toolchain_says(tc.command, tc.probe)
+    key = hashlib.sha256("\0".join(
+        [lang_fingerprint(manifest.lang), sys.platform, platform.machine(), said]
+    ).encode("utf-8")).hexdigest()[:16]
+    name = manifest.lang + (".exe" if sys.platform == "win32" else "")
+    target = reader_cache_root() / f"{manifest.lang}-{key}" / name
+    if target.is_file():
+        return target
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{name}.", dir=target.parent)
+    os.close(fd)
+    tmp = Path(tmp_name)
+    argv = [tmp_name if a == "{output}" else a for a in manifest.build]
+    env = {**os.environ, "GOTOOLCHAIN": "local", "GOFLAGS": "", "GOWORK": "off",
+           "CGO_ENABLED": "0"}
+    try:
+        out = subprocess.run(  # noqa: S603 — argv is the manifest's, never a shell
+            argv, cwd=manifest.root, capture_output=True, text=True, timeout=600,
+            check=False, env=env,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        tmp.unlink(missing_ok=True)
+        raise PluginRefused(
+            f"the {manifest.lang} reader is shipped as source and building it failed to "
+            f"start: `{' '.join(manifest.build)}` in {manifest.root} said {exc}."
+        ) from exc
+    if out.returncode != 0 or tmp.stat().st_size == 0:
+        tmp.unlink(missing_ok=True)
+        tail = (out.stderr or out.stdout).strip()[-2000:]
+        raise PluginRefused(
+            f"the {manifest.lang} reader is shipped as source and did not build on this "
+            f"machine: `{' '.join(manifest.build)}` in {manifest.root} exited "
+            f"{out.returncode}. That is a defect in this build of DunneFlow or in the "
+            f"toolchain ({said or 'no version given'}), not in the code being read; "
+            f"`--without {manifest.lang}` reads everything else.\n{tail}"
+        )
+    if sys.platform != "win32":
+        tmp.chmod(0o755)
+    os.replace(tmp, target)
+    return target
+
+
+def _toolchain_says(command: str, probe: Sequence[str]) -> str:
+    """What the toolchain says it is, or nothing. Part of a key, never a judgement."""
+    found = shutil.which(command)
+    if found is None:
+        return ""
+    try:
+        out = subprocess.run(  # noqa: S603 — argv is built, never a shell
+            [found, *probe], capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return (out.stdout or out.stderr).strip()
 
 
 def probe_toolchain(manifest: PluginManifest) -> None:

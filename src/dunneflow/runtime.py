@@ -285,3 +285,20 @@ def tool_version() -> str:
         return metadata.version("dunneflow")
     except metadata.PackageNotFoundError:
         return ""
+
+
+def reader_cache_root() -> Path:
+    """Where a reader that is shipped as source is built, once per version of its bytes.
+
+    **The platform's own data directory, in a checkout as much as frozen**, and never the
+    maps root. The maps root moves when the reader moves it, and can be an external volume
+    that is unplugged. A cache of built programs is neither the reader's nor a map: it is
+    this machine's, and `platform_output_root` is the one place this module keeps that
+    never moves. It is also never inside the package, because a signed application's
+    bundle is read-only, and writing beside the source in a checkout would put a binary
+    in the tree that `git status` then has to be told about.
+
+    Settled per call rather than at import, like everything else here that a test needs
+    to put somewhere else.
+    """
+    return platform_output_root() / "readers"

@@ -190,7 +190,7 @@ def test_the_claim_counts_what_was_read_and_not_what_this_build_can_read(tmp_pat
         ([], ""),
         (["python"], "Python"),
         (["python", "typescript"], "Python and TypeScript"),
-        (["go", "python", "typescript"], "go, Python and TypeScript"),
+        (["python", "ruby", "typescript"], "Python, ruby and TypeScript"),
     ],
 )
 def test_a_language_is_spelled_by_its_own_plugin_or_by_its_key(langs, expected):
@@ -199,8 +199,8 @@ def test_a_language_is_spelled_by_its_own_plugin_or_by_its_key(langs, expected):
 
     *The middle case read `typescript` until the TypeScript plugin shipped*, which is
     exactly what the lower-case arm was demonstrating: a language nobody here reads
-    keeps its key. `go` still does, so the contrast is now between two real answers
-    rather than between one answer and a placeholder.
+    keeps its key. `go` did too, until the Go reader shipped; `ruby` still does, so the
+    contrast is between two real answers rather than between one answer and a placeholder.
     """
     assert languages.named(langs) == expected
 
@@ -472,6 +472,71 @@ def test_the_walk_says_a_language_was_declined_and_by_whom(tmp_path):
     line = next(s for s in said if s.startswith("declined by you:"))
     assert "typescript" in line and "--without" in line
     assert "no reader here claims" not in line
+
+
+def _without_toolchain(monkeypatch, lang: str) -> None:
+    """Make `lang`'s probe answer as a machine without its toolchain does."""
+    from dunneflow.ingest.contract import ToolchainMissing
+
+    def missing() -> None:
+        raise ToolchainMissing(f"{lang} needs `nothing-here` and nothing answers it")
+
+    monkeypatch.setattr(ingest.PLUGINS[lang], "probe", missing)
+
+
+def test_a_missing_toolchain_declines_the_language_and_reads_the_rest(tmp_path, monkeypatch):
+    """PLAN-v2's *swift declined (no toolchain)*, filled at last.
+
+    Until 2026-11-01 nothing outside the tests asked `probe`, so a machine without `node`
+    met a TypeScript tree as an uncaught refusal from a worker that could not start, and
+    the Python half of the tree, which this machine could read perfectly well, was lost
+    with it. The files leave the walk before the store is touched, as a declined
+    language's do, and the count leaves `by_lang` so the arithmetic still closes.
+    """
+    (tmp_path / "tree").mkdir()
+    tree = _mixed(tmp_path / "tree")
+    _without_toolchain(monkeypatch, "typescript")
+    store = Store(tmp_path / "graph.db")
+    try:
+        stats = walk.analyze_tree(tree, store)
+    finally:
+        store.close()
+
+    assert stats.no_toolchain == {"typescript": 2}
+    assert "typescript" not in stats.by_lang
+    assert stats.by_lang.get("python") == 2
+    assert stats.found == 2
+    assert "nothing-here" in stats.no_toolchain_said["typescript"]
+
+
+def test_a_missing_toolchain_is_its_own_sentence_and_never_a_declined_one(tmp_path,
+                                                                        monkeypatch):
+    """Three facts with three remedies, and the residue keeps them apart (design rule 21)."""
+    (tmp_path / "tree").mkdir()
+    tree = _mixed(tmp_path / "tree")
+    _without_toolchain(monkeypatch, "typescript")
+    store = Store(tmp_path / "graph.db")
+    try:
+        said = walk.walk_residue(walk.analyze_tree(tree, store))
+    finally:
+        store.close()
+    line = next(s for s in said if s.startswith("not read, no toolchain:"))
+    assert "2 files of typescript" in line and "nothing-here" in line
+    assert not any(s.startswith("declined by you:") for s in said)
+    assert not any(s.startswith("unread:") and ".ts" in s for s in said)
+
+
+def test_a_language_with_no_files_is_never_probed(tmp_path, monkeypatch):
+    """A Python tree has no business failing, or saying anything, for want of `node`."""
+    (tmp_path / "tree").mkdir()
+    (tmp_path / "tree" / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _without_toolchain(monkeypatch, "typescript")
+    store = Store(tmp_path / "graph.db")
+    try:
+        stats = walk.analyze_tree(tmp_path / "tree", store)
+    finally:
+        store.close()
+    assert stats.no_toolchain == {}
 
 
 def test_a_declined_language_is_recorded_in_the_map_itself():

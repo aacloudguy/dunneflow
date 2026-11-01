@@ -29,7 +29,7 @@ from . import ingest, revisions
 from .docstore import DocStore
 from .extractors.docs import DOC_SUFFIXES, extract_doc
 from .ingest import literals
-from .ingest.contract import DiscoveryRules
+from .ingest.contract import DiscoveryRules, ToolchainMissing
 
 # **The one import this module makes into `resolve/`, and it is a name rather than a
 # behaviour.** Which filenames declare something is a *discovery* fact -- `PLAN-v2.md`
@@ -166,6 +166,16 @@ class WalkStats:
     # one, and *you declined typescript* is answered by not declining it. Flattening them
     # would tell a reader who declined a language that the tool cannot read it.
     declined: dict[str, int] = field(default_factory=dict)
+    # Language -> files this build has a reader for and **this machine cannot run**, with
+    # the probe's own sentence beside it in `no_toolchain_said`. A third fact beside
+    # `unclaimed` and `declined`, and never folded into either (design rule 21): *no reader
+    # claims `.go`* is answered by a build that has one, *you declined go* by not declining
+    # it, and *go is not installed* by installing it. PLAN-v2 drew this as *swift declined
+    # (no toolchain)* and nothing ever filled it: until 2026-11-01 `probe_toolchain` was
+    # called by tests alone, so a missing `node` reached a reader as an uncaught refusal from
+    # the worker that could not start, and took the whole analysis down with it.
+    no_toolchain: dict[str, int] = field(default_factory=dict)
+    no_toolchain_said: dict[str, str] = field(default_factory=dict)
     # Languages whose reader declares `reports_literals: false`. A real answer and not an
     # empty one -- that language contributes no SQL and no named files, on purpose -- and
     # it has to be said, because a map with neither is indistinguishable from a program
@@ -224,6 +234,12 @@ def walk_residue(stats: WalkStats) -> list[str]:
         out.append(f"declined by you: {listed} — this build has a reader for "
                    + ("that language" if len(stats.declined) == 1 else "those languages")
                    + "; drop --without to read them")
+    for lang, n in sorted(stats.no_toolchain.items()):
+        # One line per language rather than one joined line, because each carries its own
+        # command and its own way forward, and a sentence that names two toolchains is
+        # one nobody can act on in a single step (rule 89).
+        out.append(f"not read, no toolchain: {plural(n, 'file')} of {lang} — "
+                   + stats.no_toolchain_said.get(lang, "its reader could not be started"))
     if stats.unclaimed:
         worst = sorted(stats.unclaimed.items(), key=lambda kv: (-kv[1], kv[0]))
         listed = ", ".join(f"{n:,} {suffix}" for suffix, n in worst)
@@ -745,6 +761,45 @@ def _by_language(paths: Sequence[Path]) -> dict[str, list[Path]]:
     return out
 
 
+def _runnable(files: list[Path], stats: WalkStats) -> list[Path]:
+    """The discovered files, minus every language this machine cannot run a reader for.
+
+    **Asked once per language that has files, before any cache key is read or any worker
+    is started** — `probe_toolchain`'s own docstring said *before any store is opened*,
+    and nothing asked it at all. A language with no files is never probed: a Python tree
+    has no business failing for want of `go`.
+
+    **Removed from `files` rather than skipped later, and that is `declined`'s placement
+    for `declined`'s reason.** The files leave the walk before `live` is built, so they
+    leave the store with it — the same as a language declined by name — and a map
+    cannot carry last week's facts for a language this run did not read as though it
+    had. The count leaves `by_lang` too, so the arithmetic of the residue still closes.
+
+    `ToolchainMissing` and nothing broader: a `PluginRefused` is a build defect and still
+    stops the run (rule 49). The sentence it raised is kept whole — it names the command,
+    the versions and both ways forward — and the count is added here, because the count is
+    the one part the probe cannot know.
+    """
+    owned = _by_language(files)
+    gone: set[str] = set()
+    for lang in sorted(owned):
+        try:
+            ingest.PLUGINS[lang].probe()
+        except ToolchainMissing as exc:
+            gone.add(lang)
+            n = len(owned[lang])
+            stats.no_toolchain[lang] = n
+            stats.no_toolchain_said[lang] = str(exc)
+            left = stats.by_lang.get(lang, 0) - n
+            if left > 0:
+                stats.by_lang[lang] = left
+            else:
+                stats.by_lang.pop(lang, None)
+    if not gone:
+        return files
+    return [p for p in files if ingest.language_of(p) not in gone]
+
+
 def analyze_tree(
     root: Path,
     store: Store,
@@ -777,6 +832,7 @@ def analyze_tree(
 
     files = sorted(discover(root, include_tests=include_tests, stats=stats,
                             declined=declined, judge_root=part_of))
+    files = _runnable(files, stats)
     stats.found = len(files)
 
     known = store.known_hashes()

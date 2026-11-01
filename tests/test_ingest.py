@@ -52,9 +52,9 @@ def test_the_registry_and_the_walk_read_one_table():
     assert ingest.suffix_owners(ingest.discovery()) == ingest.LANG_SUFFIX
     assert ingest.language_of("a/b/c.py") == "python"
     assert ingest.language_of("a/b/c.ts") == "typescript"
-    # `None` is an answer and not a failure, and `.go` is what it is about now that
-    # `.ts` has a reader. What must never happen is the file being read anyway.
-    assert ingest.language_of("a/b/c.go") is None
+    # `None` is an answer and not a failure, and `.rb` is what it is about now that
+    # `.ts` and `.go` have readers. What must never happen is the file being read anyway.
+    assert ingest.language_of("a/b/c.rb") is None
 
 
 # ------------------------------------------------------------------- the walk --- #
@@ -106,7 +106,7 @@ def test_a_suffix_nobody_claims_is_counted_and_a_document_is_not(tmp_path):
     would be a false claim rather than a silent one (rule 13).
     """
     _write(tmp_path, "main.py")
-    _write(tmp_path, "vendored.go")
+    _write(tmp_path, "vendored.rb")
     _write(tmp_path, "schema.json")
     _write(tmp_path, "README.md", "# hello\n")
 
@@ -114,9 +114,9 @@ def test_a_suffix_nobody_claims_is_counted_and_a_document_is_not(tmp_path):
     found = sorted(walk.discover(tmp_path, rules=[PY], stats=stats))
 
     assert [p.name for p in found] == ["main.py"]
-    assert stats.unclaimed == {".go": 1, ".json": 1}
+    assert stats.unclaimed == {".json": 1, ".rb": 1}
     said = " ".join(walk.walk_residue(stats))
-    assert ".go" in said and ".md" not in said
+    assert ".rb" in said and ".md" not in said
 
 
 def test_a_pruned_directory_is_counted_by_name(tmp_path):
@@ -163,8 +163,8 @@ def test_nothing_left_out_says_nothing(tmp_path):
 def test_the_walk_defaults_to_every_reader_this_build_ships(tmp_path):
     _write(tmp_path, "a.py")
     _write(tmp_path, "b.ts")
-    _write(tmp_path, "c.go")
-    # Both readers this build ships, and neither one by name. `c.go` is the third
+    _write(tmp_path, "c.rb")
+    # Both readers this build ships, and neither one by name. `c.rb` is the third
     # answer: a suffix nobody claims is left out and counted, never handed to
     # whichever reader happened to be nearest.
     assert [p.name for p in walk.discover(tmp_path)] == ["a.py", "b.ts"]

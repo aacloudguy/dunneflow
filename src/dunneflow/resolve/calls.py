@@ -25,8 +25,8 @@ with one is resolved; a language with none has every call left external **and is
 with how many calls that was. It is not a placeholder and it was not hypothetical: chunk 9
 shipped a TypeScript map a whole chunk before TypeScript's supplied edges, and *left
 external for want of a resolver: typescript 4,990* is what made that map honest rather than
-a program that appears to call nothing. `RESOLVERS` has two entries now and a third
-language will arrive the same way.
+a program that appears to call nothing. `RESOLVERS` has three entries now, and Go arrived
+the way that sentence said it would.
 
 **And the two resolvers get there by different means, which is the point of the seam.**
 Python's argues from names, imports and enclosing scopes and says how much to trust each
@@ -39,9 +39,9 @@ from __future__ import annotations
 
 from ..schema import Confidence
 from ..store import Store
+from . import supplied
 from .contract import CallRow, Edge, Resolver, ResolveStats
 from .python.calls import resolve as _resolve_python
-from .typescript.calls import resolve as _resolve_typescript
 
 # `ResolveStats` is re-exported deliberately: it was this module's type for a year and
 # `cli.py` and fourteen test files ask this module for it. The contract moved; the address
@@ -54,7 +54,10 @@ __all__ = ["RESOLVERS", "ResolveStats", "resolve_calls"]
 # test, never by a data file.
 RESOLVERS: dict[str, Resolver] = {
     "python": _resolve_python,
-    "typescript": _resolve_typescript,
+    # Every reader that hands over its checker's answer is read by one module, which names
+    # none of them: the lookup is the same whoever did the checking.
+    "typescript": supplied.resolve,
+    "go": supplied.resolve,
 }
 
 
@@ -66,6 +69,9 @@ def resolve_calls(store: Store) -> ResolveStats:
     of its own, and adding one would be a second copy of a fact `files` already states
     (rule 40).
     """
+    # Emptied first, because a slot left over from an earlier resolve in this process
+    # would be printed as a report about this one (rule 49).
+    supplied.REPORTS.clear()
     stats = ResolveStats()
     updates: list[tuple[str | None, str, int, int, str, int]] = []
 

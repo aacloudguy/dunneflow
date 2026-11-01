@@ -270,6 +270,14 @@ class PluginManifest:
     reports_literals: bool = False
     # Relative to the plugin's own directory. Never a glob — see above.
     fingerprint: tuple[str, ...] = ()
+    # **A reader shipped as source and built on this machine before it is first run.** The
+    # argv of the build, run in the plugin's own directory, with `{output}` standing for the
+    # path the program is to be written to; empty for a reader that runs as it is shipped.
+    # Added for Go, whose checker needs the `go` toolchain at run time anyway, so building
+    # with it costs nothing more than being able to run at all. Shipping one binary per
+    # platform instead would give one `fingerprint` per platform, and a map written on one
+    # machine would then be refused as stale on another (rule 12).
+    build: tuple[str, ...] = ()
     root: Path = field(default=Path("."), compare=False)
 
 

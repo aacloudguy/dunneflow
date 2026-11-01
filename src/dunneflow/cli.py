@@ -32,6 +32,7 @@ from .render.index import legacy_map_files, render_index
 from .render.markdown import render_all
 from .render.snapshot import mapless, render_maps
 from .resolve import languages, manifests
+from .resolve import supplied as supplied_edges
 from .resolve import version as program_version
 from .resolve.calls import resolve_calls
 from .resolve.cli import resolve_cli
@@ -46,7 +47,6 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
-from .resolve.typescript import calls as ts_edges
 from .runtime import (
     MapsRootGone,
     default_output_root,
@@ -1031,8 +1031,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         if rstats.supplied:
             _emit(f"  {rstats.supplied:,} of those were supplied by a reader's own "
                   f"toolchain rather than resolved by name")
-        if (said := ts_edges.LAST.sentence()):
-            _emit("  " + said)
+        for _lang, report in sorted(supplied_edges.REPORTS.items()):
+            if (said := report.sentence()):
+                _emit("  " + said)
         # A language this build reads and cannot resolve is **named**, because *nothing
         # resolved* and *nothing to resolve* are the same 0% and opposite facts (design
         # rule 1). It fires for the first time with TypeScript, whose supplied edges are
@@ -1165,6 +1166,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                   # language and per unclaimed suffix -- rule 13, across two channels.
                   languages=dict(sorted(stats.by_lang.items())),
                   unread=dict(sorted(stats.unclaimed.items())),
+                  no_toolchain=dict(sorted(stats.no_toolchain.items())),
                   settled=settled)
     else:
         print(

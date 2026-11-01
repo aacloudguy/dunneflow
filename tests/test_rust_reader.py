@@ -1029,3 +1029,30 @@ def test_a_file_a_test_module_declares_is_left_out_as_a_test(tmp_path):
         production + ["src/checks.rs", "src/checks/helpers.rs"])
     assert stats.test_modules == {"rust": 1}
     store.close()
+
+
+@needs_plugin
+@needs_cargo
+def test_a_library_is_used_by_its_lib_name_where_one_is_written(tmp_path):
+    """Tauri's template sets `[lib] name = "<app>_lib"` and `main.rs` calls
+    `<app>_lib::run()`. Read by the package name alone, that call left the program, and
+    DunneNote's desktop binary reached nothing -- so the process map could not place a
+    single command it answers (chunk 5d)."""
+    from dunneflow import walk
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "desk"\n\n[lib]\nname = "desk_lib"\n'
+        'crate-type = ["staticlib", "rlib"]\n')
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.rs").write_text("fn main() {\n    desk_lib::run();\n}\n")
+    (tmp_path / "src" / "lib.rs").write_text("pub fn run() {}\n")
+    store = Store(tmp_path / "g.db")
+    walk.analyze_tree(tmp_path, store)
+    resolve_calls(store)
+    [row] = store.query(
+        "SELECT r.qualname FROM calls c JOIN routines r ON r.id = c.callee_id"
+        " WHERE c.callee_expr = 'desk_lib.run'")
+    store.close()
+    assert row["qualname"] == "src.lib.run"

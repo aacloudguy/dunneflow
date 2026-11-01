@@ -221,18 +221,22 @@ pub fn collect(root: &Path, files: &[PathBuf], rules: &Rules) -> Found {
 
 // ------------------------------------------------------------------ crates --- //
 
-/// `[package] name`, `[lib] path` and every `[[bin]] path`, read by a line scanner rather
-/// than a TOML parser, which would be a vendored crate for three keys. What it does not
-/// read: a name or path written as an inline table, or continued over lines.
+/// `[package] name`, `[lib] name` and `path`, and every `[[bin]] path`, read by a line
+/// scanner rather than a TOML parser, which would be a vendored crate for four keys. What
+/// it does not read: a name or path written as an inline table, or continued over lines.
 struct Manifest {
     name: Option<String>,
+    /// `[lib] name`: **the name the library is used by, where it is set**. Tauri's template
+    /// sets it (`dunnenote_lib`) so that `main.rs` calls `dunnenote_lib::run()`; read by the
+    /// package name alone, that call left the program and the binary reached nothing.
+    lib_name: Option<String>,
     lib: Option<String>,
     bins: Vec<String>,
 }
 
 fn read_manifest(path: &Path) -> Option<Manifest> {
     let text = std::fs::read_to_string(path).ok()?;
-    let mut m = Manifest { name: None, lib: None, bins: Vec::new() };
+    let mut m = Manifest { name: None, lib_name: None, lib: None, bins: Vec::new() };
     let mut section = String::new();
     for raw in text.lines() {
         let line = raw.split('#').next().unwrap_or("").trim();
@@ -249,6 +253,7 @@ fn read_manifest(path: &Path) -> Option<Manifest> {
         match (section.as_str(), k.trim()) {
             ("package", "name") => m.name = Some(v),
             ("lib", "path") => m.lib = Some(v),
+            ("lib", "name") => m.lib_name = Some(v),
             ("bin", "path") => m.bins.push(v),
             _ => {}
         }
@@ -358,7 +363,9 @@ impl Program {
             prog.crates.push(Crate { package: pkg.clone(), dep });
             if is_lib {
                 if let Some(m) = pkg.as_ref().and_then(|p| packages.get(p)) {
-                    if let Some(n) = &m.name {
+                    // Cargo's own rule: the `[lib] name` where one is written, and otherwise
+                    // the package's name with `-` made `_`. Never both — a library has one name.
+                    if let Some(n) = m.lib_name.as_ref().or(m.name.as_ref()) {
                         prog.by_name.insert(n.replace('-', "_"), c);
                     }
                 }

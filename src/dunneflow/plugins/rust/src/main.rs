@@ -18,6 +18,7 @@
 
 mod cfg;
 mod comments;
+mod deps;
 mod edges;
 mod extract;
 mod facts;
@@ -149,7 +150,8 @@ impl Reader {
         let mut f = Frame::new("edges_done");
         f.put("id", id).put("supplied", &supplied)
             .put("unresolved", &(found.outside + found.unknown))
-            .put("outside", &found.outside).put("unknown", &found.unknown);
+            .put("outside", &found.outside).put("unknown", &found.unknown)
+            .put("read_beyond", &found.read_beyond).put("not_present", &found.not_present);
         self.send(f.finish());
     }
 

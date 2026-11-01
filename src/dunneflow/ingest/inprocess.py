@@ -77,6 +77,8 @@ class InProcessPlugin:
         # the two fields are the contract's rather than this class's. See `edges` below.
         self.edges_outside = 0
         self.edges_unknown = 0
+        self.edges_read_beyond: list[str] = []
+        self.edges_not_present: list[str] = []
         self.edge_notes: list[str] = []
         # Nothing to say: this reader opens nothing, which `open` below states in words.
         self.opened_notes: list[str] = []

@@ -726,3 +726,89 @@ def test_a_let_shadows_only_the_calls_written_after_it(edges):
     """`let Some(secret) = secret() else { … }` calls the function `secret`; the name it
     binds exists only once the statement is done. Found in DunneNote's `host-http` `main`."""
     assert edges[("shadow", "secret")][0] == "core.src.typed.secret"
+
+
+@pytest.fixture(scope="module")
+def with_deps(tmp_path_factory):
+    """A program, its `Cargo.lock`, and a cargo cache holding one of its two dependencies:
+    the reader reads the one that is there and says which one is not (design rule 14)."""
+    if PLUGIN is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree, walk_residue
+
+    root = tmp_path_factory.mktemp("rustdeps")
+    cache = tmp_path_factory.mktemp("cargohome")
+    dep = cache / "registry" / "src" / "index.example-1" / "litedb-1.2.0"
+    files = {
+        root / "Cargo.toml": '[package]\nname = "app"\n\n[dependencies]\nlitedb = "1"\n'
+                             'gone = { version = "2" }\n',
+        root / "Cargo.lock": '[[package]]\nname = "litedb"\nversion = "1.2.0"\n'
+                             'source = "registry+https://github.com/rust-lang/crates.io-index"\n\n'
+                             '[[package]]\nname = "gone"\nversion = "2.0.0"\n'
+                             'source = "registry+https://github.com/rust-lang/crates.io-index"\n',
+        root / "src" / "main.rs": '''use litedb::Conn;
+
+fn main() {
+    let c = Conn::open("x").unwrap();
+    let stmt = c.prepare("SELECT 1");
+    stmt.run();
+    gone::thing();
+}
+''',
+        dep / "Cargo.toml": '[package]\nname = "litedb"\nversion = "1.2.0"\n',
+        dep / "src" / "lib.rs": '''mod conn;
+pub use conn::*;
+''',
+        dep / "src" / "conn.rs": '''pub struct Conn;
+pub struct Statement;
+
+impl Conn {
+    pub fn open(path: &str) -> Result<Conn, ()> {
+        Ok(Conn)
+    }
+
+    pub fn prepare(&self, sql: &str) -> Statement {
+        Statement
+    }
+}
+
+impl Statement {
+    pub fn run(&self) {}
+}
+''',
+    }
+    for path, text in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    mp = pytest.MonkeyPatch()
+    mp.setenv("CARGO_HOME", str(cache))
+    try:
+        store = Store(tmp_path_factory.mktemp("db") / "g.db")
+        stats = analyze_tree(root, store)
+        resolve_calls(store)
+        rows = {r["callee_expr"]: (r["frontier"], r["reason"]) for r in store.query(
+            "SELECT callee_expr, frontier, reason FROM calls WHERE callee_id IS NULL")}
+        hows = {r["frontier"]: r["how"] for r in store.query(
+            "SELECT frontier, how FROM supplied_edges WHERE frontier != ''")}
+        store.close()
+    finally:
+        mp.undo()
+    return rows, hows, walk_residue(stats)
+
+
+def test_a_dependency_on_this_machine_confirms_the_frontier_and_types_what_it_returns(with_deps):
+    rows, hows, _ = with_deps
+    assert rows["Conn.open"] == ("litedb::conn::Conn::open", "outside")
+    assert "confirmed in litedb 1.2.0" in hows["litedb::conn::Conn::open"]
+    # `stmt` is what `Conn::prepare` declares it returns, read from the dependency.
+    assert rows["stmt.run"] == ("litedb::conn::Statement::run", "outside")
+
+
+def test_a_dependency_not_on_this_machine_is_said_and_never_fetched(with_deps):
+    rows, _, residue = with_deps
+    assert rows["gone.thing"] == ("gone::thing", "outside")
+    assert any("read from this machine, never fetched: 1 dependency — litedb 1.2.0" in r
+               for r in residue), residue
+    assert any("gone 2.0.0 (not in this machine's cargo cache)" in r for r in residue), residue

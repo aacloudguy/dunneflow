@@ -62,6 +62,7 @@
     ".cargo/config.toml",
     "src/cfg.rs",
     "src/comments.rs",
+    "src/deps.rs",
     "src/edges.rs",
     "src/extract.rs",
     "src/facts.rs",

@@ -31,6 +31,7 @@ use crate::extract::{self, Def, Extracted, SiteKind};
 use crate::facts::SuppliedEdge;
 use crate::rules::Rules;
 use crate::types::Hint;
+use crate::deps;
 use crate::text;
 
 #[derive(Default)]
@@ -39,7 +40,15 @@ pub struct Found {
     pub notes: Vec<String>,
     pub outside: usize,
     pub unknown: usize,
+    /// Dependencies whose source was read from this machine, `name version` each.
+    pub read_beyond: Vec<String>,
+    /// Dependencies that were not, each with why.
+    pub not_present: Vec<String>,
 }
+
+/// A bound on the dependency files read, so a program that depends on half of crates.io
+/// costs a bounded walk; what it left unread is said (rule 55).
+const DEP_FILE_BOUND: usize = 20_000;
 
 const HOW: &str = "rust path";
 
@@ -49,13 +58,20 @@ struct FileUnit {
     ex: Extracted,
     /// `(crate, module path)` once placed in a crate's tree.
     at: Option<(usize, Vec<String>)>,
+    /// Which dependency this file is the source of, for a file outside the program.
+    dep: Option<usize>,
 }
 
 struct Crate {
     /// The package directory the crate's root is in, if it is in one.
     #[allow(dead_code)]
     package: Option<PathBuf>,
+    /// A dependency's crate, read for the frontier and never resolved or drawn.
+    dep: Option<usize>,
 }
+
+/// `(crate, module, name, depth)`: one `lookup` question.
+type MemoKey = (usize, Vec<String>, String, usize);
 
 /// A definition, by file and index into that file's `defs`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -91,7 +107,11 @@ enum TyRes {
 }
 
 struct Program {
+    memo: std::cell::RefCell<HashMap<MemoKey, Res>>,
+    memo_on: std::cell::Cell<bool>,
     files: Vec<FileUnit>,
+    /// `(name, version)` of each dependency read.
+    deps: Vec<(String, String)>,
     crates: Vec<Crate>,
     /// crate name (with `-` read as `_`) -> its library crate.
     by_name: HashMap<String, usize>,
@@ -126,6 +146,7 @@ struct Program {
 
 pub fn collect(root: &Path, files: &[PathBuf], rules: &Rules) -> Found {
     let mut found = Found::default();
+    let clock = std::time::Instant::now();
     let mut units = Vec::new();
     for abs in files {
         let abs = std::path::absolute(abs).unwrap_or_else(|_| abs.clone());
@@ -135,10 +156,56 @@ pub fn collect(root: &Path, files: &[PathBuf], rules: &Rules) -> Found {
             Err(_) => abs.to_string_lossy().replace('\\', "/"),
         };
         let ex = extract::extract(&rel, &src, rules);
-        units.push(FileUnit { rel, abs, ex, at: None });
+        units.push(FileUnit { rel, abs, ex, at: None, dep: None });
     }
-    let mut prog = Program::build(root, units, &mut found);
+    // The program's packages, and their direct dependencies where this machine has them.
+    let mut packages: Vec<PathBuf> = Vec::new();
+    for u in &units {
+        let mut dir = u.abs.parent();
+        while let Some(d) = dir {
+            if !d.starts_with(root) {
+                break;
+            }
+            if d.join("Cargo.toml").is_file() {
+                if !packages.iter().any(|p| p == d) {
+                    packages.push(d.to_path_buf());
+                }
+                break;
+            }
+            dir = d.parent();
+        }
+    }
+    let got = deps::find(root, &packages);
+    let mut dep_meta: Vec<(String, String, PathBuf, std::collections::BTreeSet<String>)> = Vec::new();
+    let mut budget = DEP_FILE_BOUND;
+    for d in got.deps {
+        let files = deps::files(&d);
+        if files.len() > budget {
+            found.not_present.push(format!("{} {} (past the {DEP_FILE_BOUND}-file bound)", d.name, d.version));
+            continue;
+        }
+        budget -= files.len();
+        let i = dep_meta.len();
+        for abs in files {
+            let Ok(src) = text::read_source(&abs) else { continue };
+            let rel = format!("{}-{}/{}", d.name, d.version,
+                abs.strip_prefix(&d.dir).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default());
+            let ex = extract::extract(&rel, &src, rules);
+            units.push(FileUnit { rel, abs, ex, at: None, dep: Some(i) });
+        }
+        found.read_beyond.push(format!("{} {}", d.name, d.version));
+        dep_meta.push((d.name, d.version, d.dir, d.aliases));
+    }
+    found.not_present.extend(got.missing);
+    let read = clock.elapsed();
+    let mut prog = Program::build(root, units, &dep_meta, &mut found);
+    let built = clock.elapsed();
     prog.resolve_all(&mut found);
+    // Evidence on stderr, which the host drains and never parses: where the time went.
+    found.notes.push(format!(
+        "edges: read and walked {} files in {:.1}s, placed and indexed in {:.1}s, resolved in {:.1}s",
+        prog.files.len(), read.as_secs_f64(), (built - read).as_secs_f64(),
+        (clock.elapsed() - built).as_secs_f64()));
     found
 }
 
@@ -181,9 +248,14 @@ fn read_manifest(path: &Path) -> Option<Manifest> {
 }
 
 impl Program {
-    fn build(root: &Path, files: Vec<FileUnit>, found: &mut Found) -> Program {
+    fn build(root: &Path, files: Vec<FileUnit>,
+             dep_meta: &[(String, String, PathBuf, std::collections::BTreeSet<String>)],
+             found: &mut Found) -> Program {
         let mut prog = Program {
+            memo: std::cell::RefCell::new(HashMap::new()),
+            memo_on: std::cell::Cell::new(false),
             files,
+            deps: dep_meta.iter().map(|(n, v, _, _)| (n.clone(), v.clone())).collect(),
             crates: Vec::new(),
             by_name: HashMap::new(),
             modules: HashSet::new(),
@@ -207,7 +279,13 @@ impl Program {
 
         // Every package a file belongs to, and its crate roots.
         let mut packages: BTreeMap<PathBuf, Manifest> = BTreeMap::new();
-        for f in &prog.files {
+        for (d, ..) in dep_meta.iter().map(|(_, _, d, a)| (d, a)) {
+            if let Some(m) = read_manifest(&d.join("Cargo.toml")) {
+                packages.insert(d.clone(), m);
+            }
+        }
+        let dep_dirs: Vec<PathBuf> = dep_meta.iter().map(|(_, _, d, _)| d.clone()).collect();
+        for f in prog.files.iter().filter(|f| f.dep.is_none()) {
             let mut dir = f.abs.parent();
             while let Some(d) = dir {
                 if !d.starts_with(root) {
@@ -228,6 +306,10 @@ impl Program {
             let lib = dir.join(m.lib.as_deref().unwrap_or("src/lib.rs"));
             if let Some(&i) = by_abs.get(&lib) {
                 roots.push((i, Some(dir.clone()), true));
+            }
+            // A dependency is read for its library and nothing else.
+            if dep_dirs.contains(dir) {
+                continue;
             }
             let mut bins: Vec<PathBuf> = m.bins.iter().map(|b| dir.join(b)).collect();
             bins.push(dir.join("src/main.rs"));
@@ -260,11 +342,18 @@ impl Program {
                 continue;
             }
             let c = prog.crates.len();
-            prog.crates.push(Crate { package: pkg.clone() });
+            let dep = prog.files[file].dep;
+            prog.crates.push(Crate { package: pkg.clone(), dep });
             if is_lib {
                 if let Some(m) = pkg.as_ref().and_then(|p| packages.get(p)) {
                     if let Some(n) = &m.name {
                         prog.by_name.insert(n.replace('-', "_"), c);
+                    }
+                }
+                // The names the program's manifests depend on it by.
+                if let Some(i) = dep {
+                    for a in &dep_meta[i].3 {
+                        prog.by_name.insert(a.clone(), c);
                     }
                 }
             }
@@ -273,10 +362,10 @@ impl Program {
         // A file nobody declares is a crate of its own. One a `cfg` leaves out is not.
         let mut orphans = 0;
         for i in 0..prog.files.len() {
-            if prog.files[i].at.is_none() && !declared.contains(&i) {
+            if prog.files[i].at.is_none() && !declared.contains(&i) && prog.files[i].dep.is_none() {
                 let pkg = packages.keys().filter(|d| prog.files[i].abs.starts_with(d)).max_by_key(|d| d.as_os_str().len()).cloned();
                 let c = prog.crates.len();
-                prog.crates.push(Crate { package: pkg });
+                prog.crates.push(Crate { package: pkg, dep: None });
                 prog.place(i, c, Vec::new(), true, &by_abs, &mut declared);
                 orphans += 1;
             }
@@ -287,6 +376,7 @@ impl Program {
             ));
         }
         prog.index();
+        prog.memo_on.set(true);
         prog
     }
 
@@ -368,12 +458,18 @@ impl Program {
                     let mut full = module.clone();
                     full.extend(d.mod_path.iter().cloned());
                     self.fns.entry((*c, full, d.name.clone())).or_default().push(DefRef(fi, di));
-                    self.fn_names.insert(d.name.clone());
-                } else {
+                    // The program's own names only: a dependency defining `get` must not
+                    // turn every `x.get()` the program writes from *outside* into *unknown*.
+                    if f.dep.is_none() {
+                        self.fn_names.insert(d.name.clone());
+                    }
+                } else if f.dep.is_none() {
                     self.method_names.insert(d.name.clone());
                 }
             }
-            self.macros.extend(f.ex.macros.iter().cloned());
+            if f.dep.is_none() {
+                self.macros.extend(f.ex.macros.iter().cloned());
+            }
             for u in &f.ex.uses {
                 if u.reference == Tri::False {
                     continue;
@@ -392,7 +488,11 @@ impl Program {
             v.dedup();
         }
         // Pass 2: whose each method is, and which trait each impl is of, now that every
-        // name in every module can be looked up.
+        // name in every module can be looked up. **Remembered while it runs** — every
+        // dependency `impl` asks for its type, and asked cold that was 59.7 of DunneNote's
+        // 61.5 s — and **forgotten after**, because what this pass is asking is a type, and
+        // a lookup that reached a method here was asked before `methods` was filled.
+        self.memo_on.set(true);
         let mut methods: Vec<((usize, String, String), DefRef)> = Vec::new();
         let mut owners: Vec<(DefRef, Option<(usize, String)>)> = Vec::new();
         let mut supers: Vec<((usize, String), Vec<String>)> = Vec::new();
@@ -430,6 +530,7 @@ impl Program {
         for (k, v) in supers {
             self.supertraits.insert(k, v);
         }
+        self.memo.borrow_mut().clear();
     }
 
     /// The key of the type a name means in a module: declared there, brought in by a `use`
@@ -547,6 +648,24 @@ impl Program {
     /// One name in one module: its functions, its child modules, its types, its `use`s,
     /// its globs, and the crates the workspace names.
     fn lookup(&self, c: usize, module: &[String], name: &str, depth: usize) -> Res {
+        // **Remembered once the index is whole.** A dependency's chains of `pub use …::*`
+        // made the same question cost the same glob walk thousands of times: DunneNote's
+        // edges took 61.5 s with forty dependencies read and 0.9 s without. The depth is
+        // in the key, because an answer cut short at the bound, or one taking the depth-0
+        // fallback, is not the answer at another depth.
+        if !self.memo_on.get() {
+            return self.lookup_uncached(c, module, name, depth);
+        }
+        let key = (c, module.to_vec(), name.to_owned(), depth);
+        if let Some(r) = self.memo.borrow().get(&key) {
+            return r.clone();
+        }
+        let r = self.lookup_uncached(c, module, name, depth);
+        self.memo.borrow_mut().insert(key, r.clone());
+        r
+    }
+
+    fn lookup_uncached(&self, c: usize, module: &[String], name: &str, depth: usize) -> Res {
         if let Some(defs) = self.fns.get(&(c, module.to_vec(), name.to_owned())) {
             return Res::Fns(defs.clone());
         }
@@ -602,8 +721,9 @@ impl Program {
             // Derived, blanket, or from a trait or a `Deref` target this program did not
             // write: the method is not here, so neither is its far end.
             // `crate::` so the frontier says the type is this program's and only the method
-            // is somebody else's (a derive, a foreign trait's impl, a `Deref` target).
-            return Res::Outside(format!("crate::{ty}::{name}"));
+            // is somebody else's (a derive, a foreign trait's impl, a `Deref` target); a
+            // dependency's type is spelt with the dependency's name.
+            return Res::Outside(format!("{}::{ty}::{name}", self.crate_name(c)));
         };
         let pick = |want_trait: bool| -> Vec<DefRef> {
             all.iter().copied().filter(|r| self.def(*r).trait_name.is_some() == want_trait).collect::<Vec<_>>()
@@ -623,7 +743,7 @@ impl Program {
 
     fn resolve_all(&mut self, found: &mut Found) {
         let mut edges = Vec::new();
-        for f in &self.files {
+        for f in self.files.iter().filter(|f| f.dep.is_none()) {
             let Some((c, module)) = &f.at else {
                 for s in f.ex.sites.iter().filter(|s| !s.at_boundary) {
                     found.unknown += 1;
@@ -723,6 +843,29 @@ impl Program {
                             }
                         }
                     }
+                };
+                // A dependency's definition is a frontier, confirmed: its file is not in
+                // this map and no edge can name it, but the reader has read it.
+                let res = match res {
+                    Res::Fns(defs) if !defs.is_empty() && defs.iter().all(|r| self.files[r.0].dep.is_some()) => {
+                        let kept: Vec<DefRef> = defs.iter().copied()
+                            .filter(|r| self.def(*r).reference != Tri::False).collect();
+                        match kept.as_slice() {
+                            [one] => {
+                                found.outside += 1;
+                                let (path, how) = self.dep_path(*one);
+                                edges.push(stop(s, "outside", &path, &how));
+                                continue;
+                            }
+                            _ => Res::Outside(self.dep_path(defs[0]).0),
+                        }
+                    }
+                    Res::Construct(fi, ti) if self.files[fi].dep.is_some() => {
+                        let ctx = self.type_ctx(fi, ti);
+                        let key = ctx.self_type.unwrap_or_default();
+                        Res::Outside(format!("{}::{key}", self.crate_name(ctx.c)))
+                    }
+                    other => other,
                 };
                 match res {
                     Res::Fns(defs) => {
@@ -923,6 +1066,31 @@ impl Program {
             }
         }
         format!("{}!", path.join("::"))
+    }
+
+    /// `crate`, or a dependency's own name.
+    fn crate_name(&self, c: usize) -> String {
+        match self.crates.get(c).and_then(|k| k.dep) {
+            Some(i) => self.deps[i].0.clone(),
+            None => "crate".into(),
+        }
+    }
+
+    /// A dependency's definition as a path in that crate, and how it was known.
+    fn dep_path(&self, r: DefRef) -> (String, String) {
+        let f = &self.files[r.0];
+        let d = self.def(r);
+        let i = f.dep.unwrap_or(0);
+        let (name, version) = &self.deps[i];
+        let (_, module) = f.at.clone().unwrap_or((0, Vec::new()));
+        let mut parts = vec![name.clone()];
+        parts.extend(module);
+        parts.extend(d.mod_path.iter().cloned());
+        if let Some(o) = &d.owner {
+            parts.push(o.clone());
+        }
+        parts.push(d.name.clone());
+        (parts.join("::"), format!("confirmed in {name} {version}'s source on this machine"))
     }
 
     /// How many types in this crate could answer `self.m()` in trait `t`'s default body.

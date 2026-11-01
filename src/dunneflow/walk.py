@@ -203,6 +203,10 @@ class WalkStats:
     # -- so it is said beside `read:` rather than among the things left out.
     reader_notes: list[str] = field(default_factory=list)
     edges_outside: dict[str, int] = field(default_factory=dict)
+    # Language -> what its reader read beyond this tree to name the frontier, and what it
+    # looked for and did not find (`IngestPlugin.edges_read_beyond`).
+    read_beyond: dict[str, list[str]] = field(default_factory=dict)
+    not_present: dict[str, list[str]] = field(default_factory=dict)
     edges_unknown: dict[str, int] = field(default_factory=dict)
     # Fields an edge carried that this build does not read. Survivable -- a plugin built
     # against a later schema knows about fields this one does not -- and never silent: an
@@ -285,6 +289,15 @@ def walk_residue(stats: WalkStats) -> list[str]:
                            for lang, n in sorted(stats.edges_unknown.items()))
         out.append(f"calls whose far end the reader could not name at all: {listed} — "
                    f"left external rather than guessed by name")
+    for lang, read in sorted(stats.read_beyond.items()):
+        shown = ", ".join(read[:12]) + (f" and {len(read) - 12} more" if len(read) > 12 else "")
+        out.append(f"{lang} frontier read from this machine, never fetched: "
+                   f"{plural(len(read), 'dependency', 'dependencies')} — {shown}")
+    for lang, missing in sorted(stats.not_present.items()):
+        shown = ", ".join(missing[:8]) + (
+            f" and {len(missing) - 8} more" if len(missing) > 8 else "")
+        out.append(f"{lang} frontier spelt, not confirmed: "
+                   f"{plural(len(missing), 'dependency', 'dependencies')} not read — {shown}")
     if stats.edge_notes:
         out.append("edges carried fields this build does not read: "
                    + "; ".join(stats.edge_notes))
@@ -939,6 +952,10 @@ def analyze_tree(
                     stats.edges_outside[lang] = plugin.edges_outside
                 if plugin.edges_unknown:
                     stats.edges_unknown[lang] = plugin.edges_unknown
+                if plugin.edges_read_beyond:
+                    stats.read_beyond[lang] = list(plugin.edges_read_beyond)
+                if plugin.edges_not_present:
+                    stats.not_present[lang] = list(plugin.edges_not_present)
                 stats.edge_notes.extend(f"{lang}: {n}" for n in plugin.edge_notes)
                 store.conn.commit()
         finally:

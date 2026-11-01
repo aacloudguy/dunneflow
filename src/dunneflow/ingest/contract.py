@@ -325,6 +325,13 @@ class IngestPlugin(Protocol):
     edges_outside: int
     edges_unknown: int
     edge_notes: list[str]
+    # **What a reader read from outside the analysed tree to name its frontier, and what it
+    # looked for and did not find** -- Rust's dependency sources out of the local cargo
+    # cache, never fetched (design rule 14). A reader that reads nothing beyond the tree
+    # leaves both empty; one that does must say so, because a frontier read against a
+    # dependency is a claim about code that is not in the map (design rule 1).
+    edges_read_beyond: list[str]
+    edges_not_present: list[str]
     # What the reader said when `open` built its session — how it divided the file set
     # into compilations, how long that took, whatever else it has to declare. Empty for a
     # reader that opens nothing, and the `opened` frame carried both fields for three

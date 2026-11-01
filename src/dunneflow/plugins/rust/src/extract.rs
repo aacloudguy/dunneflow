@@ -72,6 +72,9 @@ pub struct Site {
     pub bound_locally: bool,
     /// What the receiver of `x.m()` is declared to be, where the source says (`types.rs`).
     pub recv: Option<Hint>,
+    /// The routines the call is written inside, innermost first: where a bare name
+    /// looks for an item a function body declares before it looks in the module.
+    pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +102,9 @@ pub struct Def {
     pub reference: cfg::Tri,
     /// The declared return type, where there is one.
     pub ret: Option<Hint>,
+    /// The routine whose body declares this item, if one does: `fn walk` inside
+    /// `fn has_scripts` is visible in that body and nowhere else.
+    pub in_fn: Option<String>,
 }
 
 /// One name a `use` brings into scope.
@@ -138,6 +144,9 @@ pub struct TypeDef {
     pub alias: Option<(Vec<String>, Hint)>,
     /// A trait, and the paths of its supertraits (`trait A: B + c::D`).
     pub is_trait: bool,
+    /// A trait written without `pub`, so no other crate can implement it and every impl
+    /// of it is one this reader sees.
+    pub sealed: bool,
     pub supers: Vec<Vec<String>>,
 }
 
@@ -365,6 +374,11 @@ impl<'a> Ex<'a> {
         self.module_scope.id.clone()
     }
 
+    /// The routine whose body this item is declared in, if any.
+    fn enclosing(&self) -> Option<String> {
+        self.scope.last().map(|&i| self.routines[i].id.clone())
+    }
+
     fn owner_async(&self) -> bool {
         self.scope.last().is_some_and(|&i| self.routines[i].is_async)
     }
@@ -397,6 +411,7 @@ impl<'a> Ex<'a> {
                     trait_name: None,
                     reference: cfg::item(&f.attrs, cfg::REFERENCE),
                     ret: ret_hint(&f.sig),
+                    in_fn: self.enclosing(),
                 });
                 let public = matches!(f.vis, Visibility::Public(_));
                 let r = self.routine(
@@ -447,6 +462,7 @@ impl<'a> Ex<'a> {
                                 reference: cfg::item(&m.attrs, cfg::REFERENCE)
                                     .and(cfg::item(&imp.attrs, cfg::REFERENCE)),
                                 ret: ret_hint(&m.sig),
+                                in_fn: self.enclosing(),
                             });
                             // A trait's method is as visible as the trait, whatever the impl
                             // writes (it can write nothing).
@@ -488,6 +504,7 @@ impl<'a> Ex<'a> {
                                 trait_name: Some(name.clone()),
                                 reference: cfg::item(&m.attrs, cfg::REFERENCE),
                                 ret: ret_hint(&m.sig),
+                                in_fn: self.enclosing(),
                             });
                             self.routine(
                                 &m.sig, Some(body), &m.attrs, true,
@@ -507,6 +524,7 @@ impl<'a> Ex<'a> {
                     fields: Vec::new(),
                     alias: None,
                     is_trait: true,
+                    sealed: !matches!(t.vis, syn::Visibility::Public(_)),
                     supers: t.supertraits.iter().filter_map(|b| match b {
                         syn::TypeParamBound::Trait(tb) => Some(tb.path.segments.iter().map(|s| s.ident.to_string()).collect()),
                         _ => None,
@@ -538,6 +556,7 @@ impl<'a> Ex<'a> {
                     }).collect(),
                     alias: None,
                     is_trait: false,
+                    sealed: false,
                     supers: Vec::new(),
                 });
                 self.facts.classes.push(ClassDef_ {
@@ -586,6 +605,7 @@ impl<'a> Ex<'a> {
                     fields: Vec::new(),
                     alias: None,
                     is_trait: false,
+                    sealed: false,
                     supers: Vec::new(),
                     variants: e.variants.iter()
                         .filter(|v| matches!(v.fields, syn::Fields::Unnamed(_)))
@@ -609,6 +629,7 @@ impl<'a> Ex<'a> {
                         (t.generics.type_params().map(|p| p.ident.to_string()).collect(), h)
                     }),
                     is_trait: false,
+                    sealed: false,
                     supers: Vec::new(),
                 });
                 self.facts.structures.push(ds);
@@ -935,7 +956,9 @@ impl<'a> Ex<'a> {
             return;
         }
         let line = self.line(span);
-        let rule = self.rules.match_call(&expr).cloned();
+        // `self.m()` and `x.m()`: the receiver is a value, so no path rule applies to it.
+        let on_value = matches!(kind, SiteKind::Method | SiteKind::SelfMethod);
+        let rule = self.rules.match_call(&expr, on_value).cloned();
         let call_args: Vec<CallArg> = args.iter().enumerate()
             .map(|(i, a)| CallArg { idx: i as i64, expr: self.text(a.span()), ..Default::default() })
             .collect();
@@ -967,7 +990,10 @@ impl<'a> Ex<'a> {
             }
             self.facts.boundaries.push(hit);
         }
-        self.network(&expr, line, args, span);
+        // A network library is a path too, for the same reason.
+        if !on_value {
+            self.network(&expr, line, args, span);
+        }
         self.sites.push(Site {
             site_id,
             caller_id: caller,
@@ -978,6 +1004,7 @@ impl<'a> Ex<'a> {
             at_boundary: rule.is_some(),
             bound_locally: bound,
             recv,
+            scopes: self.scope.iter().rev().map(|&i| self.routines[i].id.clone()).collect(),
         });
     }
 
@@ -1008,6 +1035,14 @@ impl<'a> Ex<'a> {
         }
         if let Some(a) = args.first() {
             nc.destination = string_value(a).unwrap_or_else(|| self.text(a.span()));
+        }
+        if let Some((_, i)) = self.rules.timed.iter().find(|(c, _)| c == expr) {
+            if let Some(a) = args.get(*i as usize) {
+                nc.timeout = match a {
+                    Expr::Lit(_) => self.text(a.span()),
+                    _ => "set".into(),
+                };
+            }
         }
         self.facts.network.push(nc);
     }

@@ -224,6 +224,16 @@ mod tests {
 #[test]
 fn stray_test() {}
 ''',
+    "wire.rs": '''use std::net::TcpStream;
+use std::time::Duration;
+
+fn wire(addr: std::net::SocketAddr, budget: Duration, rsa: bool) -> Option<u8> {
+    let _a = TcpStream::connect_timeout(&addr, budget).map_err(|e| e.to_string());
+    let _b = std::net::TcpStream::connect("h:1").expect("up");
+    let _c = sha2::Sha256::digest(b"x").into_iter();
+    rsa.then(|| 1)
+}
+''',
     "build.rs": "fn main() { println!(\"cargo:rerun-if-changed=x\"); }\n",
     "bom.rs": "﻿#!/usr/bin/env run-cargo-script\nfn main() { std::env::var(\"HOME\"); }\n",
 }
@@ -294,6 +304,22 @@ def test_a_discarded_future_is_unawaited_and_a_bound_one_is_not(facts):
     net = [(n.expr, n.line, n.awaited) for n in facts["lib.rs"].network]
     assert [a for _, _, a in net] == [False, True], net
     assert all(n.in_async_routine for n in facts["lib.rs"].network)
+
+
+def test_a_method_on_a_value_is_not_a_path_and_a_chained_one_is_not_a_second_act(facts):
+    """Rule 40. `.map_err`, `.expect` and `.into_iter` on a boundary call's result were a
+    second boundary on the same line, and `rsa.then(…)` on a `bool` was CRYPTO through
+    the `rsa.` crate prefix. One act each, and a local variable is nobody's crate."""
+    ff = facts["wire.rs"]
+    assert sorted(b.evidence for b in ff.boundaries) == [
+        "TcpStream.connect_timeout", "sha2.Sha256.digest", "std.net.TcpStream.connect"]
+    assert [n.expr for n in ff.network] == [
+        "TcpStream.connect_timeout", "std.net.TcpStream.connect"]
+
+
+def test_a_call_named_for_its_timeout_sets_one(facts):
+    """`network.timed`: DunneNote's `connect_timeout(&a, budget)` was a NO_TIMEOUT."""
+    assert [n.timeout for n in facts["wire.rs"].network] == ["set", ""]
 
 
 def test_structures_imports_and_comments(facts):
@@ -438,6 +464,53 @@ impl T for S2 {
 pub fn dynamic(x: &dyn T) {
     x.t();
     x.len();
+}
+
+trait Sealed {
+    fn need(&self);
+
+    fn shared(&self) {}
+
+    fn uses_shared(&self) {
+        self.shared();
+        self.need();
+    }
+}
+
+impl Sealed for S {
+    fn need(&self) {}
+}
+
+impl Sealed for S2 {
+    fn need(&self) {}
+}
+
+pub trait Open {
+    fn open_shared(&self) {}
+
+    fn uses_open_shared(&self) {
+        self.open_shared();
+    }
+}
+
+impl Open for S {}
+
+pub fn first_walker() -> u8 {
+    fn walk(n: u8) -> u8 {
+        if n == 0 { 0 } else { walk(n - 1) }
+    }
+    walk(3)
+}
+
+pub fn second_walker() -> u8 {
+    fn walk(n: u8) -> u8 {
+        n
+    }
+    walk(1)
+}
+
+pub fn no_walker() {
+    walk(2);
 }
 
 pub enum E {
@@ -615,6 +688,32 @@ def test_what_needs_a_type_is_never_guessed(edges):
     assert edges[("dynamic", "x.len")][0] is None
     callee, ambiguous = edges[("twice", "self.t")]
     assert callee is None and ambiguous
+
+
+def test_a_sealed_trait_s_one_answer_is_an_edge(edges):
+    """pdfcraft's `pub(crate) trait Structure`: `self.dereference()` in a default body, and
+    only the trait's own body defines it. No other crate can implement a trait written
+    without `pub`, so nothing can override it and the call has one place to land. It was
+    a LOST_EDGE, three times over, and every one of them was this reader's.
+
+    The control is what keeps it rule 1: a required method with two impls is still
+    ambiguous, sealed or not, and a `pub` trait's lone default is too — another crate may
+    write the override this map would never see."""
+    assert edges[("uses_shared", "self.shared")][0] == "core.src.util.Sealed.shared"
+    callee, ambiguous = edges[("uses_shared", "self.need")]
+    assert callee is None and ambiguous
+    callee, ambiguous = edges[("uses_open_shared", "self.open_shared")]
+    assert callee is None and ambiguous
+
+
+def test_a_function_a_body_declares_is_that_body_s(edges):
+    """pdfcraft's `script.rs`: three `fn walk`, each declared inside a different function
+    and called by its own. Indexed by module they were one name with three definitions —
+    a LOST_EDGE — and visible to code that cannot see any of them."""
+    assert edges[("first_walker", "walk")][0] == "core.src.util.first_walker.walk"
+    assert edges[("walk", "walk")][0] == "core.src.util.first_walker.walk", "recursion, inside"
+    assert edges[("second_walker", "walk")][0] == "core.src.util.second_walker.walk"
+    assert edges[("no_walker", "walk")][0] is None, "neither body's `walk` is the module's"
 
 
 def test_a_closure_shadows_a_function_of_the_same_name(edges):

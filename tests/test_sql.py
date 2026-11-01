@@ -82,6 +82,19 @@ def test_prose_that_begins_with_a_sql_verb_is_not_sql():
         assert not sql.looks_like_sql(prose), prose
 
 
+def test_a_sentence_with_brackets_in_it_is_not_sql():
+    """Brackets and commas are SQL's punctuation and prose's too; a full stop is only prose's.
+
+    Both are pdfcraft's MCP tool descriptions, verbatim, and each was read as a `DELETE`
+    that wrote a table named `this` or `content_list`.
+    """
+    for prose in (
+        "delete: true removes the pages from this document afterwards (undoable).",
+        "Delete an added item (page, index from content_list). Undoable.",
+    ):
+        assert not sql.looks_like_sql(prose), prose
+
+
 def test_real_statements_still_recognised():
     for stmt in (
         "SELECT a FROM t",

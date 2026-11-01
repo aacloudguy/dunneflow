@@ -121,9 +121,14 @@ struct Program {
     excluded: HashSet<(usize, Vec<String>)>,
     /// `(crate, module, name)` -> free functions.
     fns: HashMap<(usize, Vec<String>, String), Vec<DefRef>>,
+    /// `(enclosing routine id, name)` -> the functions a function body declares, which no
+    /// module can see.
+    local_fns: HashMap<(String, String), Vec<DefRef>>,
     /// `(crate, type key, method)` -> methods. A type key is `module::Name`, crate-relative.
     methods: HashMap<(usize, String, String), Vec<DefRef>>,
     traits: HashSet<(usize, String)>,
+    /// Traits written without `pub`: every impl of one is in its own crate, so in this map.
+    sealed: HashSet<(usize, String)>,
     /// `(crate, module, name)` -> the key of the type declared there under that name.
     declared: HashMap<(usize, Vec<String>, String), String>,
     /// `(crate, name)` -> every key of a type of that name, for the last-resort lookup.
@@ -261,8 +266,10 @@ impl Program {
             modules: HashSet::new(),
             excluded: HashSet::new(),
             fns: HashMap::new(),
+            local_fns: HashMap::new(),
             methods: HashMap::new(),
             traits: HashSet::new(),
+            sealed: HashSet::new(),
             declared: HashMap::new(),
             by_short: HashMap::new(),
             def_trait: HashMap::new(),
@@ -450,14 +457,21 @@ impl Program {
                 self.declared.insert((*c, at, t.name.clone()), key.clone());
                 self.by_short.entry((*c, t.name.clone())).or_default().push(key.clone());
                 if t.is_trait {
+                    if t.sealed {
+                        self.sealed.insert((*c, key.clone()));
+                    }
                     self.traits.insert((*c, key));
                 }
             }
             for (di, d) in f.ex.defs.iter().enumerate() {
                 if d.owner.is_none() {
-                    let mut full = module.clone();
-                    full.extend(d.mod_path.iter().cloned());
-                    self.fns.entry((*c, full, d.name.clone())).or_default().push(DefRef(fi, di));
+                    if let Some(at) = &d.in_fn {
+                        self.local_fns.entry((at.clone(), d.name.clone())).or_default().push(DefRef(fi, di));
+                    } else {
+                        let mut full = module.clone();
+                        full.extend(d.mod_path.iter().cloned());
+                        self.fns.entry((*c, full, d.name.clone())).or_default().push(DefRef(fi, di));
+                    }
                     // The program's own names only: a dependency defining `get` must not
                     // turn every `x.get()` the program writes from *outside* into *unknown*.
                     if f.dep.is_none() {
@@ -735,6 +749,13 @@ impl Program {
         Res::Fns(pick(true))
     }
 
+    /// The functions a body this call is written in declares under its bare name, innermost
+    /// body first.
+    fn in_body(&self, s: &extract::Site) -> Option<&Vec<DefRef>> {
+        let [name] = s.path.as_slice() else { return None };
+        s.scopes.iter().find_map(|sc| self.local_fns.get(&(sc.clone(), name.clone())))
+    }
+
     fn def(&self, r: DefRef) -> &Def {
         &self.files[r.0].ex.defs[r.1]
     }
@@ -781,8 +802,9 @@ impl Program {
                         let m = s.path.last().cloned().unwrap_or_default();
                         match s.recv.as_ref().and_then(|h| self.receiver(h, &ctx)) {
                             Some(TyRes::Trait(tc, t)) => match self.implementors(tc, &t, &m) {
-                                0 => Res::Outside(format!("crate::{t}::{m}")),
-                                n => {
+                                Dispatch::None => Res::Outside(format!("crate::{t}::{m}")),
+                                Dispatch::One(r) => Res::Fns(vec![r]),
+                                Dispatch::Many(n) => {
                                     found.unknown += 1;
                                     edges.push(ambiguous(s, n, &format!("a type parameter bound by {t}")));
                                     continue;
@@ -796,15 +818,29 @@ impl Program {
                             }
                         }
                     }
-                    SiteKind::Path => self.called(self.resolve_path(*c, &at, self_key.as_deref(), &s.path, 0)),
+                    // **A bare name looks in the function bodies it is written inside first**,
+                    // innermost out, because an item a body declares shadows the module's
+                    // and is invisible outside it. pdfcraft's `script.rs` has three
+                    // `fn walk`, each inside a different function and each called by its
+                    // own: indexed by module, the three were one ambiguous name.
+                    SiteKind::Path => match self.in_body(s) {
+                        Some(defs) => Res::Fns(defs.clone()),
+                        None => self.called(self.resolve_path(*c, &at, self_key.as_deref(), &s.path, 0)),
+                    },
                     SiteKind::SelfMethod => match &self_key {
                         Some(t) if self.traits.contains(&(*c, t.clone())) => {
                             // A trait's default body: `self` is whichever type implements
                             // it, and that is not something a path can say.
-                            let n = self.implementors(*c, t, &s.path[0]);
-                            found.unknown += 1;
-                            edges.push(ambiguous(s, n.max(2), &format!("self in trait {t}'s default body")));
-                            continue;
+                            // Unless the trait is sealed and one definition answers.
+                            match self.implementors(*c, t, &s.path[0]) {
+                                Dispatch::One(r) => Res::Fns(vec![r]),
+                                d => {
+                                    let n = if let Dispatch::Many(n) = d { n } else { 0 };
+                                    found.unknown += 1;
+                                    edges.push(ambiguous(s, n.max(2), &format!("self in trait {t}'s default body")));
+                                    continue;
+                                }
+                            }
                         }
                         Some(t) => self.method(*c, t, &s.path[0]),
                         None => Res::Unknown,
@@ -816,8 +852,9 @@ impl Program {
                             Some(TyRes::Trait(tc, t)) => match self.implementors(tc, &t, &s.path[0]) {
                                 // No implementor and no default body here: a supertrait's
                                 // or another crate's method, so not this program's.
-                                0 => Res::Outside(format!("crate::{t}::{}", s.path[0])),
-                                n => {
+                                Dispatch::None => Res::Outside(format!("crate::{t}::{}", s.path[0])),
+                                Dispatch::One(r) => Res::Fns(vec![r]),
+                                Dispatch::Many(n) => {
                                     found.unknown += 1;
                                     edges.push(ambiguous(s, n, &format!("a dyn {t}")));
                                     continue;
@@ -1093,10 +1130,16 @@ impl Program {
         (parts.join("::"), format!("confirmed in {name} {version}'s source on this machine"))
     }
 
-    /// How many types in this crate could answer `self.m()` in trait `t`'s default body.
-    /// The method may be the trait's own or a supertrait's (`trait Streaming: Destination`),
-    /// so the supertraits are counted too, each once.
-    fn implementors(&self, c: usize, t: &str, m: &str) -> i64 {
+    /// Which definitions in this crate could answer `t::m` when `t` is dispatched on: `self`
+    /// in its default body, a `dyn t`, or a type parameter bound by it. The method may be the
+    /// trait's own or a supertrait's (`trait Streaming: Destination`), so the supertraits are
+    /// counted too, each once.
+    ///
+    /// **One answer is an edge only when every trait in that chain is sealed** — written
+    /// without `pub`, so no other crate can implement it and an override this map does not
+    /// hold cannot exist. A `pub` trait with one implementor here is still `Many`: another
+    /// crate may write the second (rule 1).
+    fn implementors(&self, c: usize, t: &str, m: &str) -> Dispatch {
         let mut want: Vec<String> = vec![t.to_owned()];
         let mut i = 0;
         while i < want.len() && want.len() < 32 {
@@ -1107,19 +1150,33 @@ impl Program {
             }
             i += 1;
         }
-        let mut n = 0;
+        let mut found: Vec<DefRef> = Vec::new();
         for ((_, owner, name), defs) in &self.methods {
             if name != m {
                 continue;
             }
-            n += defs.iter().filter(|r| {
+            found.extend(defs.iter().copied().filter(|r| {
                 // A default body is the trait's own; an impl's method is the impl's trait's.
                 let own = want.contains(owner) && self.traits.contains(&(c, owner.clone()));
                 own || self.def_trait.get(r).is_some_and(|(tc, tk)| *tc == c && want.contains(tk))
-            }).count();
+            }));
         }
-        n as i64
+        match found.as_slice() {
+            [] => Dispatch::None,
+            [one] if want.iter().all(|w| self.sealed.contains(&(c, w.clone()))) => Dispatch::One(*one),
+            _ => Dispatch::Many(found.len() as i64),
+        }
     }
+}
+
+/// What a dispatch through a trait can land on.
+enum Dispatch {
+    /// Nothing this program defines.
+    None,
+    /// Exactly one definition, and the trait is sealed, so nothing else can be written.
+    One(DefRef),
+    /// Several, or one where another crate could add a second.
+    Many(i64),
 }
 
 fn ambiguous(s: &extract::Site, n: i64, why: &str) -> SuppliedEdge {

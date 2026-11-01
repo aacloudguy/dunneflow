@@ -86,6 +86,7 @@ boundaries:
     direction: OUT
     salience: high
     exact: [TcpStream.connect, std.net.TcpStream.connect, net.TcpStream.connect,
+            TcpStream.connect_timeout, std.net.TcpStream.connect_timeout,
             UdpSocket.bind, std.net.UdpSocket.bind, tokio.net.TcpStream.connect,
             ureq.get, ureq.post, ureq.put, ureq.delete, ureq.request, ureq.agent,
             ureq.Agent.new, reqwest.get, reqwest.Client.new, reqwest.blocking.get,
@@ -166,10 +167,23 @@ network:
     "reqwest.blocking.get":        {protocol: HTTP, async: false}
     "TcpStream.connect":           {protocol: TCP,  async: false}
     "std.net.TcpStream.connect":   {protocol: TCP,  async: false}
+    "TcpStream.connect_timeout":   {protocol: TCP,  async: false}
+    "std.net.TcpStream.connect_timeout": {protocol: TCP, async: false}
     "tokio.net.TcpStream.connect": {protocol: TCP,  async: true}
     "tokio_tungstenite.connect_async": {protocol: WebSocket, async: true}
   verbs: [get, post, put, delete, patch, head]
   kwargs: []
+  # **A call that cannot be made without a timeout, and the argument that carries it.**
+  # Python names its timeout (`kwargs.timeout` in `python.yaml`); Rust has no keyword
+  # arguments, so the call's own name says it and its position says where. Without this,
+  # `TcpStream::connect_timeout(&a, budget)` -- DunneNote's backup transport -- was a
+  # NO_TIMEOUT, on the one call in the program that is named for its timeout. The value
+  # is the literal where one is written and `set` where it is not, as Python's is.
+  # A timeout set on the *object* afterwards (`set_read_timeout`) is not read: that is
+  # NO_TIMEOUT's own blind spot, and it says so.
+  timed:
+    "TcpStream.connect_timeout": 1
+    "std.net.TcpStream.connect_timeout": 1
 
 artefacts:
   extensions:

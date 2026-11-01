@@ -48,3 +48,6 @@ packaging/icon/*.iconset/
 # Claude Code's per-person instructions file: a contributor's own arrangements, never the
 # project's. `CLAUDE.md` is the shared one.
 CLAUDE.local.md
+
+# The Rust reader is built outside the package; a `cargo test` run here is not.
+src/dunneflow/plugins/rust/target/

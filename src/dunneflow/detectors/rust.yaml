@@ -1,0 +1,205 @@
+# What a Rust program touches outside itself, and the judgements only Rust can make.
+#
+# Matched against the dotted form of a call (`ingest/dotted.py`), which for Rust is the
+# path as written with `::` read as `.`: `std::fs::read_to_string(p)` is
+# `std.fs.read_to_string`, and `use std::fs;` then `fs::read_to_string(p)` is
+# `fs.read_to_string`. **Both spellings are declared where both are written** — the reader
+# never expands a `use` (clause 4, and rule 5), so a rule naming only the long one would miss
+# most of every corpus with no symptom. `Type::f` is `Type.f`, and a turbofish is not part
+# of the name (`collect::<Vec<_>>` is `collect`, clause 6).
+#
+# **A macro is spelt with its `!`.** `println!(…)` is `println!`, and never `println`: a
+# macro is not a function, a program may define a function of the same name, and a rule
+# for one must never match the other (rules 3 and 5). It is the only spelling the contract
+# does not already have, and it is declared here rather than assumed by the host.
+
+version: 1
+
+boundaries:
+  # -- environment ------------------------------------------------------------ #
+  - kind: ENV
+    direction: IN
+    salience: high
+    exact: [std.env.var, std.env.var_os, std.env.vars, std.env.vars_os, std.env.args,
+            std.env.args_os, std.env.current_dir, std.env.home_dir, std.env.temp_dir,
+            env.var, env.var_os, env.vars, env.vars_os, env.args, env.args_os,
+            env.current_dir, env.home_dir, env.temp_dir, "env!", "option_env!",
+            dotenv.dotenv, dotenvy.dotenv]
+    target_arg: 0
+  - kind: ENV
+    direction: OUT
+    salience: high
+    exact: [std.env.set_var, std.env.remove_var, std.env.set_current_dir,
+            env.set_var, env.remove_var, env.set_current_dir]
+    target_arg: 0
+
+  # -- files ------------------------------------------------------------------ #
+  - kind: FILE
+    direction: IN
+    salience: high
+    exact: [std.fs.read, std.fs.read_to_string, std.fs.read_dir, std.fs.metadata,
+            std.fs.symlink_metadata, std.fs.canonicalize, std.fs.read_link,
+            fs.read, fs.read_to_string, fs.read_dir, fs.metadata, fs.symlink_metadata,
+            fs.canonicalize, fs.read_link, File.open, std.fs.File.open, fs.File.open,
+            tokio.fs.read, tokio.fs.read_to_string, tokio.fs.read_dir, tokio.fs.metadata,
+            tokio.fs.File.open, "include_str!", "include_bytes!", WalkDir.new,
+            walkdir.WalkDir.new, glob.glob]
+    target_arg: 0
+  - kind: FILE
+    direction: OUT
+    salience: high
+    exact: [std.fs.write, std.fs.create_dir, std.fs.create_dir_all, std.fs.remove_file,
+            std.fs.remove_dir, std.fs.remove_dir_all, std.fs.rename, std.fs.copy,
+            std.fs.hard_link, std.fs.set_permissions,
+            fs.write, fs.create_dir, fs.create_dir_all, fs.remove_file, fs.remove_dir,
+            fs.remove_dir_all, fs.rename, fs.copy, fs.hard_link, fs.set_permissions,
+            File.create, std.fs.File.create, fs.File.create, File.create_new,
+            tokio.fs.write, tokio.fs.create_dir_all, tokio.fs.remove_file,
+            tokio.fs.rename, tokio.fs.File.create, tempfile.tempdir, tempfile.tempfile,
+            tempfile.NamedTempFile.new, NamedTempFile.new, tempfile.TempDir.new,
+            TempDir.new]
+    target_arg: 0
+  - kind: FILE
+    direction: BOTH
+    salience: high
+    exact: [OpenOptions.new, std.fs.OpenOptions.new, fs.OpenOptions.new,
+            tokio.fs.OpenOptions.new]
+    target_arg: 0
+
+  # -- processes -------------------------------------------------------------- #
+  - kind: PROCESS
+    direction: BOTH
+    salience: high
+    exact: [Command.new, std.process.Command.new, process.Command.new,
+            tokio.process.Command.new]
+    target_arg: 0
+  # `exit` is low and OUT: beads showed what `os.Exit` at high salience does to a touches
+  # list in Go, which is the same act spelt the same way.
+  - kind: PROCESS
+    direction: OUT
+    salience: low
+    exact: [std.process.exit, process.exit, std.process.abort, process.abort]
+    target_arg: 0
+
+  # -- network ---------------------------------------------------------------- #
+  - kind: NETWORK
+    direction: OUT
+    salience: high
+    exact: [TcpStream.connect, std.net.TcpStream.connect, net.TcpStream.connect,
+            UdpSocket.bind, std.net.UdpSocket.bind, tokio.net.TcpStream.connect,
+            ureq.get, ureq.post, ureq.put, ureq.delete, ureq.request, ureq.agent,
+            ureq.Agent.new, reqwest.get, reqwest.Client.new, reqwest.blocking.get,
+            reqwest.blocking.Client.new, Client.new, hyper.Client.new,
+            tokio_tungstenite.connect_async, tungstenite.connect]
+    target_arg: 0
+  - kind: NETWORK
+    direction: IN
+    salience: high
+    exact: [TcpListener.bind, std.net.TcpListener.bind, net.TcpListener.bind,
+            tokio.net.TcpListener.bind, axum.serve, axum.Server.bind, hyper.Server.bind,
+            warp.serve, HttpServer.new, actix_web.HttpServer.new,
+            tiny_http.Server.http, Server.http]
+    target_arg: 0
+
+  # -- databases -------------------------------------------------------------- #
+  # **The OS keychain is here, and the reason is `typescript.yaml`'s for `localStorage`**:
+  # it is persistent named storage that outlives the process and is shared beyond it, which
+  # is what DATABASE means. Its target is the service name it was opened under, which is
+  # the keychain's own key and not a table.
+  - kind: DATABASE
+    direction: BOTH
+    salience: high
+    exact: [Connection.open, rusqlite.Connection.open, Connection.open_in_memory,
+            rusqlite.Connection.open_in_memory, Connection.open_with_flags,
+            rusqlite.Connection.open_with_flags, sqlx.connect, PgPool.connect,
+            SqlitePool.connect, MySqlPool.connect, sqlx.PgPool.connect,
+            sqlx.SqlitePool.connect, redis.Client.open, sled.open, diesel.Connection.establish,
+            PgConnection.establish, SqliteConnection.establish]
+    method: [execute_batch, query_row, query_map, prepare_cached]
+    target_arg: 0
+  - kind: DATABASE
+    direction: BOTH
+    salience: high
+    exact: [keyring.Entry.new, Entry.new, keyring.Entry.new_with_target,
+            Entry.new_with_target]
+    target_arg: 0
+
+  # -- standard streams ------------------------------------------------------- #
+  - kind: STDIO
+    direction: OUT
+    salience: normal
+    exact: ["println!", "print!", "eprintln!", "eprint!", "dbg!", std.io.stdout,
+            io.stdout, std.io.stderr, io.stderr]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: high
+    exact: [std.io.stdin, io.stdin]
+    target_arg: 0
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    exact: ["log!", "trace!", "debug!", "info!", "warn!", "error!", "log.info!",
+            "log.warn!", "log.error!", "log.debug!", "log.trace!", "tracing.info!",
+            "tracing.warn!", "tracing.error!", "tracing.debug!", "tracing.trace!"]
+    target_arg: 0
+
+  # -- cryptography ----------------------------------------------------------- #
+  - kind: CRYPTO
+    direction: BOTH
+    salience: normal
+    prefix: [ring., sha2., sha1., md5., hmac., argon2., chacha20poly1305., aes_gcm.,
+             ed25519_dalek., x25519_dalek., rsa., blake3., bcrypt., rustls., rcgen.,
+             spake2.]
+    exact: [Sha256.new, Sha256.digest, Sha512.new, Sha512.digest, Hmac.new_from_slice,
+            Argon2.default, Argon2.new, ChaCha20Poly1305.new, Aes256Gcm.new]
+    target_arg: 0
+
+network:
+  libraries:
+    "ureq.get":                    {protocol: HTTP, async: false}
+    "ureq.post":                   {protocol: HTTP, async: false}
+    "ureq.put":                    {protocol: HTTP, async: false}
+    "ureq.delete":                 {protocol: HTTP, async: false}
+    "ureq.request":                {protocol: HTTP, async: false}
+    "reqwest.get":                 {protocol: HTTP, async: true}
+    "reqwest.blocking.get":        {protocol: HTTP, async: false}
+    "TcpStream.connect":           {protocol: TCP,  async: false}
+    "std.net.TcpStream.connect":   {protocol: TCP,  async: false}
+    "tokio.net.TcpStream.connect": {protocol: TCP,  async: true}
+    "tokio_tungstenite.connect_async": {protocol: WebSocket, async: true}
+  verbs: [get, post, put, delete, patch, head]
+  kwargs: []
+
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3, redb, sled]
+    CONFIG: [json, yaml, yml, toml, ini, cfg, conf, env, ron]
+
+# **A future is inert, and that is Python's answer, not TypeScript's.** A Rust future does
+# nothing at all until something polls it: `fetch(x);` with no `.await` runs nothing and
+# the compiler only warns. So a dropped one is BROKEN's own definition — it never runs. The
+# reader must not send a future handed to `spawn`, `block_on`, `join!` or `select!` as
+# dropped, and `dunneflow check` on a real tree is what says whether it does (rule 98).
+unawaited_async: inert
+
+# **Empty, and that is a decision.** rustc refuses a real duplicate in one scope, and an
+# item defined once per `#[cfg]` target is ordinary Rust; a redefinition finding here
+# would report the language working as a defect (rule 98). Absent means the detector does
+# not fire, which is the declared answer rather than a default (rule 49).
+redefinition: ""
+
+# `fn main` in a binary crate's root, and never a method: the reader enforces both.
+entry_names: [main]
+
+# The prelude, and the std macros a program cannot shadow by accident. A bare call to one
+# of these is never a routine of yours (rule 3) even where a crate declares a function of
+# the same name — `drop(x)` is the prelude's unless the reader has seen a local `drop`.
+builtins: [
+  "drop", "Some", "None", "Ok", "Err", "Box.new", "Vec.new", "String.new", "String.from",
+  "Vec.with_capacity", "Default.default", "From.from", "Into.into",
+  "format!", "vec!", "panic!", "assert!", "assert_eq!", "assert_ne!", "debug_assert!",
+  "debug_assert_eq!", "debug_assert_ne!", "unreachable!", "unimplemented!", "todo!",
+  "write!", "writeln!", "matches!", "concat!", "stringify!", "line!", "file!",
+  "column!", "module_path!", "cfg!",
+]

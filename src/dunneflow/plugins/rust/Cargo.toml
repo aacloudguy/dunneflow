@@ -1,0 +1,23 @@
+# The Rust reader: DunneFlow's sixth, on the far side of a pipe.
+#
+# Its parser is `syn`, vendored under `vendor/` with `proc-macro2` and `unicode-ident`, and
+# it is built by the host on first use with `cargo build --offline --locked` (plugin.json's
+# `build`), so reading Rust never fetches anything (design rule 14). Every file here is in
+# the fingerprint, by name; `tools/gen_facts_rs.py --write` keeps that list.
+#
+# No serde and no `quote`: the wire is written by `src/json.rs` and `src/facts.rs`, which
+# is generated from `schema.py`.
+
+[package]
+name = "dunneflow-rust-reader"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+syn = { version = "2", default-features = false, features = ["full", "parsing", "visit"] }
+proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
+
+[profile.release]
+debug = false
+strip = true

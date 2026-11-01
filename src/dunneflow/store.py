@@ -1507,6 +1507,13 @@ class Store:
     #
     # Recursive SQL over indexed edges. These are the three questions the tool
     # exists to answer, and they must stay fast no matter how large the target is.
+    #
+    # **Two arms, and the second is the crossing between languages.** A command sent by
+    # name (`ipc_links`, status `linked`) is reached from the routine that sends it, so
+    # `touches` on a store method goes on into the Rust command and what *it* touches.
+    # A second recursive arm rather than a `UNION` subquery over both tables, because a
+    # subquery in the join takes `calls`' indexes away on exactly the large maps this
+    # comment is about. Never an edge in `calls` (rule 2): only the walk crosses it.
 
     def _reach_graph(self) -> dict[str, list[str]] | None:
         """Every call edge, caller to callees, read once -- on a store that cannot change.
@@ -1530,6 +1537,13 @@ class Store:
             for caller, callee in self.conn.execute(
                 "SELECT caller_id, callee_id FROM calls NOT INDEXED"
                 " WHERE callee_id IS NOT NULL"
+            ):
+                graph.setdefault(caller, []).append(callee)
+            # A command linked by name is reached through the site that sends it, as the
+            # recursive queries' second arm reaches it (`resolve/ipc.py`).
+            for caller, callee in self.conn.execute(
+                "SELECT caller_id, routine_id FROM ipc_links"
+                " WHERE status = 'linked' ORDER BY rowid"
             ):
                 graph.setdefault(caller, []).append(callee)
             self._reach_cache = graph
@@ -1576,10 +1590,14 @@ class Store:
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
+                UNION
+                SELECT l.routine_id, r.depth + 1
+                  FROM ipc_links l JOIN reach r ON l.caller_id = r.id
+                 WHERE l.status = 'linked' AND r.depth < ?
             )
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
             """,
-            (routine_id, max_depth),
+            (routine_id, max_depth, max_depth),
         )
         return [r["id"] for r in rows]
 
@@ -1593,10 +1611,14 @@ class Store:
                 SELECT c.caller_id, b.depth + 1
                   FROM calls c JOIN back b ON c.callee_id = b.id
                  WHERE b.depth < ?
+                UNION
+                SELECT l.caller_id, b.depth + 1
+                  FROM ipc_links l JOIN back b ON l.routine_id = b.id
+                 WHERE l.status = 'linked' AND b.depth < ?
             )
             SELECT DISTINCT id FROM back WHERE id IS NOT NULL AND id != ?
             """,
-            (routine_id, max_depth, routine_id),
+            (routine_id, max_depth, max_depth, routine_id),
         )
         return [r["id"] for r in rows]
 
@@ -1610,11 +1632,15 @@ class Store:
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
+                UNION
+                SELECT l.routine_id, r.depth + 1
+                  FROM ipc_links l JOIN reach r ON l.caller_id = r.id
+                 WHERE l.status = 'linked' AND r.depth < ?
             )
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
             ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
-            (routine_id, max_depth),
+            (routine_id, max_depth, max_depth),
         )
         return [
             BoundaryHit(
@@ -1643,15 +1669,58 @@ class Store:
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
+                UNION
+                SELECT l.routine_id, r.depth + 1
+                  FROM ipc_links l JOIN reach r ON l.caller_id = r.id
+                 WHERE l.status = 'linked' AND r.depth < ?
             )
             SELECT c.reason, c.frontier, COUNT(*) AS n
               FROM calls c JOIN (SELECT DISTINCT id FROM reach) r ON c.caller_id = r.id
              WHERE c.callee_id IS NULL AND c.at_boundary = 0 AND c.constructs = ''
              GROUP BY c.reason, c.frontier
             """,
-            (routine_id, max_depth),
+            (routine_id, max_depth, max_depth),
         ).fetchall()
         return _frontier(rows)
+
+    def ipc_sent(self, routine_ids: Iterable[str]) -> list[sqlite3.Row]:
+        """Every command sent by name from these routines, linked or not, with the far end.
+
+        For `touches`: the routines are a reach, and these are the places it crosses into
+        another process -- and, where the link failed, the places it would have. One row
+        per site, ordered by where it is written, never by the order of the reach.
+        """
+        ids = sorted(set(routine_ids))
+        if not ids:
+            return []
+        self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ipc_ids(id TEXT PRIMARY KEY)")
+        self.conn.execute("DELETE FROM _ipc_ids")
+        self.conn.executemany("INSERT OR IGNORE INTO _ipc_ids VALUES(?)", [(i,) for i in ids])
+        return list(self.conn.execute(
+            "SELECT l.*, r.qualname AS command_qualname, r.file AS command_file,"
+            "       r.line_start AS command_line, s.qualname AS sender"
+            "  FROM ipc_links l JOIN _ipc_ids i ON i.id = l.caller_id"
+            "  LEFT JOIN routines r ON r.id = l.routine_id"
+            "  LEFT JOIN routines s ON s.id = l.caller_id"
+            " ORDER BY l.status, l.command, l.file, l.line, l.site_id"
+        ))
+
+    def ipc_received(self, routine_ids: Iterable[str]) -> list[sqlite3.Row]:
+        """Every linked send whose command is one of these routines: `impact`'s crossings."""
+        ids = sorted(set(routine_ids))
+        if not ids:
+            return []
+        self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ipc_ids(id TEXT PRIMARY KEY)")
+        self.conn.execute("DELETE FROM _ipc_ids")
+        self.conn.executemany("INSERT OR IGNORE INTO _ipc_ids VALUES(?)", [(i,) for i in ids])
+        return list(self.conn.execute(
+            "SELECT l.*, r.qualname AS command_qualname, s.qualname AS sender"
+            "  FROM ipc_links l JOIN _ipc_ids i ON i.id = l.routine_id"
+            "  LEFT JOIN routines r ON r.id = l.routine_id"
+            "  LEFT JOIN routines s ON s.id = l.caller_id"
+            " WHERE l.status = 'linked'"
+            " ORDER BY l.command, l.file, l.line, l.site_id"
+        ))
 
     def frontier_of_map(self) -> dict[str, Any]:
         """`frontier_reached` over every call in the map, for *About this map*."""
@@ -1700,10 +1769,14 @@ class Store:
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
+                UNION
+                SELECT l.routine_id, r.depth + 1
+                  FROM ipc_links l JOIN reach r ON l.caller_id = r.id
+                 WHERE l.status = 'linked' AND r.depth < ?
             )
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
             """,
-            (routine_ids[0], *routine_ids, max_depth),
+            (routine_ids[0], *routine_ids, max_depth, max_depth),
         )
         return {r["id"] for r in rows}
 
@@ -1749,11 +1822,15 @@ class Store:
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
+                UNION
+                SELECT l.routine_id, r.depth + 1
+                  FROM ipc_links l JOIN reach r ON l.caller_id = r.id
+                 WHERE l.status = 'linked' AND r.depth < ?
             )
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
             ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
-            (*routine_ids, max_depth),
+            (*routine_ids, max_depth, max_depth),
         )
         yield from rows
 

@@ -291,7 +291,7 @@ def ways_in(store: Store) -> list[dict]:
     conventionally named `main` -- and listing it three times buries the others.
     Names are preferred in that order of authority.
     """
-    rank = {"CLI": 0, "MCP_TOOL": 1, "HTTP_ROUTE": 1, "MAIN": 2}
+    rank = {"CLI": 0, "MCP_TOOL": 1, "HTTP_ROUTE": 1, "IPC_COMMAND": 1, "MAIN": 2}
     best: dict[str, dict] = {}
 
     for e in store.entrypoints():

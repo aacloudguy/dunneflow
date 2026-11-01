@@ -18,7 +18,7 @@ import multiprocessing
 import sqlite3
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1295,8 +1295,44 @@ def cmd_touches(args: argparse.Namespace) -> int:
             print(f"  {kind:10s} {', '.join(targets) if targets else '(dynamic)'}")
         for line in frontier_lines(store.frontier_reached(m["id"])):
             print(f"  {line}")
+        for line in ipc_sent_lines(store.ipc_sent(store.reachable_from(m["id"]))):
+            print(f"  {line}")
     store.close()
     return 0
+
+
+_IPC_SAID = {"unknown": "no command answers", "unregistered": "the command is unregistered",
+             "ambiguous": "two applications answer", "dynamic": "built at run time",
+             "foreign": "a plugin's command"}
+
+
+def ipc_sent_lines(sent: Sequence[Any]) -> list[str]:
+    """Where a reach crosses into another process by name, and where it tried to.
+
+    Said as *matched by name* every time, because the crossing is a string equal to a
+    name and not a reference (`resolve/ipc.py`). Nothing is printed where nothing is sent,
+    so a map with no client reads exactly as it did."""
+    out: list[str] = []
+    linked = [x for x in sent if x["status"] == "linked"]
+    if linked:
+        commands = sorted({str(x["command_qualname"]) for x in linked})
+        shown = ", ".join(commands[:8]) + (f" · {len(commands) - 8} more"
+                                           if len(commands) > 8 else "")
+        out.append(f"crosses into another process by name at {plural(len(linked), 'site')}, "
+                   f"to {plural(len(commands), 'command')} (matched by name): {shown}")
+    rest: dict[str, list[str]] = {}
+    for x in sent:
+        if x["status"] != "linked":
+            rest.setdefault(str(x["status"]), []).append(str(x["command"]) or "?")
+    if rest:
+        parts = []
+        for status in sorted(rest):
+            names = sorted(set(rest[status]))
+            label = _IPC_SAID.get(status, status)
+            named = f" ({', '.join(names[:4])})" if status != "dynamic" else ""
+            parts.append(f"{len(rest[status]):,} {label}{named}")
+        out.append("sends a command by name and links nothing: " + " · ".join(parts))
+    return out
 
 
 def frontier_lines(front: dict[str, Any]) -> list[str]:
@@ -1346,6 +1382,13 @@ def cmd_impact(args: argparse.Namespace) -> int:
         print(f"  {plural(len(callers), 'routine')} "
               f"{'depends' if len(callers) == 1 else 'depend'} on this, directly or "
               f"transitively")
+        received = store.ipc_received([m["id"], *callers])
+        if received:
+            senders = sorted({str(x["sender"]) for x in received})
+            print(f"  reached from another process by name at {plural(len(received), 'site')}"
+                  f" (matched by name, not by reference): "
+                  + ", ".join(senders[:8])
+                  + (f" · {len(senders) - 8} more" if len(senders) > 8 else ""))
         eps = ways_in_affected(store, callers)
         if eps:
             print(f"  ways in affected ({len(eps)}):")

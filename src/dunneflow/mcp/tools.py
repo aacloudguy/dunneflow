@@ -171,8 +171,18 @@ def _touches(session: Session, args: dict[str, Any]) -> dict[str, Any]:
             "boundaries": [_hit(h) for h in store.boundaries_reached(match["id"])],
             # Where the reach stops, and why, as far as the readers said (schema 17).
             "frontier": store.frontier_reached(match["id"]),
+            # Where the reach crosses into another process by a command's name, and where
+            # a name was sent that links to nothing. The `how` is on every row, because a
+            # string equal to a name is not a reference (`resolve/ipc.py`).
+            "by_name": [_sent(x) for x in store.ipc_sent(store.reachable_from(match["id"]))],
         })
     return {"asked": needle, **note, "routines": out}
+
+
+def _sent(x: Any) -> dict[str, Any]:
+    return {"command": x["command"], "status": x["status"], "how": x["how"],
+            "confidence": x["confidence"], "sender": x["sender"],
+            "file": x["file"], "line": x["line"], "answered_by": x["command_qualname"]}
 
 
 def _impact(session: Session, args: dict[str, Any]) -> dict[str, Any]:
@@ -187,6 +197,9 @@ def _impact(session: Session, args: dict[str, Any]) -> dict[str, Any]:
             "routine": match["qualname"], "id": match["id"],
             "file": match["file"], "line": match["line_start"],
             "dependents": len(callers),
+            # The dependents that reach this from another process, by a command's name.
+            # Already inside `dependents`; listed so the crossing is not hidden in a count.
+            "by_name": [_sent(x) for x in store.ipc_received([match["id"], *callers])],
             # Calls with no edge that use this routine's name: undrawn possibilities, by
             # reason, and never counted among the dependents.
             "unresolved_by_name": dict(store.unresolved_named(match["name"])),

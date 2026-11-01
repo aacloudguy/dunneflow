@@ -182,3 +182,56 @@ def test_a_command_is_a_way_in_so_it_is_not_dead(store):
 ])
 def test_only_a_name_written_whole_is_a_name(expr, name):
     assert _literal(expr) == name
+
+
+def _id(store, qualname):
+    return store.query("SELECT id FROM routines WHERE qualname = ?", (qualname,))[0]["id"]
+
+
+def test_a_reach_crosses_into_the_command_and_back_out_of_it(store):
+    """`touches` goes on into the command; `impact` comes back to the sender (5c)."""
+    load = _id(store, "apps.app.src.store.load")
+    cmd = _id(store, "apps.app.src-tauri.src.lib.list_notes")
+    assert cmd in store.reachable_from(load)
+    assert cmd in store.reachable_from_many([load])
+    assert load in store.callers_of(cmd)
+    sent = {(x["command"], x["status"]) for x in store.ipc_sent(store.reachable_from(load))}
+    assert ("list_notes", "linked") in sent and ("missing_cmd", "unknown") in sent
+    [got] = [x for x in store.ipc_received([cmd]) if x["command"] == "list_notes"]
+    assert (got["sender"], got["how"]) == ("apps.app.src.store.load", "by name")
+
+
+def test_an_unlinked_send_is_not_crossed(store):
+    """`forgotten` is a command, and the send names it -- but nothing registers it, so
+    nothing can answer, and the walk does not pretend it does."""
+    load = _id(store, "apps.app.src.store.load")
+    forgotten = _id(store, "apps.app.src-tauri.src.lib.forgotten")
+    assert forgotten not in store.reachable_from(load)
+
+
+def test_the_cli_says_the_crossing_was_by_name():
+    from dunneflow.cli import ipc_sent_lines
+    rows = [
+        {"status": "linked", "command": "a", "command_qualname": "x.a"},
+        {"status": "unknown", "command": "b", "command_qualname": None},
+        {"status": "dynamic", "command": "", "command_qualname": None},
+    ]
+    assert ipc_sent_lines(rows) == [
+        "crosses into another process by name at 1 site, to 1 command (matched by name): x.a",
+        "sends a command by name and links nothing: 1 built at run time · "
+        "1 no command answers (b)",
+    ]
+
+
+def test_a_store_that_cannot_change_walks_the_same_crossing(store):
+    """A read-only store walks in memory (`_reach_graph`), and must cross as the query does."""
+    ro = Store(store.path, writable=False)
+    try:
+        load = _id(ro, "apps.app.src.store.load")
+        cmd = _id(ro, "apps.app.src-tauri.src.lib.list_notes")
+        assert ro._reach_graph() is not None
+        assert cmd in ro.reachable_from(load)
+        assert cmd in ro.reachable_from_many([load])
+        assert [x["command"] for x in ro.ipc_received([cmd])] == ["list_notes"]
+    finally:
+        ro.close()

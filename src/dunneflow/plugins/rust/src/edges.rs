@@ -86,6 +86,8 @@ enum TyRes {
     Local(usize, String),
     Trait(usize, String),
     Outside(String),
+    /// A type parameter with no bound: no type is written down at all.
+    Generic(String),
 }
 
 struct Program {
@@ -99,18 +101,26 @@ struct Program {
     excluded: HashSet<(usize, Vec<String>)>,
     /// `(crate, module, name)` -> free functions.
     fns: HashMap<(usize, Vec<String>, String), Vec<DefRef>>,
-    /// `(crate, type, method)` -> methods.
+    /// `(crate, type key, method)` -> methods. A type key is `module::Name`, crate-relative.
     methods: HashMap<(usize, String, String), Vec<DefRef>>,
-    /// `(crate, type)` names that carry a method or are declared.
-    types: HashSet<(usize, String)>,
     traits: HashSet<(usize, String)>,
+    /// `(crate, module, name)` -> the key of the type declared there under that name.
+    declared: HashMap<(usize, Vec<String>, String), String>,
+    /// `(crate, name)` -> every key of a type of that name, for the last-resort lookup.
+    by_short: HashMap<(usize, String), Vec<String>>,
+    /// A trait impl's method -> the trait's key.
+    def_trait: HashMap<DefRef, (usize, String)>,
     /// `(crate, module, local)` -> `(module the use is in, target)`.
     uses: HashMap<(usize, Vec<String>, String), Vec<Vec<String>>>,
     globs: HashMap<(usize, Vec<String>), Vec<Vec<String>>>,
+    /// Macro names the program defines with `macro_rules!`.
+    macros: HashSet<String>,
     /// Method names the program defines anywhere.
     method_names: HashSet<String>,
     fn_names: HashSet<String>,
-    /// `(crate, type name)` -> the declarations of that name.
+    /// `(crate, trait key)` -> its supertraits' keys.
+    supertraits: HashMap<(usize, String), Vec<String>>,
+    /// `(crate, type key)` -> its declarations (two only under two `cfg`s).
     typedefs: HashMap<(usize, String), Vec<(usize, usize)>>,
 }
 
@@ -180,13 +190,17 @@ impl Program {
             excluded: HashSet::new(),
             fns: HashMap::new(),
             methods: HashMap::new(),
-            types: HashSet::new(),
             traits: HashSet::new(),
+            declared: HashMap::new(),
+            by_short: HashMap::new(),
+            def_trait: HashMap::new(),
             uses: HashMap::new(),
             globs: HashMap::new(),
             method_names: HashSet::new(),
+            macros: HashSet::new(),
             fn_names: HashSet::new(),
             typedefs: HashMap::new(),
+            supertraits: HashMap::new(),
         };
         let by_abs: HashMap<PathBuf, usize> =
             prog.files.iter().enumerate().map(|(i, f)| (f.abs.clone(), i)).collect();
@@ -320,7 +334,14 @@ impl Program {
         }
     }
 
+    /// **A type's identity is its crate, its module and its name.** Two private types of
+    /// one name in two modules of one crate — DunneNote's search crate has a `struct Tok` in
+    /// `plain.rs` and an `enum Tok` in `parse.rs` — are two types, and a key on the name
+    /// alone pooled their methods, so a call on one could have resolved to the other's.
+    /// The key is the crate-relative path, `parse::Tok`, and an `impl`'s type and trait are
+    /// resolved in the module the `impl` is written in.
     fn index(&mut self) {
+        // Pass 1: what each module declares, and what it brings into scope.
         for (fi, f) in self.files.iter().enumerate() {
             let Some((c, module)) = &f.at else { continue };
             for m in &f.ex.mods {
@@ -331,40 +352,28 @@ impl Program {
                     self.modules.insert((*c, full));
                 }
             }
-            for (di, d) in f.ex.defs.iter().enumerate() {
-                let mut full = module.clone();
-                full.extend(d.mod_path.iter().cloned());
-                let r = DefRef(fi, di);
-                match &d.owner {
-                    None => {
-                        self.fns.entry((*c, full, d.name.clone())).or_default().push(r);
-                        self.fn_names.insert(d.name.clone());
-                    }
-                    Some(t) => {
-                        self.methods.entry((*c, t.clone(), d.name.clone())).or_default().push(r);
-                        self.types.insert((*c, t.clone()));
-                        self.method_names.insert(d.name.clone());
-                        if d.trait_name.as_deref() == Some(t.as_str()) {
-                            self.traits.insert((*c, t.clone()));
-                        }
-                    }
-                }
-            }
             for (ti, t) in f.ex.types.iter().enumerate() {
-                self.typedefs.entry((*c, t.name.clone())).or_default().push((fi, ti));
-            }
-            for (t, tr) in &f.ex.impls {
-                self.types.insert((*c, t.clone()));
-                if let Some(tr) = tr {
-                    self.traits.insert((*c, tr.clone()));
+                let mut at = module.clone();
+                at.extend(t.mod_path.iter().cloned());
+                let key = type_key(&at, &t.name);
+                self.typedefs.entry((*c, key.clone())).or_default().push((fi, ti));
+                self.declared.insert((*c, at, t.name.clone()), key.clone());
+                self.by_short.entry((*c, t.name.clone())).or_default().push(key.clone());
+                if t.is_trait {
+                    self.traits.insert((*c, key));
                 }
             }
-            for s in &f.ex.facts.structures {
-                self.types.insert((*c, s.name.clone()));
-                if s.kind.as_str() == "INTERFACE" {
-                    self.traits.insert((*c, s.name.clone()));
+            for (di, d) in f.ex.defs.iter().enumerate() {
+                if d.owner.is_none() {
+                    let mut full = module.clone();
+                    full.extend(d.mod_path.iter().cloned());
+                    self.fns.entry((*c, full, d.name.clone())).or_default().push(DefRef(fi, di));
+                    self.fn_names.insert(d.name.clone());
+                } else {
+                    self.method_names.insert(d.name.clone());
                 }
             }
+            self.macros.extend(f.ex.macros.iter().cloned());
             for u in &f.ex.uses {
                 if u.reference == Tri::False {
                     continue;
@@ -377,6 +386,58 @@ impl Program {
                     self.uses.entry((*c, at, u.local.clone())).or_default().push(u.target.clone());
                 }
             }
+        }
+        for v in self.by_short.values_mut() {
+            v.sort();
+            v.dedup();
+        }
+        // Pass 2: whose each method is, and which trait each impl is of, now that every
+        // name in every module can be looked up.
+        let mut methods: Vec<((usize, String, String), DefRef)> = Vec::new();
+        let mut owners: Vec<(DefRef, Option<(usize, String)>)> = Vec::new();
+        let mut supers: Vec<((usize, String), Vec<String>)> = Vec::new();
+        for (fi, f) in self.files.iter().enumerate() {
+            let Some((c, module)) = &f.at else { continue };
+            for (di, d) in f.ex.defs.iter().enumerate() {
+                let Some(owner) = &d.owner else { continue };
+                let mut at = module.clone();
+                at.extend(d.mod_path.iter().cloned());
+                let Some((oc, okey)) = self.type_key_of(*c, &at, owner) else { continue };
+                let r = DefRef(fi, di);
+                methods.push(((oc, okey, d.name.clone()), r));
+                owners.push((r, d.trait_name.as_ref().and_then(|t| self.type_key_of(*c, &at, t))));
+            }
+            for t in f.ex.types.iter().filter(|t| t.is_trait) {
+                let mut at = module.clone();
+                at.extend(t.mod_path.iter().cloned());
+                let keys: Vec<String> = t.supers.iter().filter_map(|p| {
+                    match self.resolve_path(*c, &at, None, p, 0) {
+                        Res::Type(sc, k) if sc == *c => Some(k),
+                        _ => None,
+                    }
+                }).collect();
+                supers.push(((*c, type_key(&at, &t.name)), keys));
+            }
+        }
+        for (k, r) in methods {
+            self.methods.entry(k).or_default().push(r);
+        }
+        for (r, t) in owners {
+            if let Some(t) = t {
+                self.def_trait.insert(r, t);
+            }
+        }
+        for (k, v) in supers {
+            self.supertraits.insert(k, v);
+        }
+    }
+
+    /// The key of the type a name means in a module: declared there, brought in by a `use`
+    /// or a glob, or — the fallback — the one type of that name in the crate.
+    fn type_key_of(&self, c: usize, module: &[String], name: &str) -> Option<(usize, String)> {
+        match self.resolve_path(c, module, None, &[name.to_owned()], 0) {
+            Res::Type(tc, k) => Some((tc, k)),
+            _ => None,
         }
     }
 
@@ -470,8 +531,8 @@ impl Program {
     }
 
     /// The single declaration of a type name in a crate, or nothing where it is not one.
-    fn one_type(&self, c: usize, name: &str) -> Option<(usize, usize)> {
-        match self.typedefs.get(&(c, name.to_owned())).map(Vec::as_slice) {
+    fn one_type(&self, c: usize, key: &str) -> Option<(usize, usize)> {
+        match self.typedefs.get(&(c, key.to_owned())).map(Vec::as_slice) {
             Some([one]) => Some(*one),
             _ => None,
         }
@@ -507,8 +568,8 @@ impl Program {
                 _ => Res::Unknown,
             };
         }
-        if self.types.contains(&(c, name.to_owned())) && name.chars().next().is_some_and(char::is_uppercase) {
-            return Res::Type(c, name.to_owned());
+        if let Some(key) = self.declared.get(&(c, module.to_vec(), name.to_owned())) {
+            return Res::Type(c, key.clone());
         }
         if let Some(globs) = self.globs.get(&(c, module.to_vec())) {
             for g in globs {
@@ -525,6 +586,13 @@ impl Program {
         if let Some(&lib) = self.by_name.get(name) {
             return Res::Module(lib, Vec::new());
         }
+        // The last resort, and only for a name nothing above answered: the one type of
+        // that name in this crate. Two are two answers, and neither is taken.
+        if depth == 0 {
+            if let Some([one]) = self.by_short.get(&(c, name.to_owned())).map(Vec::as_slice) {
+                return Res::Type(c, one.clone());
+            }
+        }
         Res::Unknown
     }
 
@@ -533,10 +601,12 @@ impl Program {
         let Some(all) = self.methods.get(&(c, ty.to_owned(), name.to_owned())) else {
             // Derived, blanket, or from a trait or a `Deref` target this program did not
             // write: the method is not here, so neither is its far end.
-            return Res::Outside(format!("{ty}::{name}"));
+            // `crate::` so the frontier says the type is this program's and only the method
+            // is somebody else's (a derive, a foreign trait's impl, a `Deref` target).
+            return Res::Outside(format!("crate::{ty}::{name}"));
         };
         let pick = |want_trait: bool| -> Vec<DefRef> {
-            all.iter().copied().filter(|r| self.def(*r).trait_name.is_some() == want_trait).collect()
+            all.iter().copied().filter(|r| self.def(*r).trait_name.is_some() == want_trait).collect::<Vec<_>>()
         };
         let inherent = pick(false);
         if !inherent.is_empty() {
@@ -555,7 +625,10 @@ impl Program {
         let mut edges = Vec::new();
         for f in &self.files {
             let Some((c, module)) = &f.at else {
-                found.unknown += f.ex.sites.len();
+                for s in f.ex.sites.iter().filter(|s| !s.at_boundary) {
+                    found.unknown += 1;
+                    edges.push(stop(s, "unfollowed", "", "the file is no crate's module"));
+                }
                 continue;
             };
             for s in &f.ex.sites {
@@ -563,43 +636,91 @@ impl Program {
                     continue; // rule 2: the host makes it external whatever is said here
                 }
                 if s.bound_locally {
-                    found.unknown += 1; // a closure or a pointer: which one is a type's question
+                    // A closure or a function pointer: which one is a type's question.
+                    found.unknown += 1;
+                    edges.push(stop(s, "bound", "", "a value this routine binds itself"));
                     continue;
                 }
                 let mut at = module.clone();
                 at.extend(s.mod_path.iter().cloned());
+                // The `impl`'s type, as a key, resolved where the call is written.
+                let self_key = s.self_type.as_ref()
+                    .and_then(|t| self.type_key_of(*c, &at, t)).map(|(_, k)| k);
+                if s.kind == SiteKind::Macro && s.path.last().is_some_and(|m| self.macros.contains(m)) {
+                    // The program's own `macro_rules!`: its expansion is code this reader
+                    // does not read, though the calls in its arguments are read as calls.
+                    found.unknown += 1;
+                    edges.push(stop(s, "unfollowed", "", "this program's own macro_rules!, whose expansion is not read"));
+                    continue;
+                }
                 let res = match s.kind {
-                    SiteKind::Macro => Res::Outside(format!("{}!", s.path.join("::"))),
-                    SiteKind::Path => self.called(self.resolve_path(*c, &at, s.self_type.as_deref(), &s.path, 0)),
-                    SiteKind::SelfMethod => match &s.self_type {
+                    SiteKind::Macro => Res::Outside(self.macro_path(*c, &at, &s.path)),
+                    SiteKind::Path if s.recv.is_some() => {
+                        // A path on a type parameter (`D::open()`): its bound decides.
+                        let ctx = Ctx { c: *c, module: at.clone(), self_type: self_key.clone() };
+                        let m = s.path.last().cloned().unwrap_or_default();
+                        match s.recv.as_ref().and_then(|h| self.receiver(h, &ctx)) {
+                            Some(TyRes::Trait(tc, t)) => match self.implementors(tc, &t, &m) {
+                                0 => Res::Outside(format!("crate::{t}::{m}")),
+                                n => {
+                                    found.unknown += 1;
+                                    edges.push(ambiguous(s, n, &format!("a type parameter bound by {t}")));
+                                    continue;
+                                }
+                            },
+                            Some(TyRes::Outside(p)) => Res::Outside(format!("{p}::{m}")),
+                            _ => {
+                                found.unknown += 1;
+                                edges.push(stop(s, "untyped", "", "a type parameter with no bound"));
+                                continue;
+                            }
+                        }
+                    }
+                    SiteKind::Path => self.called(self.resolve_path(*c, &at, self_key.as_deref(), &s.path, 0)),
+                    SiteKind::SelfMethod => match &self_key {
                         Some(t) if self.traits.contains(&(*c, t.clone())) => {
                             // A trait's default body: `self` is whichever type implements
                             // it, and that is not something a path can say.
                             let n = self.implementors(*c, t, &s.path[0]);
                             found.unknown += 1;
-                            edges.push(ambiguous(s, n.max(2)));
+                            edges.push(ambiguous(s, n.max(2), &format!("self in trait {t}'s default body")));
                             continue;
                         }
                         Some(t) => self.method(*c, t, &s.path[0]),
                         None => Res::Unknown,
                     },
                     SiteKind::Method => {
-                        let ctx = Ctx { c: *c, module: at.clone(), self_type: s.self_type.clone() };
+                        let ctx = Ctx { c: *c, module: at.clone(), self_type: self_key.clone() };
                         match s.recv.as_ref().and_then(|h| self.receiver(h, &ctx)) {
                             Some(TyRes::Local(tc, t)) => self.method(tc, &t, &s.path[0]),
                             Some(TyRes::Trait(tc, t)) => match self.implementors(tc, &t, &s.path[0]) {
                                 // No implementor and no default body here: a supertrait's
                                 // or another crate's method, so not this program's.
-                                0 => Res::Outside(format!("{t}::{}", s.path[0])),
+                                0 => Res::Outside(format!("crate::{t}::{}", s.path[0])),
                                 n => {
                                     found.unknown += 1;
-                                    edges.push(ambiguous(s, n));
+                                    edges.push(ambiguous(s, n, &format!("a dyn {t}")));
                                     continue;
                                 }
                             },
                             Some(TyRes::Outside(p)) => Res::Outside(format!("{p}::{}", s.path[0])),
-                            None if self.method_names.contains(&s.path[0]) => Res::Unknown,
-                            None => Res::Outside(String::new()),
+                            Some(TyRes::Generic(g)) => {
+                                found.unknown += 1;
+                                edges.push(stop(s, "untyped", "", &format!("a value of type parameter {g}, which has no bound")));
+                                continue;
+                            }
+                            None if self.method_names.contains(&s.path[0]) => {
+                                found.unknown += 1;
+                                edges.push(stop(s, "untyped", "",
+                                    "the receiver's type is not written down, and this program defines a method of that name"));
+                                continue;
+                            }
+                            None => {
+                                found.outside += 1;
+                                edges.push(stop(s, "outside", &format!("?::{}", s.path[0]),
+                                    "a method no type in this program defines, on a receiver whose type is not written down"));
+                                continue;
+                            }
                         }
                     }
                 };
@@ -627,10 +748,13 @@ impl Program {
                                     ..Default::default()
                                 });
                             }
-                            0 => found.unknown += 1,
+                            0 => {
+                                found.unknown += 1;
+                                edges.push(stop(s, "unfollowed", "", "every definition is another platform's"));
+                            }
                             n => {
                                 found.unknown += 1;
-                                edges.push(ambiguous(s, n as i64));
+                                edges.push(ambiguous(s, n as i64, "several definitions on the reference target"));
                             }
                         }
                     }
@@ -647,8 +771,19 @@ impl Program {
                             ..Default::default()
                         });
                     }
-                    Res::Outside(_) => found.outside += 1,
-                    Res::Module(..) | Res::Type(..) | Res::Unknown => found.unknown += 1,
+                    Res::Outside(p) => {
+                        found.outside += 1;
+                        let how = match s.kind {
+                            SiteKind::Macro => "a macro",
+                            SiteKind::Method => "by the receiver's declared type",
+                            _ => "by the path as written",
+                        };
+                        edges.push(stop(s, "outside", &qualify(&p), how));
+                    }
+                    Res::Module(..) | Res::Type(..) | Res::Unknown => {
+                        found.unknown += 1;
+                        edges.push(stop(s, "unfollowed", "", "a path this resolver could not follow to a definition"));
+                    }
                 }
             }
         }
@@ -669,16 +804,15 @@ impl Program {
             return None;
         }
         match h {
-            Hint::Ty { .. } | Hint::Dyn(_) => Some((h.clone(), ctx.clone())),
+            Hint::Ty { .. } | Hint::Dyn(_) | Hint::Generic(_) => Some(self.dealias(h.clone(), ctx.clone(), depth)),
             Hint::SelfTy => {
-                let t = ctx.self_type.clone()?;
-                Some((Hint::Ty { segs: vec![t], args: Vec::new() }, ctx.clone()))
+                ctx.self_type.as_ref()?;
+                Some((Hint::Ty { segs: vec!["Self".into()], args: Vec::new() }, ctx.clone()))
             }
             Hint::Ret(path) => match self.called(self.resolve_path(ctx.c, &ctx.module, ctx.self_type.as_deref(), path, 0)) {
                 Res::Fns(defs) => self.returned(&defs, depth),
                 Res::Construct(fi, ti) => {
-                    let t = &self.files[fi].ex.types[ti];
-                    Some((Hint::Ty { segs: vec![t.name.clone()], args: Vec::new() }, self.type_ctx(fi, ti)))
+                    Some((Hint::Ty { segs: vec!["Self".into()], args: Vec::new() }, self.type_ctx(fi, ti)))
                 }
                 _ => None,
             },
@@ -699,6 +833,7 @@ impl Program {
             },
             Hint::Unwrap(inner) => {
                 let (h, ctx) = self.expand(inner, ctx, depth + 1)?;
+                let (h, ctx) = self.dealias(h, ctx, depth + 1);
                 match h {
                     Hint::Ty { segs, args } => {
                         let last = segs.last()?;
@@ -716,6 +851,27 @@ impl Program {
         }
     }
 
+    /// `type IpcResult<T> = Result<T, E>`: a local alias, replaced by what it stands for,
+    /// with its parameters filled from the arguments it was written with.
+    fn dealias(&self, h: Hint, ctx: Ctx, depth: usize) -> (Hint, Ctx) {
+        if depth > 8 {
+            return (h, ctx);
+        }
+        let Hint::Ty { segs, args } = &h else { return (h, ctx) };
+        let Res::Type(c, t) = self.resolve_path(ctx.c, &ctx.module, ctx.self_type.as_deref(), segs, 0) else {
+            return (h, ctx);
+        };
+        let Some((fi, ti)) = self.one_type(c, &t) else { return (h, ctx) };
+        let Some((params, target)) = self.files[fi].ex.types[ti].alias.clone() else { return (h, ctx) };
+        // An alias used with arguments (`IpcResult<Foo>`) stands for the caller's type, so it
+        // stays in the caller's module; one with none (`type Db = Database;`) is resolved
+        // where it is written. The residue is an argument-taking alias whose target also
+        // names a type only its own module can see, which resolves to nothing, never wrongly.
+        let target = substitute(target, &params, args);
+        let next = if args.is_empty() { self.type_ctx(fi, ti) } else { ctx };
+        self.dealias(target, next, depth + 1)
+    }
+
     /// The declared return type of the one definition kept on the reference target.
     fn returned(&self, defs: &[DefRef], depth: usize) -> Option<(Hint, Ctx)> {
         let kept: Vec<DefRef> = defs.iter().copied().filter(|r| self.def(*r).reference != Tri::False).collect();
@@ -725,14 +881,16 @@ impl Program {
         let (c, module) = self.files[one.0].at.clone()?;
         let mut m = module;
         m.extend(d.mod_path.iter().cloned());
-        self.expand(&ret, &Ctx { c, module: m, self_type: d.owner.clone() }, depth + 1)
+        let owner = d.owner.as_ref().and_then(|o| self.type_key_of(c, &m, o)).map(|(_, k)| k);
+        self.expand(&ret, &Ctx { c, module: m, self_type: owner }, depth + 1)
     }
 
     fn type_ctx(&self, fi: usize, ti: usize) -> Ctx {
         let t = &self.files[fi].ex.types[ti];
         let (c, mut module) = self.files[fi].at.clone().unwrap_or((0, Vec::new()));
         module.extend(t.mod_path.iter().cloned());
-        Ctx { c, module, self_type: Some(t.name.clone()) }
+        let key = type_key(&module, &t.name);
+        Ctx { c, module, self_type: Some(key) }
     }
 
     /// A written type, resolved in the module it is written in.
@@ -740,6 +898,7 @@ impl Program {
         let (segs, dynamic) = match h {
             Hint::Ty { segs, .. } => (segs, false),
             Hint::Dyn(segs) => (segs, true),
+            Hint::Generic(g) => return Some(TyRes::Generic(g.clone())),
             _ => return None,
         };
         if segs.is_empty() {
@@ -753,24 +912,121 @@ impl Program {
         }
     }
 
-    /// How many types in this crate could answer `self.m()` in trait `t`'s default body.
-    fn implementors(&self, c: usize, t: &str, m: &str) -> i64 {
-        let mut n = 0;
-        for ((mc, _, name), defs) in &self.methods {
-            if *mc == c && name == m {
-                n += defs.iter().filter(|r| self.def(**r).trait_name.as_deref() == Some(t)).count();
+    /// A macro's full path where a `use` brought it in (`params!` -> `rusqlite::params!`),
+    /// else as written.
+    fn macro_path(&self, c: usize, module: &[String], path: &[String]) -> String {
+        if let [one] = path {
+            if let Some(targets) = self.uses.get(&(c, module.to_vec(), one.clone())) {
+                if let [t] = targets.as_slice() {
+                    return format!("{}!", t.join("::"));
+                }
             }
+        }
+        format!("{}!", path.join("::"))
+    }
+
+    /// How many types in this crate could answer `self.m()` in trait `t`'s default body.
+    /// The method may be the trait's own or a supertrait's (`trait Streaming: Destination`),
+    /// so the supertraits are counted too, each once.
+    fn implementors(&self, c: usize, t: &str, m: &str) -> i64 {
+        let mut want: Vec<String> = vec![t.to_owned()];
+        let mut i = 0;
+        while i < want.len() && want.len() < 32 {
+            for sup in self.supertraits.get(&(c, want[i].clone())).cloned().unwrap_or_default() {
+                if !want.contains(&sup) {
+                    want.push(sup);
+                }
+            }
+            i += 1;
+        }
+        let mut n = 0;
+        for ((_, owner, name), defs) in &self.methods {
+            if name != m {
+                continue;
+            }
+            n += defs.iter().filter(|r| {
+                // A default body is the trait's own; an impl's method is the impl's trait's.
+                let own = want.contains(owner) && self.traits.contains(&(c, owner.clone()));
+                own || self.def_trait.get(r).is_some_and(|(tc, tk)| *tc == c && want.contains(tk))
+            }).count();
         }
         n as i64
     }
 }
 
-fn ambiguous(s: &extract::Site, n: i64) -> SuppliedEdge {
+fn ambiguous(s: &extract::Site, n: i64, why: &str) -> SuppliedEdge {
     SuppliedEdge {
         site_id: s.site_id.clone(),
         caller_id: s.caller_id.clone(),
-        how: HOW.to_owned(),
+        how: format!("{HOW}; {why}"),
         candidates: n,
+        reason: "dynamic".into(),
+        ..Default::default()
+    }
+}
+
+/// A type's crate-relative key: `parse::Tok`, or `Tok` at a crate's root.
+fn type_key(module: &[String], name: &str) -> String {
+    let mut parts: Vec<&str> = module.iter().map(String::as_str).collect();
+    parts.push(name);
+    parts.join("::")
+}
+
+/// An alias's target with its own type parameters replaced by the arguments it was used
+/// with. A parameter with no argument is left as written.
+fn substitute(h: Hint, params: &[String], args: &[Hint]) -> Hint {
+    match h {
+        Hint::Ty { segs, args: inner } => {
+            if let [one] = segs.as_slice() {
+                if let Some(i) = params.iter().position(|p| p == one) {
+                    if let Some(a) = args.get(i) {
+                        return a.clone();
+                    }
+                }
+            }
+            Hint::Ty { segs, args: inner.into_iter().map(|a| substitute(a, params, args)).collect() }
+        }
+        other => other,
+    }
+}
+
+/// The prelude's values and types, std's own macros and the primitive types: names a
+/// program uses bare that are std's, spelt as std's so a frontier groups by crate.
+const PRELUDE_VALUES: &[&str] = &["Ok", "Err", "Some", "None", "drop", "Box", "Vec", "String",
+    "Option", "Result", "Default", "From", "Into", "ToString", "ToOwned", "Iterator"];
+const PRIMITIVES: &[&str] = &["str", "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize",
+    "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64"];
+const STD_MACROS: &[&str] = &["format", "vec", "println", "print", "eprintln", "eprint", "write",
+    "writeln", "panic", "assert", "assert_eq", "assert_ne", "debug_assert", "debug_assert_eq",
+    "debug_assert_ne", "unreachable", "unimplemented", "todo", "matches", "concat", "stringify",
+    "include_str", "include_bytes", "env", "option_env", "dbg", "line", "file", "column",
+    "module_path", "cfg", "format_args", "thread_local"];
+
+fn qualify(p: &str) -> String {
+    let first = p.split("::").next().unwrap_or(p);
+    if let Some(name) = first.strip_suffix('!') {
+        if !p.contains("::") && STD_MACROS.contains(&name) {
+            return format!("std::{p}");
+        }
+        return p.to_owned();
+    }
+    if PRIMITIVES.contains(&first) {
+        return format!("std::primitive::{p}");
+    }
+    if PRELUDE_VALUES.contains(&first) {
+        return format!("std::{p}");
+    }
+    p.to_owned()
+}
+
+/// A call with no edge, and what is known about where it stops.
+fn stop(s: &extract::Site, reason: &str, frontier: &str, why: &str) -> SuppliedEdge {
+    SuppliedEdge {
+        site_id: s.site_id.clone(),
+        caller_id: s.caller_id.clone(),
+        how: format!("{HOW}; {why}"),
+        frontier: frontier.to_owned(),
+        reason: reason.to_owned(),
         ..Default::default()
     }
 }

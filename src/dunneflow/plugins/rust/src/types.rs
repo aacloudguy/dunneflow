@@ -37,6 +37,77 @@ pub enum Hint {
     Unwrap(Box<Hint>),
     /// The type of the `impl` this is written in.
     SelfTy,
+    /// A generic type parameter with no trait bound: anything at all.
+    Generic(String),
+}
+
+/// A routine's (and its `impl`'s) type parameters, each with its first trait bound.
+pub type Generics = HashMap<String, Option<Vec<String>>>;
+
+pub fn generics(g: &syn::Generics, into: &mut Generics) {
+    for p in g.type_params() {
+        let bound = p.bounds.iter().find_map(trait_path);
+        into.insert(p.ident.to_string(), bound);
+    }
+    if let Some(w) = &g.where_clause {
+        for pred in &w.predicates {
+            if let syn::WherePredicate::Type(t) = pred {
+                if let Type::Path(tp) = &t.bounded_ty {
+                    if let Some(id) = tp.path.get_ident() {
+                        let name = id.to_string();
+                        if let Some(slot) = into.get_mut(&name) {
+                            if slot.is_none() {
+                                *slot = t.bounds.iter().find_map(trait_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn trait_path(b: &TypeParamBound) -> Option<Vec<String>> {
+    match b {
+        TypeParamBound::Trait(t) => Some(t.path.segments.iter().map(|s| s.ident.to_string()).collect()),
+        _ => None,
+    }
+}
+
+/// A hint with every type parameter replaced by what is known of it: its bound as a `dyn`,
+/// or `Generic` where it has none.
+pub fn subst(h: Hint, g: &Generics) -> Hint {
+    if g.is_empty() {
+        return h;
+    }
+    match h {
+        Hint::Ty { segs, args } => {
+            if let [one] = segs.as_slice() {
+                if let Some(bound) = g.get(one) {
+                    return match bound {
+                        Some(b) => Hint::Dyn(b.clone()),
+                        None => Hint::Generic(one.clone()),
+                    };
+                }
+            }
+            Hint::Ty { segs, args: args.into_iter().map(|a| subst(a, g)).collect() }
+        }
+        Hint::RetM(r, m) => Hint::RetM(Box::new(subst(*r, g)), m),
+        Hint::Field(b, f) => Hint::Field(Box::new(subst(*b, g)), f),
+        Hint::Unwrap(i) => Hint::Unwrap(Box::new(subst(*i, g))),
+        Hint::Ret(segs) => {
+            // `D::new()` on a bounded parameter is the bound's associated function.
+            if segs.len() == 2 {
+                if let Some(Some(b)) = g.get(&segs[0]) {
+                    let mut p = b.clone();
+                    p.push(segs[1].clone());
+                    return Hint::Ret(p);
+                }
+            }
+            Hint::Ret(segs)
+        }
+        other => other,
+    }
 }
 
 /// Smart pointers a method call sees through.
@@ -133,21 +204,34 @@ pub fn expr_hint(e: &Expr, locals: &HashMap<String, Option<Hint>>) -> Option<Hin
 /// `b` through `a`. Every other binding — a `for` pattern, a `match` arm, a closure's
 /// parameter, `if let` — binds a name with no hint. Nested items are routines of their own
 /// and are not entered.
-pub fn bindings(params: &[(String, Option<Hint>)], body: &syn::Block) -> HashMap<String, Option<Hint>> {
+/// Byte offset at which each name is first bound in a routine: a parameter at 0, a `let` at
+/// the end of its statement (its initialiser runs before the name exists), any other
+/// pattern where it is written. `let x = x();` calls the function `x` (DunneNote's
+/// `let Some(secret_path) = secret_path() else { … }`), so a call is to a binding only if
+/// it is written after one.
+pub type BoundAt = HashMap<String, usize>;
+
+pub fn bindings(params: &[(String, Option<Hint>)], body: &syn::Block)
+    -> (HashMap<String, Option<Hint>>, BoundAt) {
     struct B {
         seen: HashMap<String, Vec<Option<Hint>>>,
+        at: BoundAt,
     }
     impl B {
         fn current(&self) -> HashMap<String, Option<Hint>> {
             self.seen.iter().map(|(k, v)| (k.clone(), agree(v))).collect()
         }
-        fn bind(&mut self, name: String, h: Option<Hint>) {
+        fn bind(&mut self, name: String, h: Option<Hint>, at: usize) {
+            let first = self.at.entry(name.clone()).or_insert(at);
+            *first = (*first).min(at);
             self.seen.entry(name).or_default().push(h);
         }
     }
     impl<'ast> Visit<'ast> for B {
         fn visit_item(&mut self, _: &'ast Item) {}
         fn visit_local(&mut self, l: &'ast syn::Local) {
+            use syn::spanned::Spanned;
+            let end = l.span().byte_range().end;
             if let Some(init) = &l.init {
                 self.visit_expr(&init.expr);
                 if let Some((_, d)) = &init.diverge {
@@ -159,26 +243,43 @@ pub fn bindings(params: &[(String, Option<Hint>)], body: &syn::Block) -> HashMap
                     let h = l.init.as_ref().and_then(|i| expr_hint(&i.expr, &self.current()));
                     // `let Ok(x) = f() else { .. }` is a pattern, not this arm.
                     let h = if l.init.as_ref().is_some_and(|i| i.diverge.is_some()) { None } else { h };
-                    self.bind(pi.ident.to_string(), h);
+                    self.bind(pi.ident.to_string(), h, end);
                 }
                 Pat::Type(pt) => match &*pt.pat {
-                    Pat::Ident(pi) => self.bind(pi.ident.to_string(), type_hint(&pt.ty)),
-                    other => self.visit_pat(other),
+                    Pat::Ident(pi) => self.bind(pi.ident.to_string(), type_hint(&pt.ty), end),
+                    other => self.pattern(other, end),
                 },
-                other => self.visit_pat(other),
+                other => self.pattern(other, end),
             }
         }
         fn visit_pat_ident(&mut self, p: &'ast syn::PatIdent) {
-            self.bind(p.ident.to_string(), None);
+            self.bind(p.ident.to_string(), None, p.ident.span().byte_range().start);
             visit::visit_pat_ident(self, p);
         }
     }
-    let mut b = B { seen: HashMap::new() };
+    impl B {
+        /// A `let` pattern's names, bound where the statement ends.
+        fn pattern(&mut self, p: &Pat, end: usize) {
+            struct Names<'v>(&'v mut Vec<String>);
+            impl<'ast> Visit<'ast> for Names<'_> {
+                fn visit_pat_ident(&mut self, p: &'ast syn::PatIdent) {
+                    self.0.push(p.ident.to_string());
+                    visit::visit_pat_ident(self, p);
+                }
+            }
+            let mut names = Vec::new();
+            Names(&mut names).visit_pat(p);
+            for n in names {
+                self.bind(n, None, end);
+            }
+        }
+    }
+    let mut b = B { seen: HashMap::new(), at: HashMap::new() };
     for (name, h) in params {
-        b.bind(name.clone(), h.clone());
+        b.bind(name.clone(), h.clone(), 0);
     }
     b.visit_block(body);
-    b.current()
+    (b.current(), b.at)
 }
 
 fn agree(v: &[Option<Hint>]) -> Option<Hint> {
@@ -199,7 +300,7 @@ mod tests {
             },
             _ => None,
         }).collect();
-        bindings(&params, &f.block)
+        bindings(&params, &f.block).0
     }
 
     fn ty(s: &str) -> Hint {
@@ -228,5 +329,14 @@ mod tests {
         assert_eq!(b["row"], None, "an iterator's item needs the checker");
         assert_eq!(b["twice"], None, "two bindings that disagree give no hint");
         assert_eq!(b["g"], None, "a closure is not a type");
+    }
+
+    #[test]
+    fn a_let_binds_its_name_after_its_initialiser_runs() {
+        let f: syn::ItemFn = syn::parse_str("fn f() { let Some(p) = p() else { return }; p.x(); }").unwrap();
+        let (_, at) = bindings(&[], &f.block);
+        let src = "fn f() { let Some(p) = p() else { return }; p.x(); }";
+        let call = src.find("p()").unwrap();
+        assert!(at["p"] > call, "the call to `p()` is written before `p` is bound");
     }
 }

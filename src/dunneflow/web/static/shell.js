@@ -11963,6 +11963,30 @@ function jointed(name) {
   return parts ? parts.map(esc).join("<wbr>") : plain;
 }
 
+/* Where a call with no edge stops, and why, as its reader said (schema 17). Only a reader
+   that says anything fills these, so a row with neither reads exactly as it always did:
+   an absence here is *nobody said*, never *nothing to say* (rule 32). */
+const FRONTIER_WHY = {
+  outside: "goes outside this program",
+  untyped: "the receiver's type is not written down",
+  dynamic: "dispatch over several implementors",
+  bound: "a closure or function value the routine holds",
+  unfollowed: "a path the reader could not follow",
+};
+
+function frontierWords(c) {
+  if (c.reason === "outside") {
+    if (!c.frontier) return "outside this program";
+    if (c.frontier.startsWith("?::")) return `${c.frontier.slice(3)} — a method no type here defines`;
+    return `→ ${c.frontier}`;
+  }
+  return FRONTIER_WHY[c.reason] || c.reason;
+}
+
+function frontierWhy(c) {
+  return [c.frontier, FRONTIER_WHY[c.reason]].filter(Boolean).join(" — ");
+}
+
 function callBadge(c) {
   if (c.external) return `<span class="conf badge external">EXTERNAL</span>`;
   /* One of this program's own classes, which defines no constructor to point at -- a
@@ -12926,7 +12950,9 @@ function viewInspector() {
               /* The class's qualname is long enough to push the badge off the pane, and the
                  call already spells the class: so the row says what kind of call this is,
                  and the qualname is the hover. */
-              : c.constructs ? `<span class="dim" title="${esc(c.constructs)}">  a class of this program</span>` : ""}</code>`}
+              : c.constructs ? `<span class="dim" title="${esc(c.constructs)}">  a class of this program</span>`
+              : (c.frontier || c.reason) ? `<span class="dim" title="${esc(frontierWhy(c))}">  ${
+                  esc(frontierWords(c))}</span>` : ""}</code>`}
         ${callBadge(c)}
       </div>
       ${why(c.line)}`).join("")
@@ -17830,6 +17856,26 @@ function aboutDialog() {
   } else {
     row("Left out of it",
         "<i>not recorded \u2014 written before this map could say</i>");
+  }
+
+  /* Where the map stops, and why (schema 17): calls that leave the program, grouped by
+     where they go, and calls with no edge, grouped by why. Only a reader that says fills
+     this; a map whose readers said nothing gets no row, rather than a zero that would
+     claim its reach is complete (rule 32). */
+  const fr = d.frontier;
+  if (fr && (fr.outside.length || fr.unresolved.length)) {
+    const named = { "?": "methods on values of unwritten type",
+                    crate: "this program's own types, by a derive or another crate's trait" };
+    const sum = (xs) => xs.reduce((n, [, k]) => n + k, 0);
+    const list = (xs, words) => xs.slice(0, 10).map(([k, n]) =>
+      `<li>${n.toLocaleString()} ${esc(words[k] || k)}</li>`).join("")
+      + (xs.length > 10 ? `<li>${(xs.length - 10).toLocaleString()} more</li>` : "");
+    row("Where it stops",
+      (fr.outside.length ? `${sum(fr.outside).toLocaleString()} calls leave the program:
+         <ul class="about-residue">${list(fr.outside, named)}</ul>` : "")
+      + (fr.unresolved.length ? `${sum(fr.unresolved).toLocaleString()} have no edge, and
+         why: <ul class="about-residue">${list(fr.unresolved, FRONTIER_WHY)}</ul>` : "")
+      + (fr.unsaid ? `<i>${fr.unsaid.toLocaleString()} more whose reader does not say</i>` : ""));
   }
 
   return `

@@ -90,6 +90,7 @@ class Report:
     name_mismatch: int = 0   # a location whose routine is called something else
     ambiguous: int = 0       # several declarations competed: no edge
     constructions: int = 0   # builds one of the program's own types, which has no routine
+    outside: int = 0         # the reader said the far end is not this program's
     unsupplied: int = 0      # call sites the reader said nothing about
 
     def sentence(self) -> str:
@@ -100,7 +101,7 @@ class Report:
         nought**, because a line that reports a zero every run is a line nobody reads by
         the time it matters.
         """
-        if not self.supplied and not self.unsupplied:
+        if not self.supplied and not self.unsupplied and not self.outside:
             return ""
         parts = [f"{self.supplied:,} supplied"]
         if self.by_span:
@@ -114,6 +115,8 @@ class Report:
             parts.append(f"{self.constructions:,} built one of the program's own types")
         if self.ambiguous:
             parts.append(f"{self.ambiguous:,} had several declarations — no edge")
+        if self.outside:
+            parts.append(f"{self.outside:,} go outside the program")
         if self.unsupplied:
             parts.append(f"{self.unsupplied:,} the reader could not resolve")
         return f"{self.lang} edges: " + ", ".join(parts)
@@ -179,8 +182,8 @@ def _containing(ix: _Routines, file: str, line: int) -> tuple[str, str] | None:
     return None
 
 
-def _supplied(store: Store, lang: str) -> dict[str, tuple[str, int, str, int, str]]:
-    """`site_id -> (file, line, name, candidates, constructs)`, as the reader said it.
+def _supplied(store: Store, lang: str) -> dict[str, tuple[str, int, str, int, str, str, str]]:
+    """`site_id -> (file, line, name, candidates, constructs, frontier, reason)`, as said.
 
     One statement and one dictionary rather than a query per call site: `calls` and
     `supplied_edges` are two tables written by two passes, and joining them in SQL would
@@ -188,10 +191,11 @@ def _supplied(store: Store, lang: str) -> dict[str, tuple[str, int, str, int, st
     whole TypeScript answer is a few thousand rows.
     """
     return {
-        r["site_id"]: (r["file"], r["line"], r["name"], r["candidates"], r["constructs"])
+        r["site_id"]: (r["file"], r["line"], r["name"], r["candidates"], r["constructs"],
+                       r["frontier"], r["reason"])
         for r in store.query(
-            "SELECT site_id, file, line, name, candidates, constructs FROM supplied_edges"
-            " WHERE lang = ?", (lang,)
+            "SELECT site_id, file, line, name, candidates, constructs, frontier, reason"
+            " FROM supplied_edges WHERE lang = ?", (lang,)
         )
     }
 
@@ -227,7 +231,7 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> list[Decision]:
             out.append(NoEdge())
             continue
 
-        file, line, name, candidates, constructs = found
+        file, line, name, candidates, constructs, frontier, reason = found
         if constructs:
             # A construction of the program's own type: believed only where the map holds
             # a structure of that name at that place, as a routine's name is checked.
@@ -243,9 +247,11 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> list[Decision]:
             # number; the driver turns >1 into `ambiguous` and 0 into a plain external.
             if candidates > 1:
                 report.ambiguous += 1
+            elif reason == "outside":
+                report.outside += 1
             else:
                 report.unsupplied += 1
-            out.append(NoEdge(candidates=candidates))
+            out.append(NoEdge(candidates=candidates, frontier=frontier, reason=reason))
             continue
 
         report.supplied += 1

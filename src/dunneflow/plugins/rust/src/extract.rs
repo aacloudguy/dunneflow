@@ -134,17 +134,23 @@ pub struct TypeDef {
     pub variants: Vec<String>,
     /// Named fields and their declared types, for `self.db.m()`.
     pub fields: Vec<(String, Hint)>,
+    /// `type A<T> = B<T, E>;`: the parameters and what it stands for.
+    pub alias: Option<(Vec<String>, Hint)>,
+    /// A trait, and the paths of its supertraits (`trait A: B + c::D`).
+    pub is_trait: bool,
+    pub supers: Vec<Vec<String>>,
 }
 
 #[derive(Default)]
 pub struct Extracted {
     pub types: Vec<TypeDef>,
+    /// Names this file defines with `macro_rules!`.
+    pub macros: Vec<String>,
     pub facts: FileFacts,
     pub sites: Vec<Site>,
     pub defs: Vec<Def>,
     pub uses: Vec<UseRec>,
     pub mods: Vec<ModDecl>,
-    pub impls: Vec<(String, Option<String>)>,
 }
 
 pub fn extract_file(rel: &str, source: &str, rules: &Rules) -> FileFacts {
@@ -212,18 +218,24 @@ struct Ex<'a> {
     mod_path: Vec<String>,
     /// `(type, trait)` of the `impl` being read.
     imp: Option<(String, Option<String>)>,
+    /// The type parameters of the `impl` being read.
+    imp_generics: types::Generics,
     /// Calls whose value is thrown away, by byte offset (see `rust.yaml` on `inert`).
     discarded: HashSet<usize>,
     /// Names each open routine binds itself — its parameters and every `let` — innermost
     /// last. Over the whole routine rather than per block, which declines a few calls it
     /// could have resolved and never resolves one it should not (rule 1).
     locals: Vec<HashMap<String, Option<Hint>>>,
+    /// Where each of those names is first bound (`types::BoundAt`).
+    bound_at: Vec<types::BoundAt>,
+    /// Each open routine's type parameters, with its `impl`'s.
+    gens: Vec<types::Generics>,
     sites: Vec<Site>,
     defs: Vec<Def>,
     uses: Vec<UseRec>,
     mods: Vec<ModDecl>,
-    impls: Vec<(String, Option<String>)>,
     types: Vec<TypeDef>,
+    macros: Vec<String>,
 }
 
 impl<'a> Ex<'a> {
@@ -261,14 +273,17 @@ impl<'a> Ex<'a> {
             depth: 0,
             mod_path: Vec::new(),
             imp: None,
+            imp_generics: types::Generics::new(),
             discarded: HashSet::new(),
             locals: Vec::new(),
+            bound_at: Vec::new(),
+            gens: Vec::new(),
             sites: Vec::new(),
             defs: Vec::new(),
             uses: Vec::new(),
             mods: Vec::new(),
-            impls: Vec::new(),
             types: Vec::new(),
+            macros: Vec::new(),
         }
     }
 
@@ -301,8 +316,8 @@ impl<'a> Ex<'a> {
             defs: self.defs,
             uses: self.uses,
             mods: self.mods,
-            impls: self.impls,
             types: self.types,
+            macros: self.macros,
         }
     }
 
@@ -404,8 +419,10 @@ impl<'a> Ex<'a> {
                     }
                     return;
                 };
-                self.impls.push((ty.clone(), tr.clone()));
                 let saved = self.imp.replace((ty.clone(), tr.clone()));
+                let mut ig = types::Generics::new();
+                types::generics(&imp.generics, &mut ig);
+                let saved_g = std::mem::replace(&mut self.imp_generics, ig);
                 for it in &imp.items {
                     match it {
                         ImplItem::Fn(m) => {
@@ -444,6 +461,7 @@ impl<'a> Ex<'a> {
                     }
                 }
                 self.imp = saved;
+                self.imp_generics = saved_g;
             }
             Item::Trait(t) => {
                 let name = t.ident.to_string();
@@ -479,6 +497,21 @@ impl<'a> Ex<'a> {
                     }
                 }
                 self.imp = saved;
+                self.types.push(TypeDef {
+                    name: name.clone(),
+                    qualname: format!("{}.{}", self.prefix(), name),
+                    line: ds.line,
+                    mod_path: self.mod_path.clone(),
+                    tuple: false,
+                    variants: Vec::new(),
+                    fields: Vec::new(),
+                    alias: None,
+                    is_trait: true,
+                    supers: t.supertraits.iter().filter_map(|b| match b {
+                        syn::TypeParamBound::Trait(tb) => Some(tb.path.segments.iter().map(|s| s.ident.to_string()).collect()),
+                        _ => None,
+                    }).collect(),
+                });
                 self.facts.structures.push(ds);
             }
             Item::Struct(s) => {
@@ -503,6 +536,9 @@ impl<'a> Ex<'a> {
                         let name = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_else(|| i.to_string());
                         types::type_hint(&f.ty).map(|h| (name, h))
                     }).collect(),
+                    alias: None,
+                    is_trait: false,
+                    supers: Vec::new(),
                 });
                 self.facts.classes.push(ClassDef_ {
                     name: name.clone(),
@@ -548,6 +584,9 @@ impl<'a> Ex<'a> {
                     mod_path: self.mod_path.clone(),
                     tuple: false,
                     fields: Vec::new(),
+                    alias: None,
+                    is_trait: false,
+                    supers: Vec::new(),
                     variants: e.variants.iter()
                         .filter(|v| matches!(v.fields, syn::Fields::Unnamed(_)))
                         .map(|v| v.ident.to_string()).collect(),
@@ -558,6 +597,20 @@ impl<'a> Ex<'a> {
                 let name = t.ident.to_string();
                 let mut ds = self.structure(&name, StructureKind::TypeAlias, t.ident.span(), &t.attrs);
                 ds.bases.push(self.text(t.ty.span()));
+                self.types.push(TypeDef {
+                    name: name.clone(),
+                    qualname: format!("{}.{}", self.prefix(), name),
+                    line: ds.line,
+                    mod_path: self.mod_path.clone(),
+                    tuple: false,
+                    variants: Vec::new(),
+                    fields: Vec::new(),
+                    alias: types::type_hint(&t.ty).map(|h| {
+                        (t.generics.type_params().map(|p| p.ident.to_string()).collect(), h)
+                    }),
+                    is_trait: false,
+                    supers: Vec::new(),
+                });
                 self.facts.structures.push(ds);
             }
             Item::Const(c) => {
@@ -631,6 +684,11 @@ impl<'a> Ex<'a> {
             // code, and is not walked. Any other item-level macro is a call, owned by the
             // module scope because that is where it is written.
             Item::Macro(m) if m.ident.is_none() => self.mac(&m.mac, false),
+            Item::Macro(m) => {
+                if let Some(name) = &m.ident {
+                    self.macros.push(name.to_string());
+                }
+            }
             _ => {}
         }
     }
@@ -727,10 +785,19 @@ impl<'a> Ex<'a> {
             },
             FnArg::Receiver(_) => None,
         }).collect();
-        let bound = match body {
+        let mut gens = self.imp_generics.clone();
+        types::generics(&sig.generics, &mut gens);
+        let (bound, at) = match body {
             Some(b) => types::bindings(&typed, b),
-            None => typed.into_iter().collect(),
+            None => {
+                let at = typed.iter().map(|(n, _)| (n.clone(), 0)).collect();
+                (typed.into_iter().collect(), at)
+            }
         };
+        let bound: HashMap<String, Option<Hint>> =
+            bound.into_iter().map(|(k, v)| (k, v.map(|h| types::subst(h, &gens)))).collect();
+        self.bound_at.push(at);
+        self.gens.push(gens);
         self.routines.push(r);
         let idx = self.routines.len() - 1;
         self.scope.push(idx);
@@ -743,6 +810,8 @@ impl<'a> Ex<'a> {
         self.depth = saved;
         self.scope.pop();
         self.locals.pop();
+        self.bound_at.pop();
+        self.gens.pop();
         idx
     }
 
@@ -849,7 +918,15 @@ impl<'a> Ex<'a> {
     }
 
     fn call(&mut self, expr: String, kind: SiteKind, path: Vec<String>, span: Span, args: &[&Expr]) {
-        self.call_with(expr, kind, path, span, args, None);
+        // `D::open()` on a type parameter is dispatch over whatever `D` is, said the way a
+        // receiver's type is: its bound as a `dyn`, or a bare generic.
+        let recv = match (kind, path.as_slice()) {
+            (SiteKind::Path, [first, _, ..]) => self.gens.last().and_then(|g| {
+                g.contains_key(first).then(|| types::subst(Hint::Ty { segs: vec![first.clone()], args: Vec::new() }, g))
+            }),
+            _ => None,
+        };
+        self.call_with(expr, kind, path, span, args, recv);
     }
 
     fn call_with(&mut self, expr: String, kind: SiteKind, path: Vec<String>, span: Span,
@@ -866,7 +943,8 @@ impl<'a> Ex<'a> {
         // closure, a function pointer, a parameter — and never to a function elsewhere
         // that shares the name (`CallSite.bound_locally`, schema 16).
         let bound = kind == SiteKind::Path && path.len() == 1
-            && self.locals.last().is_some_and(|l| l.contains_key(&path[0]));
+            && self.bound_at.last().and_then(|b| b.get(&path[0]))
+                .is_some_and(|&at| at < span.byte_range().start);
         let (caller, site_id) = self.record_call(&expr, line, rule.is_some(), call_args);
         if bound {
             if let Some(c) = self.facts.calls.last_mut() {
@@ -940,7 +1018,14 @@ impl<'a> Ex<'a> {
     fn mac(&mut self, m: &Macro, _in_expr: bool) {
         let name = dotted_path(&m.path);
         let expr = format!("{name}!");
-        let parsed = m.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated);
+        // `matches!(x, Pat)` and its assertions take a *pattern* after the first argument,
+        // and a pattern like `Frag::Pos(_)` parses as a call: only the scrutinee is code.
+        let pattern_taking = matches!(name.rsplit('.').next(), Some("matches" | "assert_matches" | "debug_assert_matches"));
+        let parsed = if pattern_taking {
+            Err(syn::Error::new(m.span(), "a pattern-taking macro"))
+        } else {
+            m.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+        };
         let args: Vec<Expr> = match parsed {
             Ok(p) => p.into_iter().collect(),
             Err(_) => {

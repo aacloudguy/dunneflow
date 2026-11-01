@@ -2552,6 +2552,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "schema_version", "inference", "model", "analysis_args",
                 "walk_residue")}
             counts = base.store.counts()
+            # Where the map stops, and why, over every call (schema 17). Only readers that
+            # say fill it; `unsaid` counts the calls whose reader said nothing.
+            frontier = base.store.frontier_of_map()
             # **What this map was read from, not what this build can read** (rule 24).
             # The dialog's subject is the map on screen, and the same claim the mirror
             # page makes in prose is the one this row states as a count.
@@ -2640,6 +2643,7 @@ class _Handler(BaseHTTPRequestHandler):
                        # optional, and its absence is stated rather than shown as zero).
                        "documents": (docs or {}).get("documents") if docs else None},
             "languages": langs,
+            "frontier": frontier,
         })
 
     def _version_of(self, graph: Path) -> dict[str, Any]:

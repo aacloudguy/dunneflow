@@ -148,7 +148,12 @@ CREATE TABLE IF NOT EXISTS calls (
     -- The qualname of this program's class that the call builds, when the class defines
     -- no constructor to draw an edge to. Such a call is not external: what it builds is
     -- here, and only the routine is missing because there is none.
-    constructs  TEXT NOT NULL DEFAULT ''
+    constructs  TEXT NOT NULL DEFAULT '',
+    -- **Where the map stops, and why** (schema 17, `SuppliedEdge.frontier`/`reason`): for a
+    -- call with no edge, the far end as its reader knows it and one word for why there is
+    -- no edge. Empty where the reader said nothing, which every reader but Rust's is.
+    frontier    TEXT NOT NULL DEFAULT '',
+    reason      TEXT NOT NULL DEFAULT ''
 );
 
 -- What one caller actually passed, as written. Hangs off `calls.site_id` rather than
@@ -179,7 +184,9 @@ CREATE TABLE IF NOT EXISTS supplied_edges (
     name       TEXT NOT NULL DEFAULT '',
     how        TEXT NOT NULL DEFAULT '',
     candidates INTEGER NOT NULL DEFAULT 0,
-    constructs TEXT NOT NULL DEFAULT ''
+    constructs TEXT NOT NULL DEFAULT '',
+    frontier   TEXT NOT NULL DEFAULT '',
+    reason     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS boundaries (
@@ -625,6 +632,25 @@ def refuse_missing(path: Path, what: str) -> None:
             f"{what} there, because opening it would create an empty one and an empty "
             f"map answers every question with silence"
         )
+
+
+
+def _frontier(rows: list[sqlite3.Row]) -> dict[str, Any]:
+    """Group frontier rows: outside by the far end's first segment, the rest by reason."""
+    outside: dict[str, int] = {}
+    unresolved: dict[str, int] = {}
+    unsaid = 0
+    for r in rows:
+        if r["reason"] == "outside":
+            head = str(r["frontier"]).split("::", 1)[0] or "?"
+            outside[head] = outside.get(head, 0) + int(r["n"])
+        elif r["reason"]:
+            unresolved[r["reason"]] = unresolved.get(r["reason"], 0) + int(r["n"])
+        else:
+            unsaid += int(r["n"])
+    by_count = lambda d: sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))  # noqa: E731
+    return {"outside": by_count(outside), "unresolved": by_count(unresolved),
+            "unsaid": unsaid}
 
 
 class Store:
@@ -1116,11 +1142,11 @@ class Store:
         c = self.conn
         c.execute("DELETE FROM supplied_edges WHERE lang = ?", (lang,))
         rows = [(lang, e.site_id, e.caller_id, e.file, e.line, e.name, e.how, e.candidates,
-                 e.constructs)
+                 e.constructs, e.frontier, e.reason)
                 for e in edges]
         c.executemany(
             "INSERT INTO supplied_edges(lang,site_id,caller_id,file,line,name,how,candidates,"
-            "constructs) VALUES(?,?,?,?,?,?,?,?,?)",
+            "constructs,frontier,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         return len(rows)
@@ -1558,6 +1584,57 @@ class Store:
             )
             for r in rows
         ]
+
+    def frontier_reached(self, routine_id: str, max_depth: int = 40) -> dict[str, Any]:
+        """Where this routine's reach stops, and why: every call with no edge in it or in
+        anything it reaches, grouped (schema 17, `calls.frontier`/`calls.reason`).
+
+        `outside` is by the far end's first segment — its crate, as the reader spells it —
+        so a reader can see *std 120, rusqlite 40* rather than a count; `unresolved` is by
+        reason. A call whose reader said nothing (`reason = ''`) is counted as `unsaid` and
+        never folded into either, because *nobody said* is not *nothing to say* (rule 32).
+        A boundary is not here: it is its own frontier fact, in `boundaries_reached`.
+        """
+        rows = self.conn.execute(
+            """
+            WITH RECURSIVE reach(id, depth) AS (
+                SELECT ?, 0
+                UNION
+                SELECT c.callee_id, r.depth + 1
+                  FROM calls c JOIN reach r ON c.caller_id = r.id
+                 WHERE c.callee_id IS NOT NULL AND r.depth < ?
+            )
+            SELECT c.reason, c.frontier, COUNT(*) AS n
+              FROM calls c JOIN (SELECT DISTINCT id FROM reach) r ON c.caller_id = r.id
+             WHERE c.callee_id IS NULL AND c.at_boundary = 0 AND c.constructs = ''
+             GROUP BY c.reason, c.frontier
+            """,
+            (routine_id, max_depth),
+        ).fetchall()
+        return _frontier(rows)
+
+    def frontier_of_map(self) -> dict[str, Any]:
+        """`frontier_reached` over every call in the map, for *About this map*."""
+        rows = self.conn.execute(
+            "SELECT reason, frontier, COUNT(*) AS n FROM calls"
+            " WHERE callee_id IS NULL AND at_boundary = 0 AND constructs = ''"
+            " GROUP BY reason, frontier"
+        ).fetchall()
+        return _frontier(rows)
+
+    def unresolved_named(self, name: str) -> list[tuple[str, int]]:
+        """Calls with no edge whose method is called `name`, by reason: the callers a routine
+        may have that the map could not draw. `x.save()` on a receiver of unwritten type
+        could be any `save`; that is a reason to look, never an edge (rule 1)."""
+        rows = self.conn.execute(
+            "SELECT reason, COUNT(*) AS n FROM calls"
+            " WHERE callee_id IS NULL AND reason IN ('untyped', 'dynamic')"
+            "   AND (callee_expr = ? OR callee_expr LIKE ? ESCAPE '\\')"
+            " GROUP BY reason ORDER BY n DESC, reason",
+            # `_` is a wildcard to LIKE and in every other Rust name.
+            (name, "%." + name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")),
+        ).fetchall()
+        return [(str(r["reason"]), int(r["n"])) for r in rows]
 
     def reachable_from_many(self, routine_ids: list[str], max_depth: int = 40) -> set[str]:
         """Everything a *set* of routines can reach, as one traversal.

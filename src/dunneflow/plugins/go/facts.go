@@ -452,4 +452,6 @@ type SuppliedEdge struct {
 	How        string `json:"how,omitempty"`
 	Candidates int    `json:"candidates,omitempty"`
 	Constructs string `json:"constructs,omitempty"`
+	Frontier   string `json:"frontier,omitempty"`
+	Reason     string `json:"reason,omitempty"`
 }

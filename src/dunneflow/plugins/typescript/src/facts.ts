@@ -322,4 +322,6 @@ export interface SuppliedEdge {
   how?: string;
   candidates?: number;
   constructs?: string;
+  frontier?: string;
+  reason?: "" | "outside" | "untyped" | "dynamic" | "bound" | "unfollowed";
 }

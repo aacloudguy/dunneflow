@@ -354,6 +354,18 @@ class CallSite:
     bound_locally: bool = False
 
 
+
+# **Why a call has no edge, in one word**, said by the reader that knows (schema 17). A
+# frontier is where the map stops, and *it stops here* is worth less than *it stops here
+# because*: `outside` is a far end this program does not hold (`SuppliedEdge.frontier` says
+# what it is, as far as the reader knows); `untyped` is a receiver whose type the source
+# does not write down; `dynamic` is dispatch over several implementors (`candidates` says
+# how many); `bound` is a closure or a function value the routine holds; `unfollowed` is a
+# path the reader could not follow to anything. Empty is *nobody said*, which every reader
+# before Rust's is.
+Unresolved = Literal["", "outside", "untyped", "dynamic", "bound", "unfollowed"]
+UNRESOLVED_REASONS: tuple[str, ...] = ("outside", "untyped", "dynamic", "bound", "unfollowed")
+
 @dataclass(slots=True)
 class SuppliedEdge:
     """Where a call goes, according to a reader whose toolchain already knows.
@@ -403,6 +415,11 @@ class SuppliedEdge:
     # location, and the host checks the map holds a structure there before it believes it,
     # exactly as it checks a routine's name (rule 1). Added for Rust, with schema 17.
     constructs: str = ""
+    # **The frontier.** For a call with no edge, the far end as the reader knows it --
+    # `rusqlite::Transaction::execute`, `std::fs::read`, `format!` -- in that language's own
+    # spelling, and how the reader knew it is `how`. Empty where nothing is known about it.
+    frontier: str = ""
+    reason: Unresolved = ""
 
 
 class ControlKind(StrEnum):

@@ -55,6 +55,20 @@ Rust reader's SQL literals were the first to reach (rule 98); the tie is closed 
 attribution is not. *Settled by* a `line` on `db_columns`, written by `ingest/literals.py`,
 and `render/database.py` asking for the columns of one statement.
 
+**36. Only the Rust reader says where its calls stop.** `calls.frontier` and `calls.reason`
+(schema 17) are filled by Rust alone, so *About this map* says *3,608 more whose reader does
+not say* of DunneNote's TypeScript, and every Python, Go and C++ map says nothing. Not done
+because each reader knows different things: TypeScript's checker names a far end's
+declaration file, Go's names its package, Python's resolver knows the import it stopped at.
+*Settled by* each reader sending `frontier`/`reason` on its unresolved calls (Python's
+through `NoEdge`, which already carries both), with the unsaid count retaken per corpus.
+
+**37. `--include-tests` does not bring back Rust's inline tests.** The walk leaves test
+*files* out unless asked; the Rust reader leaves `#[cfg(test)]` items out always, because
+nothing tells a reader the flag and the cache key does not carry it (rule 81). 159 items on
+DunneNote. *Settled by* the flag reaching `open` and joining the per-language stamp, so a
+run with it and a run without it cannot share a cached file.
+
 ---
 
 ## Stated residues — known, bounded, and not defects

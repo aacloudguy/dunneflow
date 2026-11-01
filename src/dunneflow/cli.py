@@ -21,6 +21,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from . import ingest, revisions
 from .anomalies import BROKEN, INFO, SUSPECT, detect
@@ -1282,15 +1283,40 @@ def cmd_touches(args: argparse.Namespace) -> int:
         bounds = store.boundaries_reached(m["id"])
         if not bounds:
             print("  touches nothing outside itself")
-            continue
         by_kind: dict[str, set[str]] = {}
         for b in bounds:
             by_kind.setdefault(b.kind.value, set()).add(b.target or b.evidence)
         for kind in sorted(by_kind):
             targets = sorted(t for t in by_kind[kind] if t)[:8]
             print(f"  {kind:10s} {', '.join(targets) if targets else '(dynamic)'}")
+        for line in frontier_lines(store.frontier_reached(m["id"])):
+            print(f"  {line}")
     store.close()
     return 0
+
+
+def frontier_lines(front: dict[str, Any]) -> list[str]:
+    """Where a routine's reach stops, in at most three lines, and only where a reader said.
+
+    *Outside* is grouped by the far end's crate; *no edge* is grouped by why. A map whose
+    readers say nothing about their frontier prints nothing here rather than a zero,
+    because a zero would claim the reach is complete (rule 32)."""
+    out: list[str] = []
+    if front["outside"]:
+        total = sum(n for _, n in front["outside"])
+        named = {"?": "methods on values of unwritten type",
+                 "crate": "this program's types, by a derive or another crate's trait"}
+        parts = [f"{named.get(head, head)} {n:,}" for head, n in front["outside"][:8]]
+        more = len(front["outside"]) - 8
+        out.append(f"leaves the program by {plural(total, 'call')}: " + " · ".join(parts)
+                   + (f" · {more} more" if more > 0 else ""))
+    if front["unresolved"]:
+        words = {"untyped": "receiver's type not written down", "dynamic": "dispatch over "
+                 "several implementors", "bound": "a closure or function value",
+                 "unfollowed": "a path not followed"}
+        parts = [f"{n:,} {words.get(r, r)}" for r, n in front["unresolved"]]
+        out.append("no edge, and why: " + " · ".join(parts))
+    return out
 
 
 def cmd_impact(args: argparse.Namespace) -> int:
@@ -1324,6 +1350,12 @@ def cmd_impact(args: argparse.Namespace) -> int:
         plans = governance_over(store, callers)
         if plans:
             print(f"  governance implicated: {', '.join(plans[:25])}")
+        undrawn = store.unresolved_named(m["name"])
+        if undrawn:
+            # Not dependents: calls the map could not connect that use this name. A reason
+            # to look before changing it, never a count of callers (rule 1).
+            print(f"  and {plural(sum(n for _, n in undrawn), 'call')} with no edge use the "
+                  f"name `{m['name']}` — " + ", ".join(f"{n:,} {r}" for r, n in undrawn))
     store.close()
     return 0
 

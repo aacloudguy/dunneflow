@@ -494,6 +494,40 @@ pub fn typed(db: &Db, tx: &rusqlite::Transaction, shared: std::sync::Arc<Db>, t:
         row.exec();
     }
 }
+
+fn secret() -> Option<u8> {
+    None
+}
+
+pub fn shadow() {
+    let Some(secret) = secret() else {
+        return;
+    };
+    let _ = secret;
+}
+
+mod one {
+    pub struct Tok;
+
+    impl Tok {
+        pub fn only_one(&self) {}
+    }
+}
+
+mod two {
+    pub struct Tok;
+
+    impl Tok {
+        pub fn new() -> Tok {
+            Tok
+        }
+    }
+
+    pub fn mk() {
+        let t = Tok::new();
+        t.only_one();
+    }
+}
 ''',
     "app/Cargo.toml": '[package]\nname = "app"\n',
     "app/src/main.rs": '''use my_core::util::S;
@@ -621,3 +655,74 @@ def test_what_the_declared_type_cannot_say_is_still_not_guessed(edges):
     callee, ambiguous = edges[("typed", "t.t")]
     assert callee is None and ambiguous
     assert edges[("typed", "row.exec")][0] is None
+
+
+def test_two_types_of_one_name_in_two_modules_are_two_types(edges):
+    """DunneNote's search crate has a `struct Tok` and an `enum Tok`. Keyed on the name, the
+    two pooled their methods, and `t.only_one()` on `two::Tok` resolved to `one::Tok`'s."""
+    assert edges[("mk", "Tok.new")][0] == "core.src.typed.two.Tok.new"
+    assert edges[("mk", "t.only_one")][0] is None
+
+
+@pytest.fixture(scope="module")
+def frontier_store(tmp_path_factory):
+    if PLUGIN is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path_factory.mktemp("rustfront")
+    for rel, text in WORKSPACE.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    store = Store(tmp_path_factory.mktemp("db") / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    yield store
+    store.close()
+
+
+def test_every_call_with_no_edge_says_where_it_stops_and_why(frontier_store):
+    """Schema 17: `calls.frontier` and `calls.reason`, from the reader that knows."""
+    rows = {r["callee_expr"]: (r["frontier"], r["reason"]) for r in frontier_store.query(
+        "SELECT callee_expr, frontier, reason FROM calls WHERE callee_id IS NULL"
+        " AND constructs = '' AND at_boundary = 0")}
+    assert rows["serde_json.to_string"] == ("serde_json::to_string", "outside")
+    assert rows["tx.exec"] == ("rusqlite::Transaction::exec", "outside")
+    assert rows["Some"] == ("std::Some", "outside")
+    assert rows["with!"][1] == "outside"
+    assert rows["row.exec"] == ("", "untyped")
+    assert rows["helper"] == ("", "bound")
+    assert rows["t.t"][1] == "dynamic"
+    # Every call with no edge was said something about: Rust's reader leaves none unsaid.
+    unsaid = frontier_store.query(
+        "SELECT COUNT(*) AS n FROM calls c JOIN files f ON f.path = c.file"
+        " WHERE f.lang = 'rust' AND c.callee_id IS NULL AND c.constructs = ''"
+        " AND c.at_boundary = 0 AND c.reason = ''")
+    assert unsaid[0]["n"] == 0
+
+
+def test_touches_groups_the_frontier_by_crate_and_by_reason(frontier_store):
+    from dunneflow.cli import frontier_lines
+
+    [main] = frontier_store.query("SELECT id FROM routines WHERE qualname = 'app.src.main.main'")
+    front = frontier_store.frontier_reached(main["id"])
+    assert dict(front["outside"])["serde_json"] == 1
+    assert dict(front["unresolved"])["bound"] == 1
+    lines = frontier_lines(front)
+    assert lines[0].startswith("leaves the program by ") and "serde_json 1" in lines[0]
+    assert lines[1].startswith("no edge, and why: ")
+
+
+def test_impact_names_the_calls_it_might_be_receiving(frontier_store):
+    """`row.exec()` on an iterator's item could be `Conn::exec`: a reason to look, never a
+    dependent (rule 1)."""
+    assert dict(frontier_store.unresolved_named("exec")) == {"untyped": 1}
+    assert frontier_store.unresolved_named("ex_c") == [], "`_` is not a wildcard here"
+
+
+def test_a_let_shadows_only_the_calls_written_after_it(edges):
+    """`let Some(secret) = secret() else { … }` calls the function `secret`; the name it
+    binds exists only once the statement is done. Found in DunneNote's `host-http` `main`."""
+    assert edges[("shadow", "secret")][0] == "core.src.typed.secret"

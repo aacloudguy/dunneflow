@@ -99,6 +99,11 @@ class NoEdge:
     # -- a dataclass, an enum, a class that inherits `__init__` from outside. The thing
     # built is here; only the routine is missing, because there is none (BACKLOG 14).
     constructs: str = ""
+    # **Where the map stops, and why**, where the resolver knows (`SuppliedEdge.frontier`
+    # and `reason`, schema 17). Carried to `calls.frontier` and `calls.reason`; empty is
+    # *nobody said*, never *nothing to say*.
+    frontier: str = ""
+    reason: str = ""
 
 
 Decision = Edge | NoEdge

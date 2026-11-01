@@ -97,6 +97,25 @@ not measured, with the reason from the rules file, and the three surfaces (CLI, 
 
 ---
 
+**40. A command no client sends is not reported.** DunneNote has 8, and each was read
+against the source (`GROUND-TRUTH.md`). That is dead code by another route, but it is not a
+`DEAD_CODE` finding, because an `IPC_COMMAND` is a way in. Not built, because its blind spot is
+large: a client in a language this build does not read, a test, or a second front end outside
+the tree. *Settled by* Tom deciding whether an INFO finding with that blind spot is wanted.
+
+**41. *About this map* says "Inferred facts: none" directly under "matched by name".** Design
+rule 28's *inferred* is a provenance tier: a fact guessed by a model, of which there are
+none. A link matched by name is `Confidence.INFERRED` in the sense Python's by-name edges
+have always been. Read quickly, the two rows contradict each other. *Settled by* Tom
+choosing between leaving it, adding a clause to the vow ("a call or command matched by name
+is labelled where it is shown"), or rewording one of the rows.
+
+**42. The second recursive arm's cost on a large map is unmeasured.** Every reach query now
+also joins `ipc_links`. That table is empty on every map but DunneNote's, and a read-only
+store walks in memory, so the cost is expected to be small. Nobody has timed it (rule 24).
+*Settled by* timing `touches` and the cover on Unreal's Runtime part, before and after
+f61514d.
+
 ## Stated residues — known, bounded, and not defects
 
 These are not tasks. They are places where the honest answer is a limitation, recorded so

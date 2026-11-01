@@ -979,6 +979,38 @@ queries know a language exists.
   1,935 internal edges DunneNote gained that way are supplied, not inferred: an import
   alias that collides with a local name and a method reached through a typed receiver are
   two cases a name cannot get right (rule 5).
+
+  **`resolve/ipc.py` is the crossing between two languages, and it names neither.** A Tauri
+  front end calls a Rust `#[tauri::command]` by sending its *name*, so no reference crosses
+  and no resolver can draw it. The server side is facts a reader sent: an `IPC_COMMAND` way
+  in for each attributed fn, and an `ipc_registrations` row for each path in a registrar
+  (`rust.yaml` `ipc.command_attrs`, `ipc.registrars`). The client side is a declaration:
+  `typescript.yaml` `ipc.clients` names `@tauri-apps/api/core`'s `invoke`. A site **sends**
+  when it calls that client directly or calls a **carrier**, meaning a routine that hands
+  its own first parameter on as a first argument, from a file that imports the client, carried
+  further only along CERTAIN edges. DunneNote's 179 sends all go through
+  `call(command)` → `active(command)`, a variable, which is why a carrier is judged by what it
+  does with its parameter rather than by what it calls. The linker runs at the end of
+  `resolve_calls`, so every caller gets it (rule 51), and writes `ipc_links`, one row per site,
+  with a status:
+  - `linked` (`how = "by name"`, INFERRED);
+  - `unknown`, `unregistered` or `ambiguous`;
+  - `dynamic`, where the name is not a literal and nothing is guessed;
+  - `foreign`, a `plugin:` prefix (`rust.yaml` `ipc.foreign_prefixes`).
+
+  Two applications in one tree are told apart by the registration sharing the longest
+  directory run with the site, and a tie links nothing (rule 1). **Rule 2 holds by shape:
+  `calls.callee_id` is never written.** Only the walks cross. Every recursive query in
+  `store.py` has a second arm over `linked` rows, and `_reach_graph` adds them, except
+  `reachable_from_many(cross=False)`, which `render/network.py` uses so that a process zone
+  never contains a command another process answers. It surfaces as:
+  - `touches` and `impact`, "matched by name";
+  - MCP `by_name`;
+  - the inspector's `in.by_name` and `out.by_name`;
+  - a dashed `IPC` edge in the graph;
+  - *About this map*'s "Between languages" row;
+  - `08-network.md`'s "Commands called by name";
+  - the anomalies UNREGISTERED_COMMAND and UNKNOWN_COMMAND, both SUSPECT.
 - `render/` — Markdown and Mermaid. **A map needs neither the source tree nor the
   documentation tree**, and saying so cost twenty-eight signatures: `root` and `docs_root`
   were threaded through every renderer and read by none of them, left behind when the nine

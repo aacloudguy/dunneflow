@@ -294,6 +294,33 @@ type the source never writes down, a call through a closure or a function pointe
 `macro_rules!` expansion: each carries `calls.reason` (*untyped*, *bound*, *unfollowed*)
 rather than an edge guessed by name.
 
+### The Tauri crossing on DunneNote (chunk 5, 2026-11-01)
+
+At `rust-reader` 8881fc2, on the Mac, `analyze ../DunneNote` says
+*commands by name: 179 sites send one (179 linked by name to a command); 167 commands,
+167 registered*. Every figure was checked against the source:
+- **Commands: 167.** The current app has 122 `#[tauri::command]` in
+  `apps/desktop/src-tauri/src/lib.rs` and 122 names in its `generate_handler!`; legacy v0.1
+  has 45 under `crates/app/src/ipc/commands/`. DunneNote's own comments say "113 commands"
+  (`lib.rs:2416`) and "105" (`pl/client.ts`). **Both are stale**: grep finds 122 attributes
+  and 122 registrations, and so does the map.
+- **Sends: 179, all linked.**
+  - 135 go from `apps/desktop` to `apps/desktop/src-tauri` and 44 from `legacy/v0.1` to its
+    own crates.
+  - None crosses between the two applications, though three names (`add_photo`,
+    `get_blob_bytes`, `open_or_create_notebook`) are commands in both.
+  - The carriers are `pl/client.ts:call` and `legacy/v0.1/src/lib/ipc.ts:call`.
+- **Commands no client sends: 8, each grepped across the front end.**
+  - Six appear nowhere.
+  - `set_item_meta` appears only in `search-store.test.ts`.
+  - `rebuild_search_index` appears only as a field of the health plan's object, never sent.
+  - None is a missed link.
+- **Findings:** no UNREGISTERED_COMMAND or UNKNOWN_COMMAND, which matches the above. Still
+  0 broken and 4 suspect.
+- **`08-network.md`** places the 135 in the `dunnenote` process and the 44 in `calnote`, by
+  the registrar. That needed the reader to honour `[lib] name` (b932594), without which
+  `main` reached nothing.
+
 **Neither tree is on maclab or GIZA**, so these figures are the Mac's. The suite runs there,
 and those machines prove the reader builds and reads; they do not retake these numbers
 (rule 24).

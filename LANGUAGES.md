@@ -315,6 +315,18 @@ wrong all along:
 - **A sentence ending in a full stop was SQL** when it began with `delete` and had a bracket
   in it, and pdfcraft's MCP tool descriptions minted three tables.
 
+**A language can now say how it calls another one by name, and the next reader should
+ask whether it does.** `ipc` in a rules file has two sides (`resolve/ipc.py`, `ARCHITECTURE.md`):
+- **the server side, which is the reader's:** an attribute that makes a function a command
+  (`command_attrs`) and a macro whose path arguments register it (`registrars`). The reader
+  emits `EntrypointKind.IPC_COMMAND` and `IpcRegistration` and judges neither.
+- **the client side, which is the host's:** `clients`, a `{module, name}` that sends its first
+  argument as a command name. The host finds the sends; a plugin reads nothing.
+
+`foreign_prefixes` names commands answered outside the tree. Only Tauri is declared.
+Electron's `ipcRenderer.invoke` looks like the same shape and has not been tried, and the
+judgement that one would fit belongs to a real tree, not to this paragraph.
+
 Each was found the way this chapter keeps saying: `dunneflow check` on two real trees
 (DunneNote and pdfcraft), every finding read against the source, and the survivors fixed
 where they live rather than where they showed.

@@ -438,3 +438,7 @@ artefacts:
 # *declaration* overloads are a different thing — several signatures over one
 # implementation — and the reader already records an overload set as one name.
 redefinition: shadows
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# `_name` and `#name`, the only two the reader records as private, are kept inside their file or class.
+private_means: module

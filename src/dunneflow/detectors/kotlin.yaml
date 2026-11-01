@@ -154,3 +154,7 @@ builtins: [
   "until", "use", "with", "withContext", "zip",
   "TODO", "arrayOfNulls", "compareTo", "equals", "hashCode", "it", "this",
 ]
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# `internal` and `protected` are recorded as private, and both are visible beyond the file.
+private_means: surface

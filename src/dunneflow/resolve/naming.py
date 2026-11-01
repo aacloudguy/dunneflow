@@ -28,6 +28,7 @@ from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from ..detectors import load_rules
 from ..store import Store
 from . import languages
 
@@ -877,49 +878,79 @@ def mine_affix_conventions(store: Store) -> list[Convention]:
 # --------------------------------------------------------------------------- #
 
 
-def mine_privacy_convention(store: Store) -> list[Convention]:
-    """A leading underscore means private -- but *is* it kept private?
+# Where a private routine may be called from, per `RuleSet.private_means`: the SQL that is
+# true of a call that crosses it, and the word for what it crosses. A language declaring
+# `surface` -- or nothing -- is not measured at all (see `detectors.RuleSet.private_means`).
+_PRIVATE_SCOPE = {
+    "module": ("caller.module <> callee.module", "module"),
+    # Go's `module` column is the file, and an unexported name is the package's: the
+    # package is the directory, which is the path up to its last separator.
+    "package": ("rtrim(caller.file, replace(caller.file, '/', ''))"
+                " <> rtrim(callee.file, replace(callee.file, '/', ''))", "package"),
+}
+
+
+def mine_privacy_convention(store: Store, langs: Sequence[str] = ()) -> list[Convention]:
+    """A routine marked private -- but *is* it kept private, by this language's meaning?
 
     Counting how many private routines have a leading underscore measures nothing: that
     is how `visibility` is derived. The claim worth testing is whether a routine marked
-    private is ever called from another module, and the answer names the callers.
+    private is ever called from beyond where the language keeps it, and the answer names
+    the callers.
+
+    **Where that is, is the language's to say** (`private_means`). Measured with Python's
+    reading, pdfcraft's Rust "leaked" 624 times, and 440 of those were `pub(crate)` doing
+    what it says. `langs` empty means do not split: the map holds one language, and its
+    claim is spelt exactly as it was before there were two.
     """
-    rows = store.query(
-        "SELECT DISTINCT callee.name AS name, callee.module AS home,"
-        "       caller.module AS caller_module, callee.file AS file,"
-        "       callee.line_start AS line"
-        "  FROM calls c"
-        "  JOIN routines callee ON callee.id = c.callee_id"
-        "  JOIN routines caller ON caller.id = c.caller_id"
-        " WHERE callee.visibility = 'private'"
-        "   AND callee.name NOT GLOB '__*__'"
-        "   AND caller.module <> callee.module"
-    )
-    total = store.query(
-        "SELECT COUNT(*) n FROM routines"
-        " WHERE visibility = 'private' AND name NOT GLOB '__*__' AND is_nested = 0"
-    )[0]["n"]
-    if total < MIN_POPULATION:
-        return []
-    leaked = {(str(r["name"]), f"{r['file']}:{r['line']}") for r in rows}
-    holds = total - len(leaked)
-    return [Convention(
-        kind="LEAKAGE",
-        claim="A routine marked private is called only from its own module.",
-        population="private routines",
-        total=total,
-        holds=holds,
-        exceptions=[Exception_(n, w) for n, w in sorted(leaked)],
-        sql=(
-            "SELECT DISTINCT callee.name, callee.file, callee.line_start FROM calls c"
-            " JOIN routines callee ON callee.id = c.callee_id"
-            " JOIN routines caller ON caller.id = c.caller_id"
-            " WHERE callee.visibility = 'private' AND callee.name NOT GLOB '__*__'"
-            " AND caller.module <> callee.module"
-        ),
-        note="Counting underscores would measure nothing: that is how privacy is "
-             "derived. Whether the boundary holds is a different question.",
-    )]
+    present = languages.read(store)
+    out: list[Convention] = []
+    for lang in (langs or [""]):
+        judged = lang or (present[0] if len(present) == 1 else "")
+        scope = _PRIVATE_SCOPE.get(load_rules(judged).private_means) if judged else None
+        if scope is None:
+            continue
+        crosses, unit = scope
+        own = (f" AND callee.file IN (SELECT path FROM files WHERE lang = '{lang}')"
+               if lang else "")
+        mine = f" AND file IN (SELECT path FROM files WHERE lang = '{lang}')" if lang else ""
+        where = (" WHERE callee.visibility = 'private' AND callee.name NOT GLOB '__*__'"
+                 f" AND {crosses}{own}")
+        rows = store.query(
+            "SELECT DISTINCT callee.name AS name, callee.file AS file,"
+            "       callee.line_start AS line"
+            "  FROM calls c"
+            "  JOIN routines callee ON callee.id = c.callee_id"
+            "  JOIN routines caller ON caller.id = c.caller_id" + where
+        )
+        total = store.query(
+            "SELECT COUNT(*) n FROM routines"
+            " WHERE visibility = 'private' AND name NOT GLOB '__*__' AND is_nested = 0" + mine
+        )[0]["n"]
+        if total < MIN_POPULATION:
+            continue
+        leaked = {(str(r["name"]), f"{r['file']}:{r['line']}") for r in rows}
+        named = population_name("routines", lang)
+        claim = (f"{leading(named, lang)} marked private are called only from their own "
+                 f"{unit}." if lang else
+                 f"A routine marked private is called only from its own {unit}.")
+        out.append(Convention(
+            kind="LEAKAGE",
+            claim=claim,
+            population=population_name("private routines", lang),
+            lang=lang,
+            total=total,
+            holds=total - len(leaked),
+            exceptions=[Exception_(n, w) for n, w in sorted(leaked)],
+            sql=(
+                "SELECT DISTINCT callee.name, callee.file, callee.line_start FROM calls c"
+                " JOIN routines callee ON callee.id = c.callee_id"
+                " JOIN routines caller ON caller.id = c.caller_id" + where
+            ),
+            note="Counting underscores would measure nothing: that is how privacy is "
+                 "derived. Whether the boundary holds is a different question.",
+        ))
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -989,18 +1020,19 @@ def measure(store: Store, private_prefix: bool = False) -> NamingMeasurement:
     to explain. What changes is the mixed corpus, where mining spelling across two
     languages at once reports that the program has no convention when in fact it has two.
 
-    Only the two **spelling** lanes split. An affix is a word a team chose rather than a
-    way of spelling one, and the privacy lane's population is `visibility = 'private'`,
-    which is a Python spelling no other reader here records -- measured, 0 of DunneFlow's
-    122 TypeScript routines. Giving either of them a language would be asserting an axis
-    nothing has shown to matter.
+    The two **spelling** lanes split, and so does privacy -- not because privacy is a
+    spelling but because what `private` *means* is the language's (`private_means`), and
+    a claim measured with one language's meaning over another's routines is false by
+    construction. *This said, until 2026-11-01, that `visibility = 'private'` was a
+    Python spelling no other reader recorded; Go, Rust, Kotlin and C++ all record it now.*
+    An affix is a word a team chose rather than a way of spelling one, and stays whole.
     """
     langs = languages.read(store)
     split = langs if len(langs) > 1 else []
     conventions, gaps = mine_case_conventions(store, split, private_prefix)
     conventions.extend(mine_house_prefix(store, split))
     conventions.extend(mine_affix_conventions(store))
-    conventions.extend(mine_privacy_convention(store))
+    conventions.extend(mine_privacy_convention(store, split))
     conventions.sort(key=lambda c: (-c.total, c.claim))
     return NamingMeasurement(
         conventions=conventions,

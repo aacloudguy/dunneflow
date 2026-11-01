@@ -204,22 +204,75 @@ def test_every_split_claim_reproduces_its_own_exceptions(tmp_path: Path) -> None
         store.close()
 
 
-def test_only_the_spelling_lanes_carry_a_language(tmp_path: Path) -> None:
+def test_an_affix_is_never_split_and_privacy_is_split_by_its_meaning(tmp_path: Path) -> None:
     """The decision, asserted so it cannot drift into place unnoticed.
 
-    An affix is a *word a team chose* rather than a way of spelling one, and the privacy
-    lane's population is `visibility = 'private'` — a Python spelling that no other reader
-    here records at all (0 of DunneFlow's 122 TypeScript routines). Splitting either would
-    assert an axis nothing has shown to matter, which is the thing this whole chunk is
-    about not doing.
+    An affix is a *word a team chose* rather than a way of spelling one, and stays whole.
+    Privacy is split -- not because it is a spelling, but because what `private` means is
+    the language's (`private_means`), and a claim measured with one language's meaning
+    over another's routines is false by construction. *Until 2026-11-01 this asserted the
+    opposite, when `visibility = 'private'` was a Python spelling nobody else recorded.*
     """
     store = _mixed(tmp_path)
     try:
         for c in measure(store).conventions:
-            if c.kind in ("AFFIX", "LEAKAGE"):
-                assert c.lang == "", (
-                    f"{c.kind} was split by language, which was decided against: {c.claim!r}"
-                )
+            if c.kind == "AFFIX":
+                assert c.lang == "", f"AFFIX was split by language: {c.claim!r}"
+            if c.kind == "LEAKAGE":
+                assert c.lang, f"LEAKAGE in a mixed map must say whose meaning: {c.claim!r}"
+    finally:
+        store.close()
+
+
+GO_PACKAGE = {
+    "go.mod": "module example.com/p\n\ngo 1.22\n",
+    "lib/a.go": "package lib\n\n" + "".join(f"func f{i}() {{}}\n\n" for i in range(8)),
+    "lib/b.go": ("package lib\n\nfunc Run() {\n"
+                 + "".join(f"\tf{i}()\n" for i in range(8)) + "}\n"),
+}
+
+RUST_CRATE = {
+    "Cargo.toml": '[package]\nname = "c"\n',
+    "src/lib.rs": "mod a;\nmod b;\n",
+    "src/a.rs": "".join(f"pub(crate) fn f{i}() {{}}\n\n" for i in range(8)),
+    "src/b.rs": ("pub fn run() {\n"
+                 + "".join(f"    crate::a::f{i}();\n" for i in range(8)) + "}\n"),
+}
+
+
+def _tree(root: Path, files: dict[str, str]) -> Store:
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    store = Store(root.parent / f"{root.name}.db")
+    analyze_tree(root, store)
+    return store
+
+
+def test_a_go_unexported_name_is_its_package_s(tmp_path: Path) -> None:
+    """`private_means: package`. Go's `module` column is the file, and an unexported name is
+    visible to every file in its directory: measured by module, a call from `b.go` to a
+    function in `a.go` was a leak in correct Go."""
+    if ingest.PLUGINS.get("go") is None or shutil.which("go") is None:
+        pytest.skip("needs the Go plugin and `go`")
+    store = _tree(tmp_path / "g", GO_PACKAGE)
+    try:
+        (c,) = [c for c in measure(store).conventions if c.kind == "LEAKAGE"]
+        assert c.claim == "A routine marked private is called only from its own package."
+        assert (c.holds, c.total) == (8, 8), [e.name for e in c.exceptions]
+    finally:
+        store.close()
+
+
+def test_a_rust_crate_s_privacy_is_not_measured_by_module(tmp_path: Path) -> None:
+    """`private_means: surface`. The schema records `pub(crate)` as private, and a call to
+    one from another module is the point of it: pdfcraft "leaked" 624 times under Python's
+    reading, 440 of them `pub(crate)`. Not measured, rather than measured wrongly."""
+    if ingest.PLUGINS.get("rust") is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    store = _tree(tmp_path / "r", RUST_CRATE)
+    try:
+        assert [c for c in measure(store).conventions if c.kind == "LEAKAGE"] == []
     finally:
         store.close()
 
@@ -333,3 +386,21 @@ def test_a_rule_its_document_scopes_to_one_language_is_not_split(tmp_path: Path)
     finally:
         docs.close()
         store.close()
+
+
+def test_every_language_says_what_private_means_and_a_strange_word_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Each rules file answers for itself (rule 98), and an answer this build cannot read
+    is refused by name rather than read as *not measured* (rule 49)."""
+    from dunneflow.detectors import RulesMissing, _private_means, load_rules
+
+    said = {lang: load_rules(lang).private_means
+            for lang in ("python", "typescript", "go", "rust", "kotlin", "cpp")}
+    assert said == {"python": "module", "typescript": "module", "go": "package",
+                    "rust": "surface", "kotlin": "surface", "cpp": "surface"}
+    assert _private_means("", "madeup", tmp_path / "m.yaml") == ""
+    for bad in ("file", "Module", 3):
+        with pytest.raises(RulesMissing) as caught:
+            _private_means(bad, "madeup", tmp_path / "m.yaml")
+        assert "private_means" in str(caught.value)

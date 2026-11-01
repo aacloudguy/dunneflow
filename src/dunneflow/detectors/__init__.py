@@ -275,6 +275,16 @@ class RuleSet:
     # nobody has declared this for is one nobody has answered that question about.
     # Defaulting to either answer would put a guess in the one command a CI job trusts.
     unawaited_async: str = ""
+    # **What `visibility = 'private'` means in this language**, which the naming lane's
+    # LEAKAGE claim depends on and which differs by language (rule 98, the fourth time).
+    # *module*: a spelling convention that keeps a name inside its file (Python's `_x`,
+    # TypeScript's `_x`/`#x`), so a call from another module is a leak. *package*: Go's
+    # unexported name, visible to every file in its directory. *surface*: the schema's two
+    # values fold a wider word into `private` -- Rust's `pub(crate)`, Kotlin's `internal`,
+    # C++'s class member -- so a call from another file is correct code, and the claim is
+    # not measured. pdfcraft reported 624 "leaks" under Python's reading, 440 of them
+    # `pub(crate)` doing what it says. Empty means not measured; an unknown word is refused.
+    private_means: str = ""
     # **What a second definition of one name means**, declared for the same reason and
     # found the same way — by running a correct new reader at an unchanged judgement
     # (rule 98, the third time).
@@ -536,12 +546,26 @@ def load_rules(lang: str) -> RuleSet:
         ),
         builtins=_builtins(data.get("builtins", []) or [], lang, path),
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
+        private_means=_private_means(data.get("private_means", ""), lang, path),
         redefinition=_redefinition(data.get("redefinition", ""), lang, path),
         file_entry=_file_entry(data.get("file_entry", ""), lang, path),
     )
 
 
 _UNAWAITED = ("inert", "runs")
+_PRIVATE_MEANS = ("module", "package", "surface")
+
+
+def _private_means(raw: Any, lang: str, path: Path) -> str:
+    """*module*, *package* or *surface*, or nothing -- refused rather than guessed (rule 49)."""
+    if raw in ("", None):
+        return ""
+    if not isinstance(raw, str) or raw not in _PRIVATE_MEANS:
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `private_means` as {raw!r}; it has to be "
+            f"one of {', '.join(_PRIVATE_MEANS)}, or be left out to say nobody has decided"
+        )
+    return raw
 _REDEFINITION = ("shadows", "overloads")
 
 

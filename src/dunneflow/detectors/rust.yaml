@@ -225,3 +225,7 @@ builtins: [
   "write!", "writeln!", "matches!", "concat!", "stringify!", "line!", "file!",
   "column!", "module_path!", "cfg!",
 ]
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# `pub(crate)` and `pub(super)` are recorded as private beside true module privacy, so a call from another module is often correct code.
+private_means: surface

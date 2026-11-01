@@ -448,3 +448,7 @@ builtins: [
 # `REDEFINITION` are right to say so — of *this* language. See `redefinition` in
 # `detectors/__init__.py`.
 redefinition: shadows
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# `_name` is a convention that keeps a name inside its module.
+private_means: module

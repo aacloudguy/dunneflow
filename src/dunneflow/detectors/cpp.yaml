@@ -241,3 +241,7 @@ builtins: [
 # reader has none — and both arms of an `#ifdef` are read as live, so even an identical
 # signature twice in one file is usually the two arms rather than a defect.
 redefinition: overloads
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# a class's private member is private to the class, whose members are routinely defined in another file.
+private_means: surface

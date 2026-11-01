@@ -212,3 +212,7 @@ commands:
     name_field: Use
     handler_fields: [RunE, Run]
     evidence: "a cobra command"
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# an unexported name is visible to every file in its package directory.
+private_means: package

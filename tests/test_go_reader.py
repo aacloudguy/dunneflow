@@ -408,3 +408,141 @@ def test_a_function_with_no_results_declares_that_it_returns_nothing(go_facts):
     by = {r.name: r for r in go_facts["shop.go"].routines}
     assert by["init"].returns == ""
     assert by["Save"].returns == "error"
+
+
+# ------------------------------------------------------------- the edges ------ #
+
+MODULE = {
+    "go.mod": "module example.com/app\n\ngo 1.22\n",
+    "main.go": '''package main
+
+import (
+\t"fmt"
+
+\t"example.com/app/store"
+\t"github.com/acme/thing"
+)
+
+type Base struct{}
+
+func (Base) Hello() {}
+
+type Child struct{ Base }
+
+type Speaker interface{ Speak() }
+
+type Dog struct{}
+
+func (Dog) Speak() {}
+
+type Cat struct{}
+
+func (Cat) Speak() {}
+
+func countdown(n int) {
+\tif n > 0 {
+\t\tcountdown(n - 1)
+\t}
+}
+
+func main() {
+\thelper()
+\tstore.Save("x")
+\tvar c Child
+\tc.Hello()
+\tvar s Speaker = Dog{}
+\ts.Speak()
+\tlater := func() { helper() }
+\tlater()
+\tcountdown(3)
+\tplatform()
+\tfmt.Println(len("x"))
+\tthing.Do()
+}
+''',
+    "helper.go": "package main\n\nfunc helper() {}\n",
+    "platform_linux.go": "package main\n\nfunc platform() {}\n",
+    "platform_darwin.go": "package main\n\nfunc platform() {}\n",
+    "platform_windows.go": "package main\n\nfunc platform() {}\n",
+    "store/store.go": "package store\n\n// Save keeps one.\nfunc Save(id string) {}\n",
+}
+
+
+@pytest.fixture(scope="module")
+def go_edges(tmp_path_factory):
+    if PLUGIN is None or shutil.which("go") is None:
+        pytest.skip("needs the Go plugin and `go`")
+    plugin = PLUGIN
+    root = tmp_path_factory.mktemp("gomod")
+    for name, source in MODULE.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(source, encoding="utf-8")
+    paths = sorted(root.rglob("*.go"))
+
+    def once():
+        plugin.probe()
+        plugin.open(root, paths)
+        try:
+            facts = {ff.path: ff for ff in plugin.extract(paths, root)}
+            edges = list(plugin.edges())
+            return facts, edges, plugin.edges_outside, plugin.edges_unknown
+        finally:
+            plugin.close()
+
+    first = once()
+    return first, once()
+
+
+def _by_callee(go_edges):
+    (facts, edges, _, _), _ = go_edges
+    site = {c.site_id: c for ff in facts.values() for c in ff.calls}
+    return {site[e.site_id].callee_expr: e for e in edges}
+
+
+def test_a_call_is_supplied_as_a_location_the_host_turns_into_an_id(go_edges):
+    by = _by_callee(go_edges)
+    assert (by["helper"].file, by["helper"].line, by["helper"].name) == ("helper.go", 3, "helper")
+    assert (by["store.Save"].file, by["store.Save"].line) == ("store/store.go", 4), (
+        "the line is the function's own, never its doc comment's")
+
+
+def test_a_promoted_method_and_a_named_closure_resolve(go_edges):
+    by = _by_callee(go_edges)
+    # Through a variable: `Child{}.Hello()` has a literal at its root, so clause 3 records
+    # no call there and there is no site to resolve.
+    assert by["c.Hello"].name == "Hello" and by["c.Hello"].line == 12
+    assert by["later"].name == "later", "a function literal bound to a name is a routine"
+
+
+def test_a_routine_that_calls_itself_is_an_edge_to_itself(go_edges):
+    """BACKLOG 29's shape, in Go."""
+    by = _by_callee(go_edges)
+    assert (by["countdown"].name, by["countdown"].line) == ("countdown", 26)
+
+
+def test_an_interface_call_is_ambiguous_and_never_guessed(go_edges):
+    """Rule 1: two types implement `Speaker`, and the edge names neither."""
+    by = _by_callee(go_edges)
+    assert by["s.Speak"].file == "" and by["s.Speak"].candidates == 2
+
+
+def test_a_function_defined_per_platform_is_drawn_to_the_reference_target(go_edges):
+    """Tom's decision of 2026-11-01: linux/amd64's definition, with the variants counted."""
+    by = _by_callee(go_edges)
+    assert by["platform"].file == "platform_linux.go"
+    assert "3 platform variants" in by["platform"].how
+
+
+def test_the_standard_library_a_dependency_and_a_builtin_are_outside(go_edges):
+    (_, _, outside, _), _ = go_edges
+    by = _by_callee(go_edges)
+    assert not {"len", "thing.Do"} & set(by)
+    assert outside >= 2
+    # `fmt.Println` is a STDIO boundary, so it never reaches the edge pass (rule 2).
+    assert "fmt.Println" not in by
+
+
+def test_the_edges_are_the_same_answer_twice(go_edges):
+    """Rule 66: the order and the content are the reader's own, never a map iteration's."""
+    (_, edges1, o1, u1), (_, edges2, o2, u2) = go_edges
+    assert edges1 == edges2 and (o1, u1) == (o2, u2)

@@ -87,6 +87,9 @@ type extractor struct {
 	// minted, and an alias command that names it is linked to it (`linkHandlers`).
 	declaring     string
 	fieldHandlers map[string]string
+	// The call node each site was minted at, for the edge pass to ask the checker about.
+	// Indexes into `calls` would move as it grows, so the site is copied when it is final.
+	sites map[*ast.CallExpr]*CallSite
 	// How many handlers each enclosing qualname has registered under each word, for the
 	// ordinal an inline handler's name carries.
 	handlerOrdinal map[string]int
@@ -110,13 +113,7 @@ func extractFile(rel, source string, rules *Rules) FileFacts {
 	if file == nil {
 		return ff
 	}
-	e := &extractor{
-		path: rel, module: ff.Module, src: source, fset: fset, file: file, rules: rules,
-		isMain:   file.Name != nil && file.Name.Name == "main",
-		seenQual: map[string]int{}, callOrdinal: map[string]int{},
-		ctrlOrdinal: map[string]int{}, docs: map[*ast.CommentGroup]bool{},
-		handlerOrdinal: map[string]int{}, fieldHandlers: map[string]string{},
-	}
+	e := newExtractor(rel, source, fset, file, rules)
 	e.run()
 
 	if file.Doc != nil {
@@ -142,6 +139,21 @@ func extractFile(rel, source string, rules *Rules) FileFacts {
 	ms := *e.moduleScopeRoutine()
 	ff.ModuleScope = &ms
 	return ff
+}
+
+// newExtractor is the one way an extractor is built, so the edge pass and the facts pass
+// walk a file identically and mint the same `site_id` for the same call (`edges.go`).
+func newExtractor(rel, source string, fset *token.FileSet, file *ast.File,
+	rules *Rules) *extractor {
+	return &extractor{
+		path: rel, module: moduleName(rel), src: source, fset: fset, file: file,
+		rules:    rules,
+		isMain:   file.Name != nil && file.Name.Name == "main",
+		seenQual: map[string]int{}, callOrdinal: map[string]int{},
+		ctrlOrdinal: map[string]int{}, docs: map[*ast.CommentGroup]bool{},
+		handlerOrdinal: map[string]int{}, fieldHandlers: map[string]string{},
+		sites: map[*ast.CallExpr]*CallSite{},
+	}
 }
 
 // parseErrors is every error the parser reported, at most ten of them, as `line:col msg`.
@@ -845,6 +857,8 @@ func (e *extractor) call(c *ast.CallExpr) {
 		line := e.line(c.Pos())
 		rule := e.rules.matchCall(expr)
 		e.recordCall(owner.Id, expr, line, rule != nil, e.callArgs(c))
+		site := e.calls[len(e.calls)-1]
+		e.sites[c] = &site
 		if rule != nil {
 			hit := BoundaryHit{RoutineId: owner.Id, Kind: BoundaryKind(rule.Kind),
 				Direction: Direction(rule.Direction), Target: e.target(c, expr, rule),

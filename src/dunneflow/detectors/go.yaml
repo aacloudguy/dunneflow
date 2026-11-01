@@ -138,10 +138,18 @@ network:
     "grpc.Dial":            {protocol: gRPC, async: false}
     "grpc.NewClient":       {protocol: gRPC, async: false}
     "net.Dial":             {protocol: TCP,  async: false}
+    "net.DialTimeout":      {protocol: TCP,  async: false}
     "tls.Dial":             {protocol: TCP,  async: false}
     "websocket.Dial":       {protocol: WebSocket, async: false}
   verbs: [Get, Post, Head, PostForm]
   kwargs: []
+  # **A call that cannot be made without a timeout, and the argument that carries it** --
+  # `rust.yaml`'s key, for the same reason: Go has no keyword arguments, so the name says
+  # it and the position says where. `net.DialTimeout` was a NO_TIMEOUT on the one call
+  # named for its timeout. One set on the object -- `http.Client{Timeout: ...}`,
+  # `net.Dialer{Timeout: ...}` -- is not read: that is NO_TIMEOUT's own blind spot.
+  timed:
+    "net.DialTimeout": 2
 
 artefacts:
   extensions:

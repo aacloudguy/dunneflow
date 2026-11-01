@@ -65,6 +65,9 @@ type Rules struct {
 	Network       struct {
 		Libraries map[string]netLibrary `json:"libraries"`
 		Verbs     []string              `json:"verbs"`
+		// A call that cannot be made without a timeout, and the index of the argument
+		// that carries it (`network.timed`, as `rust.yaml` declares it).
+		Timed map[string]int `json:"timed"`
 	} `json:"network"`
 
 	// Longest prefix first, as `load_rules` sorts them.

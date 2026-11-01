@@ -248,6 +248,18 @@ var serveCmd = &cobra.Command{
 \t},
 }
 ''',
+    "dial.go": '''package dial
+
+import (
+	"net"
+	"time"
+)
+
+func both(budget time.Duration) {
+	net.DialTimeout("tcp", "h:1", budget)
+	net.Dial("tcp", "h:2")
+}
+''',
     "lib.go": '''package lib
 
 func main() {}
@@ -354,6 +366,13 @@ def test_a_network_call_carries_its_verb_and_destination(go_facts):
     assert (call.expr, call.protocol, call.verb, call.destination) == (
         "http.Get", "HTTP", "GET", "https://example.com/items")
     assert not call.is_async, "a Go call blocks its goroutine; go.yaml says why"
+
+
+def test_a_call_named_for_its_timeout_sets_one(go_facts):
+    """`network.timed`: `net.DialTimeout` was a NO_TIMEOUT on the one call that cannot be
+    made without one. `net.Dial` sets none, and says so."""
+    got = [(n.expr, n.timeout) for n in go_facts["dial.go"].network]
+    assert got == [("net.DialTimeout", "set"), ("net.Dial", "")], got
 
 
 def test_strings_are_reported_for_the_host_to_judge(go_facts):

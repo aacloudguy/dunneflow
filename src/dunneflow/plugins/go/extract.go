@@ -951,6 +951,15 @@ func (e *extractor) maybeNetwork(c *ast.CallExpr, expr string, line int) {
 	if e.rules.isVerb(last) {
 		nc.Verb = strings.ToUpper(last)
 	}
+	// `net.DialTimeout(network, address, d)`: named for its timeout, which is an argument.
+	// The literal where one is written and `set` where it is not, as Python's is.
+	if i, ok := e.rules.Network.Timed[expr]; ok && i >= 0 && i < len(c.Args) {
+		if lit, ok := c.Args[i].(*ast.BasicLit); ok {
+			nc.Timeout = lit.Value
+		} else {
+			nc.Timeout = "set"
+		}
+	}
 	// `http.NewRequest(method, url, body)` names its verb and destination as arguments.
 	args := c.Args
 	if strings.HasPrefix(last, "NewRequest") {

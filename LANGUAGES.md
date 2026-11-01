@@ -255,3 +255,66 @@ command with no handler is a group, and as a way in it *led nowhere*, four times
 reader or in `go.yaml`, and each was found the way this chapter says: `dunneflow check` on a
 real tree, with every finding read against the source before it was believed.
 
+
+## A sixth reader, and four declarations every language now makes
+
+*Written after Rust, 2026-11-01. Out of process on `syn` 2.0.119, and the first reader
+whose edges come from a path resolver rather than a type checker.* Go's seam carried it
+with three additions, and its first real trees found more in the **host** than in the
+reader, which is the part worth reading before the next one.
+
+**The build seam grew three words.** `{workdir}` is a scratch directory the host owns, for a
+toolchain that writes beside what it builds; `product` names the file a build leaves there,
+for a toolchain that will not be told where to put it; and `build_env` holds a build's
+environment, which is where Go's four variables went. `syn`, `proc-macro2`, `quote` and
+`unicode-ident` are vendored under `plugins/rust/vendor/` and built with
+`cargo build --offline --locked`: nothing is fetched, ever. **Two of those crates carry a
+`build.rs`, and it runs when the reader is built** — say so to anyone asked to trust it.
+
+**A path resolver is not a checker, and the difference is the rule.** An edge is CERTAIN
+only where a path names exactly one definition: a `use`, a module, a receiver whose type the
+source writes down (a field, a parameter, a constructor's declared return). Everything else
+stops, and **says where and why** (`calls.frontier`, `calls.reason`: *outside*, *untyped*,
+*dynamic*, *bound*, *unfollowed*), and a stop at a dependency is confirmed against that
+dependency's source in the local cargo cache — read, never fetched (design rule 14). Two
+judgements are this reader's own and were each a LOST_EDGE on pdfcraft before they were made:
+- **a sealed trait's one answer is an edge.** `self.m()` in a default body, `dyn T`, or a
+  type parameter bound by `T`, where `T` is written without `pub` and exactly one definition
+  answers. A `pub` trait stays ambiguous, because another crate may write the override.
+- **a function a body declares is that body's.** Three `fn walk`, each nested in a different
+  function, were one module-level name with three definitions.
+
+**Test code can be a file that only another file names.** `#[cfg(test)] mod tests;` makes
+`tests.rs` test code, and `tests.rs` cannot know it; the per-file pass cannot read its parent
+without breaking its own cache key (rule 95). Only the edge pass sees the whole tree, so
+`edges_done` carries **`test_only`**, and the walk leaves those files out as it leaves out a
+test file. The set is held in `meta` (`test_modules:<lang>`) with each file's hash, so an
+unchanged test module is a cache hit and is never parsed again. On pdfcraft that was 17 files
+and half its DEAD_CODE list. Any reader with a declaration-driven test idiom answers here.
+
+**Every rules file now answers two more questions, and the next reader must too.**
+- **`network.timed`**: a call that cannot be made without a timeout, and the index of the
+  argument that carries it. Python names its timeout with a keyword; Rust and Go cannot, so
+  `TcpStream::connect_timeout` and `net.DialTimeout` were NO_TIMEOUT on the one call named
+  for its timeout — DunneNote's once, beads' seven times.
+- **`private_means`**: *module*, *package* or *surface* — what `visibility = 'private'` means
+  in this language, which the naming lane's LEAKAGE claim depends on. Rust records
+  `pub(crate)` as private; under Python's reading pdfcraft "leaked" 624 times. An unknown
+  word is refused and an empty one is not measured.
+
+**And rule 98 found the host's defects this time, not only the reader's.** A new language
+brings a new population to old judgements, and Rust's idioms reached three that had been
+wrong all along:
+- **A chain on a call was a second act.** The dotted contract folds `f(x).g()` into `f.g`
+  (clause 2), so a rule that matched `f` matched `f.g` again. `ingest/acts.one_act` drops the
+  extension, per routine, line and kind: 257 doubled DATABASE rows in Society, and Go's
+  `http.Get(u).Body.Close()` was two network calls. Rust is cleaner still: a method's
+  receiver is a value, so the reader matches a method site by `method:` rules alone, which is
+  how `rsa.then(…)` on a `bool` stopped being CRYPTO.
+- **`replace` was a FILE method** — rule 5's own example, 175 times in Society.
+- **A sentence ending in a full stop was SQL** when it began with `delete` and had a bracket
+  in it, and pdfcraft's MCP tool descriptions minted three tables.
+
+Each was found the way this chapter keeps saying: `dunneflow check` on two real trees
+(DunneNote and pdfcraft), every finding read against the source, and the survivors fixed
+where they live rather than where they showed.

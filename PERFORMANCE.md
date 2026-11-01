@@ -970,6 +970,36 @@ checker costs about **0.4 s on rain and 0.5 s on beads** and buys every internal
 map. Checking three targets triples the type-checking of the tree's own packages and not of
 the standard library, which is checked once, for the host.
 
+### Rust, read over the pipe and resolved by path (measured 2026-11-01)
+
+Apple M1, macOS 26.6.2, Rust 1.98.1, pdfcraft on the external volume with its disk warm,
+`--no-docs --no-render`, at `rust-reader` 50ba0a1. **The figure includes the edge pass**,
+which builds every crate's module tree and reads the source of the 60 direct dependencies
+`Cargo.lock` pins that are in the local cargo cache, once per run. The reader binary was
+already built. The cold rows are three runs with `--no-source`, which names a fresh snapshot
+by the clock and so is cold by construction; the warm rows keep the source sidecar, because
+without one there is no snapshot to be warm against.
+
+| | pdfcraft (250 of 268 `.rs` read; 85 test files and 17 test modules left out) |
+|---|---:|
+| cold | **37.3 s** reading · 42.9 s wall (34.7–37.8 · 40.5–45.0) |
+| warm, nothing changed, first | 2.0 s · 7.0 s wall — every file hashed off the volume |
+| warm, nothing changed, again | **0.1 s** · 2.2 s wall |
+| edges supplied | 17,240 |
+
+**The reading is the cost, and its split is not taken here.** 37 s for 268 files is about
+ten times slower per file than Go on beads (484 in 6.3 s), and it is the reader rather
+than the disk: the warm hash pass over the same files is 2 s. The record has the edge pass on DunneNote at about 9 s with 40
+dependencies read, and 59.7 s before its `lookup` was memoised, so dependency indexing is
+the likeliest half; the per-file extraction against the edge pass was not separated on
+pdfcraft and is not claimed.
+
+**Building the reader is a one-off, and it costs 10–13 s.** `cargo build --release
+--offline --locked` from the vendored tree into an empty target directory took **12.8,
+11.0 and 9.6 s** (three cold builds, the same machine), and a built reader is reused for as
+long as its stamp, the platform and what `cargo --version` says agree. *The working note said 6–7 s;
+that did not reproduce, and the figure here is the one taken.*
+
 ---
 
 ## The C++ reader, and the first tree that is not small (v2, measured 2026-09-18)

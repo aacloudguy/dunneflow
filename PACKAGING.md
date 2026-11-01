@@ -314,7 +314,7 @@ only the profile name.
 
 ## Readers on the far side of a pipe, and what the bundle carries for them
 
-**Two of the five readers are other programs, and neither is inside the interpreter the spec
+**Three of the six readers are other programs, and neither is inside the interpreter the spec
 freezes.** What the bundle carries for each is `plugin.json` and the files it names in
 `fingerprint`, which `_plugin_files` copies off the manifests, so a reader's shipped bytes
 are exactly the bytes its stamp is computed from (rule 12). Nothing else of a plugin
@@ -328,18 +328,40 @@ directory ships: not `node_modules`, not a test file, not a build product.
   signed, read-only bundle, keyed by the reader's stamp, the platform and what `go version`
   says. A warm start is 7 ms. So there is **nothing to cross-compile, lipo or sign** for
   Go: the spec, `release.sh`, `release.ps1` and `release-linux.sh` are unchanged by it.
+- **Rust ships as source too, with its dependencies vendored.** `syn`, `proc-macro2`,
+  `quote` and `unicode-ident` sit under `plugins/rust/vendor/`, and every one of their
+  files is in `fingerprint`, so the bundle carries the whole tree and the stamp covers it.
+  The build is `cargo build --release --offline --locked`: **nothing is fetched**, on any
+  machine, ever. Three words in `plugin.json` exist for it:
+  - **`{workdir}`** is a scratch directory the host owns, because cargo writes its own
+    target tree and will not be told to put one file somewhere.
+  - **`product`** names the file it leaves there, `release/dunneflow-rust-reader`, which the
+    host copies into the reader cache.
+  - **`build_env`** says what the build's environment must not inherit. A `RUSTFLAGS` or a
+    `CARGO_TARGET_DIR` in the user's shell would otherwise build a different reader under
+    the same stamp. Go's four variables moved here from code.
+
+  A cold build is about 10–13 s on the Mac (`PERFORMANCE.md`). **The vendored
+  `proc-macro2` and `quote` each carry a `build.rs`, and cargo runs them when the reader is
+  built.** They are those crates' published build scripts. `.cargo/config.toml` makes
+  `vendor/` a directory source, so cargo checks every vendored file against the
+  `.cargo-checksum.json` beside it and refuses to build one that has changed. Anyone asked
+  to trust the build should be told that it runs them.
 
 **A machine without the toolchain still runs the application.** The walk asks each language
 with files whether its reader can start, and one that cannot is reported as *not read, no
 toolchain*, with what to install, while everything else is read.
 
-**The build machines need both toolchains for the gates, not for the build.**
+**The build machines need the toolchains for the gates, not for the build.**
 `tools/fingerprints.py` refuses when a registered language contributed no rows, and the
-polyglot probe tree holds a `.go` file, so `verify` on a machine without `go` fails by
-naming it. Both have Go 1.25.6 since 2026-11-01, installed per user and needing no
-administrator: maclab in `~/.local/go` (on a login shell's `PATH`, so a non-interactive SSH
-command exports it as it does `uv`), and GIZA in `%LOCALAPPDATA%\Programs\go`, on the user's
-`Path`.
+polyglot probe tree holds a `.go` and a `.rs` file, so `verify` on a machine without `go`
+or `cargo` fails by naming it. Both have Go 1.25.6 since 2026-11-01, installed per user and
+needing no administrator: maclab in `~/.local/go` (on a login shell's `PATH`, so a
+non-interactive SSH command exports it as it does `uv`), and GIZA in
+`%LOCALAPPDATA%\Programs\go`, on the user's `Path`. **Rust through rustup on both**: maclab
+had rustup with no default toolchain until stable 1.99.1 was set on 2026-11-01, in
+`~/.cargo/bin`, which a non-interactive shell exports too; GIZA already had stable 1.94.1
+(MSVC, with Visual Studio 2022's build tools) on the user's `Path`.
 
 *This paragraph said "still to do: notarisation, the universal build, an icon, and Windows"
 until 2026-09-15, by which point all four were done and shipped — it was four milestones

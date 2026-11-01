@@ -18,12 +18,14 @@ what happened and when; this says what has not. When an item is done it leaves h
 ## Open
 
 Nothing from before 2026-11-01: every older item was closed on 2026-10-02 or moved to the
-residues below. These came out of the Go reader, and each says what would settle it. (30,
+residues below. These came out of the Go and Rust readers, and each says what would settle
+it. (30,
 Go on the build machines, was settled the same day: Go 1.25.6 on both, and the suite green
 on each.)
 
-**31. The tour maps and screenshots predate the Go reader.** DunneFlow's own tree now holds
-the reader's seven `.go` files, so a self-map reads `python · typescript · go`, and the
+**31. The tour maps and screenshots predate the Go and Rust readers.** DunneFlow's own tree
+now holds the Go reader's seven `.go` files and the Rust reader's `.rs` files (its `vendor/`
+is pruned), so a self-map reads `python · typescript · go · rust`, and the
 figures the guide was photographed against (`python 131 · typescript 11`, chapters 1 and 4)
 move. Not done because a retake is its own session with its own record. *Settled by* the next
 retake, with `GROUND-TRUTH.md`'s screenshot-map figures rewritten from it.
@@ -67,7 +69,31 @@ through `NoEdge`, which already carries both), with the unsaid count retaken per
 *files* out unless asked; the Rust reader leaves `#[cfg(test)]` items out always, because
 nothing tells a reader the flag and the cache key does not carry it (rule 81). 159 items on
 DunneNote. *Settled by* the flag reaching `open` and joining the per-language stamp, so a
-run with it and a run without it cannot share a cached file.
+run with it and a run without it cannot share a cached file. **Narrowed 2026-11-01
+(3369fdc): this is inline items only now.** A whole file that a `#[cfg(test)] mod x;`
+declares is named by the edge pass and left out by the host, which does know the flag, so
+`--include-tests` reads those.
+
+**38. Bare common method names are still in four rules files (rule 5).** `replace` was
+taken out of `python.yaml`'s FILE rule on 2026-11-01 after it made 175 FILE boundaries in
+Society, mostly strings. The same survey found more, each unmeasured:
+- `kotlin.yaml`: `insert`, `update`, `delete`, `query` (DATABASE) and `exists` (FILE).
+- `typescript.yaml`: `rm`, `remove`, `rename`, `mkdir`, `truncate`, `stat`, `access`,
+  `exec`, `spawn`, `fork`, `subscribe`, `publish`, `aggregate`, `upsert`, `transaction`,
+  `groupBy`.
+- `python.yaml`: `glob`, `exists`, `stat`, the queue words, and the logging levels.
+
+Not done because each needs its own measurement on a tree that uses it: taking one out
+blind trades a false row for a missing one. *Settled by* diffing boundaries before and
+after on Society, DunneNote and a Kotlin tree, and reading every lost row, as the 4d commit
+did.
+
+**39. A language whose `private` is not measured is not said to be.** `private_means:
+surface` (Rust, Kotlin, C++) leaves the naming lane's LEAKAGE claim out for that language,
+correctly, and nothing on the page says it was left out (design rule 1). pdfcraft's naming
+report simply has no privacy line. *Settled by* `NamingMeasurement` carrying the languages
+not measured, with the reason from the rules file, and the three surfaces (CLI, the
+`naming.md` page, the Vocabulary lane) saying it.
 
 ---
 
@@ -80,6 +106,10 @@ that nobody spends a session rediscovering them and filing them as bugs.
 |---|---|
 | **`node` is needed to verify the TypeScript stamp** | `tools/fingerprints.py` reads the stamp out of a map the binary *wrote*, which is what proves the stamp labels rows rather than merely being computable (rule 37). A machine without node gets a refusal naming it. Chunk 13. |
 | **`GOLDEN-v1.txt` redefines two of its seven digests, and is history now** | `routines.body` and `calls.resolved` record values whose v1 statement was never written down and was not recovered by a bounded sweep (rule 24, chunk 0). It stopped mattering on 2026-09-19: rule 106 moved all five of the digests that *did* reproduce, so the live baseline is `output/GOLDEN-v2.txt`, `tools/golden.py` wrote both sides of that comparison, and it is **7 of 7** with no holdbacks. The v1 report is kept as a dated record and compares for five, all of which now move. |
+| **`GOLDEN-v2.txt` was retaken on 2026-11-01, from main** | `calls.resolved` had moved on main at 58af95a (2026-10-02, `Foo()` binds to `Foo.__init__`, BACKLOG 14), which recorded the move and did not rewrite the report. The retake is from main at b2c4882 with `--standards`, and its graph is kept at `output/golden-v2-graph/`. The old report is `output/GOLDEN-v2-2026-09-19.txt`, unedited. |
+| **A Python `Path` held in a name is not a FILE when it is replaced** | `tmp.replace(target)` is how Society writes 22 files atomically, and with `replace` gone from the bare methods (rule 5) those are not seen; `Path(p).replace(q)`, `pathlib.Path.replace` and `os.replace` are. What a name holds is a type, and Python's reader has none. |
+| **A timeout set on the client is not read, in Go or Rust** | `network.timed` reads a timeout passed to the call (`net.DialTimeout`, `TcpStream::connect_timeout`). One set on the object — `http.Client{Timeout:}`, `net.Dialer{Timeout:}`, `stream.set_read_timeout(…)` — is not, which is NO_TIMEOUT's own blind spot, and the finding says so. beads reads 5 of 12 for that reason, and pdfcraft 1 of 1. |
+| **A `pub` trait's dispatch stays ambiguous in Rust** | `self.m()` in a default body, `dyn T` and a bound type parameter resolve when `T` is sealed (no `pub`) and one definition answers. A `pub` trait with one implementor here does not, because another crate may write the override. DunneNote's four LOST_EDGE and pdfcraft's six are all this or a genuine choice between two impls. |
 | **DunneCorp's routines are two conventions by role** | PascalCase 88 against camelCase 79 — React components against ordinary functions. A language split does not touch it, and it stays a reported gap because that is the true answer. Open question 6. |
 | **DunneNote's modules stay a gap** | kebab 221, other 210. That tree really does spell module files three ways. Open question 6. |
 | **Next.js route segments read as `other`** | `app.(admin).admin.customers.[id].page`. Route syntax is not an identifier and stripping it would be guessing at a spelling. Open question 6. |

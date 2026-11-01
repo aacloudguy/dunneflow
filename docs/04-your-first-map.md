@@ -150,8 +150,9 @@ fact with a different remedy, which is why they are not merged into one:
 
 | | |
 |---|---|
-| `unread: … no reader here claims those suffixes` | this build has no reader for them. Point at a Go repository today and the map is empty; this is the line that says so rather than leaving you with an empty map |
+| `unread: … no reader here claims those suffixes` | this build has no reader for them. Point at a Java repository today and the map is empty; this is the line that says so rather than leaving you with an empty map |
 | `left out as tests` | per language, because a test is spelled differently in each — `test_a.py` and `a.test.ts` are the same idea and not the same rule. `--include-tests` reads them |
+| `left out as tests: … files of rust that a test-only module declaration names` | a file that is test code only because another file says so — `#[cfg(test)] mod tests;` — so no file-name rule could see it. Said on every run, warm or cold; `--include-tests` reads them |
 | `declined by you` | you passed `--without <lang>`. A different fact from the first line, with the opposite remedy |
 | `skipped by the reader's own rule` | a `.d.ts` is TypeScript's header file, not a program |
 | `strings not judged` | too short or too long to be worth scanning for SQL and filenames |

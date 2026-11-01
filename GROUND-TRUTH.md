@@ -235,6 +235,69 @@ from a dependency (cobra's `Cmd.Flags()`), because a package from outside the tr
 stand-in and nothing is downloaded; and a function held in a package variable (rain's
 `console.Yellow`). `BACKLOG.md` says what would turn the first into *outside*.
 
+*Amended 2026-11-01, at `rust-reader` 651e930:* beads' `NO_TIMEOUT` reads **5 of 12**, not
+all of them. Its seven `net.DialTimeout` calls carry their timeout as an argument, and
+`go.yaml`'s `network.timed` now reads it; the five left are HTTP clients, whose timeout, if
+any, is on the client — the finding's own blind spot. The table above is the figure at
+2a9dedf and is not rewritten.
+
+## Rust: DunneNote and pdfcraft, and what each reproduces (2026-11-01)
+
+**Neither is Society, and neither is the pair.** `../DunneNote` is Tom's Tauri application —
+Rust under a TypeScript front end, so its map is mixed — and `../pdfcraft` is a Rust
+workspace of 35 packages. Both are **read-only**; analyse into a scratch output root.
+
+```bash
+uv run dunneflow analyze ../pdfcraft  --name pdfcraft  --output <tmp> --no-docs --no-render
+uv run dunneflow analyze ../DunneNote --name dunnenote --output <tmp> --no-docs --no-render
+uv run dunneflow check   ../pdfcraft  --name pdfcraft  --output <tmp> --all
+```
+
+At `rust-reader` 50ba0a1, Rust 1.98.1, on the Mac:
+
+| | pdfcraft | DunneNote (Rust half) |
+|---|---:|---:|
+| `.rs` files read | 267, of which 17 test modules are then left out | 204, of which 2 test modules are left out |
+| test files / inline test items left out | 85 / 658 | 97 / 159 |
+| Rust edges supplied, every one matched to a routine by its first line | 17,240 | 5,113 |
+| built one of the program's own types (`calls.constructs`) | 2,444 | 484 |
+| several declarations — no edge | 16 | 70 |
+| outside / unknown, as the reader counts them | 44,374 / 15,813 | 12,367 / 2,241 |
+| dependencies read from the local cargo cache / spelt only | 60 / 16 | 40 / 5 |
+| findings | 0 broken · 7 suspect · 4 informational | 0 broken · 4 suspect · 55 informational (whole map) |
+
+**Every SUSPECT left on both was read against the source.** On pdfcraft:
+- Six `LOST_EDGE`, each a real choice between two definitions: `self.get_object` and
+  `self.trailer` in a trait default body with two impls; `self.doc.*` through a
+  `&dyn Structure` with the same two; and `Self::from` with two `From` impls, chosen by the
+  argument's type.
+- One `NO_TIMEOUT`: `TcpStream::connect` with no connect timeout. The read timeout is set on
+  the stream afterwards, which the blind spot names.
+
+On DunneNote, four `LOST_EDGE` on `self.m()` through `pub` traits with several
+implementations, which `BACKLOG.md`'s residues say why.
+
+**Ten earlier findings, found the same way, were this tool's and are fixed.** On pdfcraft,
+before 4a:
+- three `LOST_EDGE` through a sealed trait's one default;
+- one `LOST_EDGE` on three nested `fn walk`;
+- a `NO_TIMEOUT` doubled by `.map_err`;
+- three tables minted from MCP tool descriptions;
+- a CRYPTO touch on a local `bool` called `rsa`.
+
+On DunneNote, a `NO_TIMEOUT` on `connect_timeout`. Then 17 whole test-module files read as
+production code, which was half pdfcraft's `DEAD_CODE` list. `LANGUAGES.md`, *A sixth
+reader*, says what each taught.
+
+**The unknowns are what a path cannot say, and every one says so.** A method on a value whose
+type the source never writes down, a call through a closure or a function pointer, a
+`macro_rules!` expansion: each carries `calls.reason` (*untyped*, *bound*, *unfollowed*)
+rather than an edge guessed by name.
+
+**Neither tree is on maclab or GIZA**, so these figures are the Mac's. The suite runs there,
+and those machines prove the reader builds and reads; they do not retake these numbers
+(rule 24).
+
 ## The screenshot map — what `docs/` and `docs/tutorial/` were photographed against
 
 **Every figure in the user guide and the tutorial is one this map reproduces**, so a retake

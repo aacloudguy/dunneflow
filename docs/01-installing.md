@@ -116,15 +116,18 @@ Unlike the Windows chooser, this one **comes to the front on its own**.
 
 DunneFlow reads **Python**; **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and TSX
 included; **C++** — `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings;
-**Kotlin** — `.kt` and `.kts`; and **Go** — `.go`.
+**Kotlin** — `.kt` and `.kts`; **Go** — `.go`; and **Rust** — `.rs`.
 
-**Two of the five need something installed.** Python, C++ and Kotlin DunneFlow reads
+**Three of the six need something installed.** Python, C++ and Kotlin DunneFlow reads
 itself.
 TypeScript it reads by asking TypeScript's own compiler, which needs **Node.js 20 or newer**
-on the machine, and Go by asking Go's own type checker, which needs **Go 1.22 or newer**.
-The Go reader is built on your machine the first time it is needed, which takes about a
-second and is not repeated, and it never downloads anything: a package your Go program
-imports from outside the tree being read is counted as outside it, not fetched.
+on the machine; Go by asking Go's own type checker, which needs **Go 1.22 or newer**; and
+Rust with a reader built by **Rust 1.79 or newer** (`cargo`, as `rustup` installs it).
+The Go and Rust readers are built on your machine the first time each is needed — about a
+second for Go and ten for Rust — and neither build is repeated or downloads anything. A
+package your program imports from outside the tree being read is counted as outside it,
+not fetched; for Rust, a dependency already in your local cargo cache is *read*, so the map
+can say what each outside call reaches, and one that is not there is said to be missing.
 
 That asymmetry is deliberate rather than untidy. A language is best read by the thing that
 already understands it, and the alternative — bundling a parser for every language — is
@@ -136,6 +139,14 @@ name either of them resolves is a name *it* resolved and not one DunneFlow guess
 `run_linux.go` and `run_windows.go` — is drawn to its **Linux** definition, so that a call
 through it is connected and the map is the same on every machine that reads it. The other
 platforms' versions are still in the map; they are drawn as uncalled.
+
+**And in a Rust map.** The same holds for a function written once per `#[cfg(target_os)]`:
+it is drawn to its Linux definition. Rust's edges come from the paths the source writes
+rather than from a compiler, so a call is connected only where its path, or a type written
+down in the source, names one definition; every call that is not says where it stopped and
+why, in the inspector and in `touches`. Test code is left out as it is for every language —
+`#[test]` functions, `#[cfg(test)]` blocks, and whole files that a `#[cfg(test)] mod`
+declaration names — and the summary counts each kind.
 
 **C++ and Kotlin are read without a compiler, and it is worth knowing why before you read
 one of those maps.** For C++ the reason is that a compiler needs to know how your program is

@@ -461,7 +461,11 @@ queries know a language exists.
   without ever parsing it**, and respawns once without retrying the file that killed it.
   `inprocess.py` and `outofprocess.py` are the two kinds of reader. `literals.py` runs the
   SQL and artefact scanning for every language **in the host** — see `FileFacts.literals`
-  below.
+  below. **`acts.py` is the other judgement made there for every reader**: `one_act` drops a
+  boundary or a remote call whose spelling extends another one's on the same line, in the
+  same routine and of the same kind, because the dotted contract folds `f(x).g()` into
+  `f.g` and a rule that matched `f` matched the chain again (rule 40). Society had 257 such
+  DATABASE rows.
 
   **`stamp_lang` is the one place a language is written onto a record**, and it refuses a
   record that brings its own: a reader says which language it *is* once, in the handshake,
@@ -511,9 +515,22 @@ queries know a language exists.
   `tools/gen_facts_go.py` and compared by a test that needs no Go, and its hand-written
   BLAKE2b and Python-compatible decoding are pinned by `tests/fixtures/ids/vectors.json`.
 
+  **`plugins/rust/` is the same shape with its dependencies vendored**: `syn`, `proc-macro2`,
+  `quote` and `unicode-ident` under `vendor/`, built `--offline --locked`, every file in the
+  fingerprint. `{workdir}`, `product` and `build_env` exist in `plugin.json` for it
+  (`PACKAGING.md`). Its edges come from **`src/edges.rs`, a path resolver**, not a checker:
+  each crate's module tree is built from `mod x;`, `use` and `#[path]`; `src/types.rs` follows
+  a receiver's *declared* type; `src/deps.rs` reads the direct dependencies `Cargo.lock` pins
+  out of the local cargo cache, never fetched, to confirm where a call leaves the program.
+  Every call without an edge carries `calls.frontier` and `calls.reason`. The edge pass also
+  answers one question no file can — **which files only a `#[cfg(test)] mod x;` reaches** —
+  as `edges_done.test_only`, and `walk._leave_out_test_modules` drops them, holding the set
+  with each file's hash in `meta` (`test_modules:<lang>`) so an unchanged one is never
+  parsed again.
+
   **A toolchain that is not installed declines its language and the rest is read.**
   `walk._runnable` asks each language that has files whether its reader can run, before any
-  cache key is read, and a missing `node` or `go` removes that language's files from the
+  cache key is read, and a missing `node`, `go` or `cargo` removes that language's files from the
   walk with its own residue line, *not read, no toolchain*, which is neither *unread* (no
   reader) nor *declined by you* (design rule 21). Until 2026-11-01 nothing asked, and a
   machine without `node` lost the Python half of a mixed tree to an uncaught refusal.
@@ -686,9 +703,12 @@ queries know a language exists.
   names; split it is **982 of 998** and **116 of 116**. `languages.read` decides, and a map
   holding one language is measured exactly as it was before: no language in a claim, none in
   a query, and every figure recorded against a single-language corpus still reproduces. The
-  affix and privacy lanes are **deliberately not split** — an affix is a word a team chose
-  rather than a way of spelling one, and the privacy population is `visibility = 'private'`,
-  a Python spelling no other reader here records (0 of 122 TypeScript routines).
+  affix lane is **deliberately not split** — an affix is a word a team chose rather than a
+  way of spelling one. **The privacy lane is split, by what `private` means** in each
+  language (`RuleSet.private_means`: *module*, *package* or *surface*, the last not
+  measured). It was unsplit while `visibility = 'private'` was a Python spelling nobody else
+  recorded; by 2026-11-01 Go, Rust, Kotlin and C++ all recorded it, and pdfcraft's Rust
+  "leaked" 624 times under Python's reading, 440 of them `pub(crate)`.
 
   **A split may not lose a row** (rule 32). `dunneflow` is declared in `pyproject.toml`,
   which no reader claims and which has no row in `files`; scoped by its own file it belonged

@@ -48,10 +48,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ..schema import Confidence
 from ..store import Store
+
+if TYPE_CHECKING:
+    from .ipc import IpcStats
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +137,10 @@ class ResolveStats:
     # them -- named, because *nothing resolved* and *nothing to resolve* look identical
     # in the numbers and only one of them is a hole (design rule 1).
     unresolved_langs: dict[str, int] = field(default_factory=dict)
+    # Commands sent by name across a process boundary (`resolve/ipc.py`), filled on the
+    # total only. `None` until the linker has run; an `IpcStats` with `recorded = False`
+    # means it ran and no language here declares a client.
+    ipc: IpcStats | None = None
 
     @property
     def resolved(self) -> int:

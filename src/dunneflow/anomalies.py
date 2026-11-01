@@ -1043,6 +1043,77 @@ def _type_gaps(store: Store, r: Report) -> None:
         ))
 
 
+def _ipc_commands(store: Store, r: Report) -> None:
+    """A command nothing can call, and a name sent that nothing answers.
+
+    The two halves of `resolve/ipc.py`'s link, each reported where it fails. Neither names
+    a language: the command is an `IPC_COMMAND` way in, the registration is a fact, and the
+    send is a row in `ipc_links`, whichever readers produced them.
+
+    **Both SUSPECT.** An unregistered command is certainly unregistered *by every registrar
+    this map read*, and the name that answers nothing is matched by string: a CI job that
+    exits on BROKEN should not exit on a registrar this reader cannot see.
+    """
+    unregistered = store.query(
+        "SELECT e.name, e.file, e.routine_id, r.qualname, r.line_start"
+        "  FROM entrypoints e LEFT JOIN routines r ON r.id = e.routine_id"
+        " WHERE e.kind = 'IPC_COMMAND'"
+        "   AND e.name NOT IN (SELECT name FROM ipc_registrations)"
+        " ORDER BY e.name, e.file, e.id"
+    )
+    for x in unregistered:
+        r.add(Anomaly(
+            kind="UNREGISTERED_COMMAND", severity=SUSPECT, confidence=CERTAIN,
+            title=f"`{x['name']}` is a command no registrar names, so no client can call it",
+            detail=f"It is declared a command at {x['file']}:{x['line_start'] or 0}, and "
+                   f"no registrar this map read hands `{x['name']}` to the dispatch. "
+                   f"A client that sends it gets an error rather than an answer.",
+            blind_spot="A registrar this reader does not read -- a macro that wraps the "
+                       "declared one, a plugin builder, a second crate outside this tree -- "
+                       "registers it unseen. A command kept for a client that is gone is "
+                       "dead code rather than a defect.",
+            ident_parts=(str(x["name"]), str(x["qualname"] or "")),
+            subject=str(x["name"]), file=str(x["file"]), line=int(x["line_start"] or 0),
+            occurrences=[Occurrence(nav="routine", id=str(x["routine_id"] or ""),
+                                    label=str(x["qualname"] or x["name"]),
+                                    file=str(x["file"]), line=int(x["line_start"] or 0))],
+        ))
+
+    # A send is unknown only where this map holds the other side at all. A front end read
+    # without its back end would otherwise report every command it sends (rule 98).
+    if not store.query("SELECT 1 FROM ipc_registrations LIMIT 1"):
+        return
+    # Grouped by the name, as `LOST_EDGE` groups by the expression: the name is what the
+    # finding is about, and the sites that send it are what it reports.
+    for row in store.query(
+        "SELECT command, COUNT(*) n, MIN(file) f, MIN(line) l FROM ipc_links"
+        " WHERE status = 'unknown' GROUP BY command ORDER BY command"
+    ):
+        name = str(row["command"])
+        r.add(Anomaly(
+            kind="UNKNOWN_COMMAND", severity=SUSPECT, confidence=PROBABLE,
+            title=f"`{name}` is sent as a command and no command of this program answers it",
+            detail=f"Sent from {plural(row['n'], 'site')}; no declared command in this map "
+                   f"is named `{name}`. Called, it fails at run time.",
+            blind_spot="Matched by name. A command defined in a crate this tree does not "
+                       "hold, or registered by a plugin whose prefix the rules file does "
+                       "not declare, answers it unseen; so does one whose name a macro "
+                       "builds.",
+            ident_parts=(str(row["command"]),),
+            subject=name, file=str(row["f"]), line=int(row["l"]), count=row["n"],
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["caller_id"]),
+                           label=str(x["qualname"] or x["caller_id"]),
+                           file=str(x["file"]), line=int(x["line"]))
+                for x in store.query(
+                    "SELECT l.file, l.line, l.caller_id, r.qualname"
+                    "  FROM ipc_links l LEFT JOIN routines r ON r.id = l.caller_id"
+                    " WHERE l.status = 'unknown' AND l.command = ?"
+                    " ORDER BY l.file, l.line, l.caller_id", (name,))
+            ],
+        ))
+
+
 DETECTORS = (
     _parse_failures,
     _name_collisions,
@@ -1057,6 +1128,7 @@ DETECTORS = (
     _messaging_hazards,
     _entrypoint_problems,
     _type_gaps,
+    _ipc_commands,
 )
 
 

@@ -41,6 +41,7 @@ from ..schema import Confidence
 from ..store import Store
 from . import supplied
 from .contract import CallRow, Edge, Resolver, ResolveStats
+from .ipc import resolve_ipc
 from .python.calls import resolve as _resolve_python
 
 # `ResolveStats` is re-exported deliberately: it was this module's type for a year and
@@ -206,4 +207,9 @@ def resolve_calls(store: Store) -> ResolveStats:
             " constructs = ?, frontier = ?, reason = ? WHERE rowid = ?",
             updates,
         )
+    # **Here and not beside the call to this function**, because a carrier is found
+    # through the CERTAIN edges just written, and every caller of `resolve_calls` -- the
+    # analysis, and the tests that walk a tree and resolve it -- has to get the links with
+    # them or read a map with the crossings missing (rule 51).
+    stats.ipc = resolve_ipc(store)
     return stats

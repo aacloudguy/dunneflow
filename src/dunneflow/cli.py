@@ -1041,6 +1041,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         # a chunk away.
         if (said := rstats.unresolved_sentence()):
             _emit("  " + said)
+        # The crossing between two languages, said only where one was looked for and
+        # something sends or answers a command: a Python-only run reads as it always did.
+        if rstats.ipc is not None and (said := rstats.ipc.sentence()):
+            _emit("  " + said)
         _emit(
             f"cli: {clistats.apps} apps, {clistats.commands_found} commands "
             f"({clistats.commands_attached} in a tree), "

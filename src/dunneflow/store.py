@@ -1515,7 +1515,7 @@ class Store:
     # subquery in the join takes `calls`' indexes away on exactly the large maps this
     # comment is about. Never an edge in `calls` (rule 2): only the walk crosses it.
 
-    def _reach_graph(self) -> dict[str, list[str]] | None:
+    def _reach_graph(self, cross: bool = True) -> dict[str, list[str]] | None:
         """Every call edge, caller to callees, read once -- on a store that cannot change.
 
         **BACKLOG 8's second step, and the larger one.** With the model fixed, opening Unreal's
@@ -1531,6 +1531,18 @@ class Store:
         """
         if self.writable:
             return None
+        if not cross:
+            # The walk that stops at a process boundary: the call edges alone.
+            own = getattr(self, "_reach_cache_own", None)
+            if own is None:
+                own = {}
+                for caller, callee in self.conn.execute(
+                    "SELECT caller_id, callee_id FROM calls NOT INDEXED"
+                    " WHERE callee_id IS NOT NULL"
+                ):
+                    own.setdefault(caller, []).append(callee)
+                self._reach_cache_own = own
+            return own
         graph = getattr(self, "_reach_cache", None)
         if graph is None:
             graph = {}
@@ -1731,6 +1743,28 @@ class Store:
         ).fetchall()
         return _frontier(rows)
 
+    def ipc_of_map(self) -> dict[str, Any] | None:
+        """Commands sent by name across the map (`resolve/ipc.py`), for *About this map*.
+
+        `None` where nothing is sent and nothing is a command, so a map with no client
+        gets no row rather than a row of zeros (rule 32). Every figure is a count over the
+        two tables the claim is made from, so the sentence beside it is a query (rule 13).
+        """
+        status = {str(r[0]): int(r[1]) for r in self.conn.execute(
+            "SELECT status, COUNT(*) FROM ipc_links GROUP BY status ORDER BY status")}
+        commands = int(self.conn.execute(
+            "SELECT COUNT(*) FROM entrypoints WHERE kind = 'IPC_COMMAND'").fetchone()[0])
+        if not status and not commands:
+            return None
+        registered = int(self.conn.execute(
+            "SELECT COUNT(*) FROM entrypoints WHERE kind = 'IPC_COMMAND'"
+            " AND name IN (SELECT name FROM ipc_registrations)").fetchone()[0])
+        named = int(self.conn.execute(
+            "SELECT COUNT(DISTINCT entrypoint_id) FROM ipc_links WHERE status = 'linked'"
+        ).fetchone()[0])
+        return {"sites": sum(status.values()), "status": status, "commands": commands,
+                "registered": registered, "named": named, "how": "by name"}
+
     def unresolved_named(self, name: str) -> list[tuple[str, int]]:
         """Calls with no edge whose method is called `name`, by reason: the callers a routine
         may have that the map could not draw. `x.save()` on a receiver of unwritten type
@@ -1745,16 +1779,21 @@ class Store:
         ).fetchall()
         return [(str(r["reason"]), int(r["n"])) for r in rows]
 
-    def reachable_from_many(self, routine_ids: list[str], max_depth: int = 40) -> set[str]:
+    def reachable_from_many(self, routine_ids: list[str], max_depth: int = 40, *,
+                            cross: bool = True) -> set[str]:
         """Everything a *set* of routines can reach, as one traversal.
 
         An executable built from a command tree has no single root routine: its reach
         is the union over every command it exposes. Seeding the recursion with all of
         them at once costs one query instead of one per command.
+
+        `cross=False` stops at a command sent by name. *Which process is this routine in?*
+        is a question a crossing must not answer: the Rust command a TypeScript store
+        names runs in the other process, and following the link would put it in both.
         """
         if not routine_ids:
             return set()
-        graph = self._reach_graph()
+        graph = self._reach_graph(cross)
         if graph is not None:
             # Seeded with the ids that are routines, as the query's seed is.
             known = self._routine_ids()
@@ -1776,7 +1815,7 @@ class Store:
             )
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
             """,
-            (routine_ids[0], *routine_ids, max_depth, max_depth),
+            (routine_ids[0], *routine_ids, max_depth, max_depth if cross else -1),
         )
         return {r["id"] for r in rows}
 

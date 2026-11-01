@@ -9734,9 +9734,25 @@ function labelFor(nodeId) {
  * a recorded decision, and the key is what keeps it: the clickable depth stays the
  * inspector's and this window's, not the pop-up's.
  */
-function detailFlowCol(side, rows, total, noun, empty) {
+function detailFlowCol(side, rows, total, noun, empty, byName = []) {
   const arrow = side === "in" ? "←" : "→";
-  const body = rows.length
+  /* Commands sent by name, after the calls and never among them (`byNameRow`'s reason),
+     each with the dashed inferred badge or the reason it links nothing. */
+  const named = byName.map(r => `
+        <div class="dflow-item">
+          <span class="dflow-arrow">${side === "in" ? "⇠" : "⇢"}</span>
+          ${r.id
+            ? `<button class="dflow-go" data-detail="${esc(r.id)}" title="${esc(r.qualname || "")}"
+                >${esc(r.name || r.command)}${r.module
+                  ? `<span class="dim">${esc(moduleLabel(r.module, MODULE_BUDGET_FLOW).text)}</span>`
+                  : ""}</button>`
+            : `<span class="dflow-dead">${esc(r.command ? `'${r.command}'` : "a name built at run time")}</span>`}
+          ${r.status === "linked"
+            ? `<span class="conf badge inferred" title="matched ${esc(r.how || "by name")}, not by reference">BY NAME</span>`
+            : `<span class="conf badge suspect" title="${esc(BY_NAME_WHY[r.status] || "")}">${
+                esc(String(r.status).toUpperCase())}</span>`}
+        </div>`).join("");
+  const body = named && !rows.length ? named : rows.length
     ? rows.map(r => `
         <div class="dflow-item">
           <span class="dflow-arrow">${arrow}</span>
@@ -9749,7 +9765,7 @@ function detailFlowCol(side, rows, total, noun, empty) {
                  r.at_boundary ? `<span class="dim">at the boundary</span>`
                  : r.constructs ? `<span class="dim" title="${esc(r.constructs)}">a class of this program</span>`
                  : r.external ? `<span class="dim">outside this map</span>` : ""}</span>`}
-        </div>`).join("")
+        </div>`).join("") + named
     : `<div class="hint">${empty}</div>`;
   /* Design rule 1, and rule 8: a bounded picture states what it left out and opens the rest
      in place. The cut is here rather than in the data, so "40 of 213" is a fact about this
@@ -9760,7 +9776,8 @@ function detailFlowCol(side, rows, total, noun, empty) {
     : "";
   return `<section class="dflow-col ${esc(side)}">
       <h4>${side === "in" ? "IN" : "OUT"} <span class="num">${total.toLocaleString()}</span>${
-        side === "out" ? `<span class="dim"> ${total === 1 ? "call site" : "call sites"}</span>` : ""}</h4>
+        side === "out" ? `<span class="dim"> ${total === 1 ? "call site" : "call sites"}</span>` : ""}${
+        byName.length ? `<span class="dim"> · ${byName.length.toLocaleString()} by name</span>` : ""}</h4>
       ${body}${cut}
     </section>`;
 }
@@ -9839,7 +9856,8 @@ function detailPanel() {
   const body = `
     <div class="dflow">
       ${detailFlowCol("in", inRows, callers.length, "callers",
-        eps.length ? "Reached as a way in." : "Nothing in this map calls it.")}
+        eps.length ? "Reached as a way in." : "Nothing in this map calls it.",
+        inn.by_name || [])}
       <section class="dflow-hub">
         ${eps.length ? `<div class="dflow-eps">${eps.map(e =>
             `<span class="badge certain">${esc(e.kind || "ENTRYPOINT")} ${
@@ -9849,7 +9867,8 @@ function detailPanel() {
           id.line_start ? `:${id.line_start}` : ""}</div>
         ${id.docstring ? `<div class="why">${esc(String(id.docstring).split("\n")[0])}</div>` : ""}
       </section>
-      ${detailFlowCol("out", outRows, calls.length, "call sites", "It calls nothing this map can see.")}
+      ${detailFlowCol("out", outRows, calls.length, "call sites", "It calls nothing this map can see.",
+        out.by_name || [])}
     </div>
 
     <div class="dtouch">
@@ -11987,6 +12006,36 @@ function frontierWhy(c) {
   return [c.frontier, FRONTIER_WHY[c.reason]].filter(Boolean).join(" — ");
 }
 
+/* A command sent by name, in either direction (`in.by_name`, `out.by_name`): its own row,
+   never a call's, with the inferred badge's dashed shape and the words that say how it was
+   matched (design rules 5 and 13). Out of a sender, a name that links to nothing says why,
+   because a send to nothing is the finding a reader of that sender needs. */
+const BY_NAME_WHY = {
+  unknown: "no command of this program has this name",
+  unregistered: "a command has this name, and nothing registers it",
+  ambiguous: "two applications answer this name equally near",
+  dynamic: "the name is built at run time, so nothing is matched",
+  foreign: "a plugin's command, answered outside this tree",
+};
+function byNameRow(c, arrow) {
+  const name = c.command ? `'${c.command}'` : "a name built at run time";
+  const target = c.id
+    ? `<button class="gotonode" data-node="${esc(c.id)}" title="${esc(c.qualname || "")}"
+        ><code data-fit="name">${esc(c.name || c.command)}</code>${c.module
+          ? `<span class="dim" data-fit="module">${esc(c.module)}</span>` : ""}</button>`
+    : `<code>${esc(name)}<span class="dim">  ${esc(BY_NAME_WHY[c.status] || c.status)}</span></code>`;
+  const badge = c.status === "linked"
+    ? `<span class="conf badge inferred" title="sent as ${esc(name)}; matched ${
+        esc(c.how || "by name")}, not by reference">BY NAME</span>`
+    : `<span class="conf badge suspect">${esc(String(c.status).toUpperCase())}</span>`;
+  return `
+      <div class="flowitem">
+        <span class="arrow">${arrow}</span>
+        ${target}
+        ${badge}
+      </div>`;
+}
+
 function callBadge(c) {
   if (c.external) return `<span class="conf badge external">EXTERNAL</span>`;
   /* One of this program's own classes, which defines no constructor to point at -- a
@@ -12931,12 +12980,18 @@ function viewInspector() {
         : `<div class="hint">Nothing in this map calls it. That is either a
           way in, dead code, or a call DunneFlow cannot see — a dynamic dispatch, or a
           language it does not read.</div>`)))
+    + (inn.by_name || []).map(c => byNameRow(c, "⇠")).join("")
     + cut(inShown.length, callers.length, "callers")
     + (id.docstring ? `<div class="why">${esc(String(id.docstring).split("\n")[0])}</div>` : "");
 
   /* ── OUT: what it does next ── */
   const calls = (out.calls || []).filter(c => showInf || c.external || c.confidence === "CERTAIN");
-  const hiddenInf = (out.calls || []).length - calls.length;
+  /* Sent by name is INFERRED by construction, so the same filter holds it back and counts
+     it in the same note (design rule 1). A send that links nothing is not inferred -- it
+     is a statement that nothing answers -- and stays. */
+  const sends = (out.by_name || []).filter(c => showInf || c.status !== "linked");
+  const hiddenInf = (out.calls || []).length - calls.length
+    + (out.by_name || []).length - sends.length;
   const outShown = calls.slice(0, 60);
   const outBody = (outShown.length ? outShown.map(c => `
       <div class="flowitem">
@@ -12956,7 +13011,8 @@ function viewInspector() {
         ${callBadge(c)}
       </div>
       ${why(c.line)}`).join("")
-      : `<div class="hint">It calls nothing this map can see.</div>`)
+      : (sends.length ? "" : `<div class="hint">It calls nothing this map can see.</div>`))
+    + sends.map(c => byNameRow(c, "⇢")).join("")
     + cut(outShown.length, calls.length, "calls")
     + (hiddenInf > 0
         ? `<div style="font-size:.7rem;color:var(--sev-suspect);margin-top:.35rem"
@@ -13038,8 +13094,8 @@ function viewInspector() {
         </span>
       </div>
     </div>
-    ${sec("in", "In", callers.length + eps.length, inBody)}
-    ${sec("out", "Out", calls.length, outBody,
+    ${sec("in", "In", callers.length + eps.length + (inn.by_name || []).length, inBody)}
+    ${sec("out", "Out", calls.length + sends.length, outBody,
           calls.length === 1 ? "call site" : "call sites")}
     ${sec("touches", "Touches", touches.length, touchBody)}
     ${/* **A boundary's links back, and only a boundary's** — this is the shared routine
@@ -17878,6 +17934,24 @@ function aboutDialog() {
       + (fr.unsaid ? `<i>${fr.unsaid.toLocaleString()} more whose reader does not say</i>` : ""));
   }
 
+  /* Commands sent by name from one process to another (`resolve/ipc.py`): DunneNote's
+     front end naming a Rust command. **Matched by name, and said so**, because a string
+     equal to a name is evidence rather than a reference -- the same tier as a Python call
+     resolved by name, and not the model inference the vow below rules out (design rule
+     28). No row where nothing is sent and nothing is a command (rule 32). */
+  const bn = d.by_name;
+  if (bn) {
+    const st = bn.status || {};
+    const left = Object.keys(BY_NAME_WHY).filter(k => st[k])
+      .map(k => `<li>${st[k].toLocaleString()} ${esc(BY_NAME_WHY[k])}</li>`).join("");
+    row("Between languages",
+      `${(st.linked || 0).toLocaleString()} of ${bn.sites.toLocaleString()} sites that send a
+       command name are linked ${esc(bn.how)} to the command that answers it, drawn dashed;
+       ${bn.named.toLocaleString()} of ${bn.commands.toLocaleString()} commands are named,
+       ${bn.registered.toLocaleString()} registered`
+      + (left ? `<ul class="about-residue">${left}</ul>` : ""));
+  }
+
   return `
   <div class="about-scrim" data-closeabout></div>
   <div class="about" role="dialog" aria-modal="true" aria-label="About this map">
@@ -19839,6 +19913,9 @@ function countLine(c) {
     `<b class="num">${(c.selected || 0).toLocaleString()}</b> nodes · ` +
     `<b class="num">${(c.within || 0).toLocaleString()}</b> within · ` +
     `<b class="num">${(c.crossing || 0).toLocaleString()}</b> crossing · ` +
+    /* Said only where there is one: a command sent by name, drawn dashed, is a different
+     * claim from a call (rule 32), and a map with no client has nothing to count. */
+    (c.byName ? `<b class="num">${c.byName.toLocaleString()}</b> by name, dashed · ` : "") +
     `<b class="num">${(c.excluded || 0).toLocaleString()}</b> ${c.excludedBy}` +
     /* Design rule 1: closing a plate's gap removes it from the picture, and a shorter
      * stack is indistinguishable from a smaller program by looking. */
@@ -19909,7 +19986,7 @@ function countLine(c) {
        has no way to tell the difference by looking -- so it is stated. Snap to fit on a
        single node is also the most confusing thing this view does, because the frame does
        not visibly change. */
-    (c.selected === 1 && !c.within && !c.crossing
+    (c.selected === 1 && !c.within && !c.crossing && !c.byName
       ? ` — <span class="warnnote">nothing calls it and it calls nothing the map can see</span>`
       : "");
 }

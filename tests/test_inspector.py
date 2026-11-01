@@ -66,8 +66,8 @@ def test_a_routine_answers_in_out_touches_and_why(analyzed: Store) -> None:
     assert d["label"] == "load_config"
     # IN, OUT, TOUCHES, GOVERNANCE all present as shapes even when a list is empty --
     # an absent key and an empty list are different claims to anything reading this.
-    assert set(d["in"]) == {"callers", "entrypoints"}
-    assert "calls" in d["out"]
+    assert set(d["in"]) == {"callers", "entrypoints", "by_name"}
+    assert set(d["out"]) == {"calls", "by_name"}
     assert set(d["touches"]) == {"boundaries", "sql", "net", "artefacts"}
     assert set(d["governance"]) == {"annotations", "comments"}
     # It reads an environment variable and a file; both are boundary touches.

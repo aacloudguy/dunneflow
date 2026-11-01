@@ -43,7 +43,7 @@
 
 const {
   Deck, OrbitView, ScatterplotLayer, LineLayer, TextLayer, PolygonLayer, IconLayer,
-  COORDINATE_SYSTEM, CollisionFilterExtension,
+  PathLayer, COORDINATE_SYSTEM, CollisionFilterExtension, PathStyleExtension,
 } = deck;
 const Shading = window.DunneFlowShading;
 
@@ -609,10 +609,14 @@ function prepare(raw) {
     const ra = raw.nodes.shadow[a] === 1 ? raw.nodes.real[a] : a;
     const rb = raw.nodes.shadow[b] === 1 ? raw.nodes.real[b] : b;
     if (ra < 0 || rb < 0 || ra === rb) continue;
-    const key = ra < rb ? `${ra}:${rb}` : `${rb}:${ra}`;
+    /* **A command sent by name is its own link**, never folded into a call between the
+     * same two routines: it is a different claim, made by matching a string, and it is
+     * drawn in a different shape (design rule 5). `link[4]` says which. */
+    const byName = raw.edges.kind[e] === 'IPC';
+    const key = (ra < rb ? `${ra}:${rb}` : `${rb}:${ra}`) + (byName ? ':ipc' : '');
     if (linkSeen.has(key)) continue;
     linkSeen.add(key);
-    links.push([ra, rb, e, raw.nodes.disk[ra] === raw.nodes.disk[rb]]);
+    links.push([ra, rb, e, raw.nodes.disk[ra] === raw.nodes.disk[rb], byName]);
   }
 
   const ranked = [];
@@ -1174,10 +1178,10 @@ function buildSelectionGeometry(d) {
    * program hangs together -- and those are the ones worth the screen. */
   if (!g.picks.length) { g.selGeom = null; return; }
 
-  const within = [], crossing = [];
+  const within = [], crossing = [], byName = [];
   for (const link of d.links) {
     if (!g.members.has(link[0]) || !g.members.has(link[1])) continue;
-    (link[3] ? within : crossing).push(link);
+    (link[4] ? byName : link[3] ? within : crossing).push(link);
   }
 
   const widthOf = (e) => 0.9 + Math.min(3.0, Math.log2(1 + (d.raw.edges.weight?.[e] ?? 1)));
@@ -1246,7 +1250,19 @@ function buildSelectionGeometry(d) {
     }
   }
 
-  g.selGeom = { count: within.length, src, dst, wid,
+  /* **Sent by name, and drawn dashed.** One process naming a command another answers --
+   * a string matched to a name, so `INFERRED` by construction (`resolve/ipc.py`). Dashed
+   * because confidence is shape and never colour (design rule 5), the same mark the
+   * package view gives an inferred edge; it stays in the edge colour, since colour here is
+   * already spent on which plate a line belongs to. Counted apart from `within` and
+   * `crossing`, because it is neither kind of call (rule 32). */
+  const nameData = byName.map(([a, b, e]) => ({
+    path: [[d.positions[a * 3], d.positions[a * 3 + 1], d.positions[a * 3 + 2]],
+           [d.positions[b * 3], d.positions[b * 3 + 1], d.positions[b * 3 + 2]]],
+    width: widthOf(e),
+  }));
+
+  g.selGeom = { count: within.length, src, dst, wid, byName: nameData,
                 interCount: crossing.length, upright, segs: crossing.length * SEG,
                 iSrc, iDst, iCol, iWid, gpu: null };
 }
@@ -1438,6 +1454,15 @@ function buildLayers(d) {
     layers.push(new LineLayer({
       id: 'inter-edges', coordinateSystem: CARTESIAN, data: sg.inter,
       widthUnits: 'pixels', pickable: false,
+    }));
+  }
+  if (sg && g.selGeom.byName.length) {
+    layers.push(new PathLayer({
+      id: 'by-name-edges', coordinateSystem: CARTESIAN, data: g.selGeom.byName,
+      getPath: (x) => x.path, getWidth: (x) => x.width, getColor: PALETTE.edge,
+      widthUnits: 'pixels', capRounded: false, pickable: false,
+      getDashArray: [5, 4], dashJustified: true,
+      extensions: [new PathStyleExtension({ dash: true })],
     }));
   }
 
@@ -2185,6 +2210,7 @@ function announceCounts() {
     selected: g.members.size,
     within: g.selGeom?.count ?? 0,
     crossing: g.selGeom?.interCount ?? 0,
+    byName: g.selGeom?.byName.length ?? 0,
     /* **How many of those crossings stand upright**, and it is a fact about the picture
      * rather than about the program — the same kind as `boxes` and `collapsed` below, and
      * it has to be worded as one (rule 32). `within` and `crossing` count connections in

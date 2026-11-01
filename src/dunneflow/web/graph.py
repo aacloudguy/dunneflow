@@ -450,6 +450,8 @@ def _add_edges(store: Store, m: GraphModel, disk_of: dict[str, str],
         place(str(r["src"]), str(r["dst"]), "TOUCH", int(r["weight"]), "")
     for r in store.query(queries.ARTEFACT_EDGES):
         place(str(r["src"]), str(r["dst"]), "NAMES", int(r["weight"]), "")
+    for r in store.query(queries.IPC_EDGES):
+        place(str(r["src"]), str(r["dst"]), "IPC", int(r["weight"]), "INFERRED")
 
     # Sorted so the same store yields the same picture on every run -- the reason
     # `layout.py` uses no random number generator at all.

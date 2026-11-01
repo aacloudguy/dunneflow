@@ -2555,6 +2555,8 @@ class _Handler(BaseHTTPRequestHandler):
             # Where the map stops, and why, over every call (schema 17). Only readers that
             # say fill it; `unsaid` counts the calls whose reader said nothing.
             frontier = base.store.frontier_of_map()
+            # Commands sent by name between two languages (`resolve/ipc.py`).
+            by_name = base.store.ipc_of_map()
             # **What this map was read from, not what this build can read** (rule 24).
             # The dialog's subject is the map on screen, and the same claim the mirror
             # page makes in prose is the one this row states as a count.
@@ -2644,6 +2646,7 @@ class _Handler(BaseHTTPRequestHandler):
                        "documents": (docs or {}).get("documents") if docs else None},
             "languages": langs,
             "frontier": frontier,
+            "by_name": by_name,
         })
 
     def _version_of(self, graph: Path) -> dict[str, Any]:

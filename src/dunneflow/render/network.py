@@ -17,6 +17,7 @@ import re
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from ..resolve.flows import ways_in
@@ -25,6 +26,16 @@ from .page import Stamp, biggest_first, header
 
 INBOUND_KINDS = ("HTTP_ROUTE", "QUEUE_CONSUMER")
 _URL = re.compile(r"https?://[^\s'\"<>)]+", re.IGNORECASE)
+
+
+def _shared_dirs(a: str, b: str) -> int:
+    """How many leading directories two stored paths share."""
+    n = 0
+    for x, y in zip(a.split("/")[:-1], b.split("/")[:-1], strict=False):
+        if x != y:
+            break
+        n += 1
+    return n
 
 
 def _esc(text: str | None) -> str:
@@ -114,7 +125,19 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
         INBOUND_KINDS,
     )
     net_any = store.query("SELECT COUNT(*) n FROM net_calls")[0]["n"]
-    if not outbound and not inbound and not net_any:
+    # Commands sent by name from one process to another (`resolve/ipc.py`). Linked rows
+    # only: a name that answers nothing has no far end to put on this page, and is the
+    # anomaly worklist's (UNKNOWN_COMMAND).
+    by_name = store.query(
+        "SELECT l.command, l.caller_id, l.routine_id, l.file, l.line,"
+        "       s.qualname AS sender, c.qualname AS answer, c.file AS answer_file,"
+        "       c.line_start AS answer_line"
+        "  FROM ipc_links l JOIN routines s ON s.id = l.caller_id"
+        "  JOIN routines c ON c.id = l.routine_id"
+        " WHERE l.status = 'linked'"
+        " ORDER BY l.command, l.file, l.line, l.site_id"
+    )
+    if not outbound and not inbound and not net_any and not by_name:
         return None
 
     # Which executable does each routine belong to? A routine can serve more than one.
@@ -128,7 +151,9 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
                    if d["kind"] in ("CLI", "MAIN") and d["roots"]]
     zones: dict[str, set[str]] = {}
     for d in executables:
-        zones[d["name"]] = store.reachable_from_many(d["roots"])
+        # `cross=False`: a zone is one process, and a command sent by name runs in the
+        # other one. Crossing the link would put the Rust command inside the front end.
+        zones[d["name"]] = store.reachable_from_many(d["roots"], cross=False)
 
     # Which module each routine lives in, and which modules each executable reaches.
     module_of = {
@@ -176,6 +201,64 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
                 f"| `{_esc(i['module'])}` | {_esc(where)} |"
             )
         lines.append("")
+
+    # -- by name ------------------------------------------------------------ #
+    # Which client sends, and which process answers. A sender outside every executable is
+    # a front end this map does not start -- DunneNote's TypeScript, which Tauri's webview
+    # runs -- and it is named by where it sits, because that is the only name it has here.
+    def sender_of(row: Any) -> str:
+        z = zone_of(row["caller_id"])
+        if z != "(not started by this program)":
+            return z
+        parts = str(row["file"]).split("/")
+        return "a client in " + "/".join(parts[:2] if len(parts) > 2 else parts[:1])
+
+    # **A command runs where it is registered.** Nothing in the program calls it -- the
+    # dispatch does -- so reachability cannot place it, and its own module is often one
+    # nothing else touches (legacy DunneNote's `ipc::commands::*`). The registrar is the
+    # line that hands it to a process, so the process that reaches the registrar's module
+    # answers it. The nearest registration of the name, by `resolve/ipc.py`'s measure.
+    file_module = {r["path"]: r["module"] for r in store.query("SELECT path, module FROM files")}
+    regs: dict[str, list[str]] = defaultdict(list)
+    for r in store.query("SELECT name, file FROM ipc_registrations ORDER BY file, line"):
+        regs[r["name"]].append(r["file"])
+
+    def answered_in(row: Any) -> str:
+        z = zone_of(row["routine_id"])
+        if z != "(not started by this program)" or not regs.get(row["command"]):
+            return z
+        reg = max(regs[row["command"]],
+                  key=lambda f: (_shared_dirs(f, str(row["answer_file"])), f))
+        mod = file_module.get(reg)
+        owners = [n for n, mods in zone_modules.items() if mod in mods]
+        return min(owners, key=lambda n: len(zones[n])) if owners else z
+
+    pairs: dict[tuple[str, str], list] = defaultdict(list)
+    for b in by_name:
+        pairs[(sender_of(b), answered_in(b))].append(b)
+    if by_name:
+        lines.append("## Commands called by name\n")
+        lines.append(
+            "A client in another process sends a command's **name**, and this program "
+            "answers it — Tauri's `invoke`, for one. **Matched by name, not by reference**: "
+            "the sent string equals the command's name, which is evidence and not proof, "
+            "so every link here is INFERRED.\n"
+        )
+        lines.append("| Sent from | Answered in | Sites | Commands |\n|---|---|---:|---:|")
+        for (src, dst), rows in sorted(pairs.items()):
+            lines.append(
+                f"| {_esc(src)} | `{_esc(dst)}` | {len(rows)} "
+                f"| {len({r['routine_id'] for r in rows})} |"
+            )
+        lines.append("")
+        lines.append("<details><summary>Every command sent by name</summary>\n")
+        lines.append("| Command | Sent by | Answered by | Where |\n|---|---|---|---|")
+        for b in by_name:
+            lines.append(
+                f"| `{_esc(b['command'])}` | `{_esc(b['sender'])}` "
+                f"| `{_esc(b['answer'])}` | {_esc(b['file'])}:{b['line']} |"
+            )
+        lines.append("\n</details>\n")
 
     # -- outbound ----------------------------------------------------------- #
     if outbound:
@@ -338,8 +421,14 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
         "Thick dashed arrows are network hops** — a different machine, a different "
         "failure mode, a different trust boundary.\n"
     )
+    if by_name:
+        lines.append(
+            "**Dotted arrows are commands sent by name** from a client in another process, "
+            "one arrow per client and process, labelled with how many sites send.\n"
+        )
     lines.append("```mermaid")
-    lines.append(_process_map(store, zones, inbound, outbound, zone_of))
+    lines.append(_process_map(store, zones, inbound, outbound, zone_of,
+                              {k: len(v) for k, v in pairs.items()}))
     lines.append("```\n")
 
     path = out / "08-network.md"
@@ -348,7 +437,8 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
 
 
 def _process_map(store: Store, zones: dict[str, set[str]], inbound: list,
-                 outbound: list, zone_of: Callable[[str], str]) -> str:
+                 outbound: list, zone_of: Callable[[str], str],
+                 by_name: dict[tuple[str, str], int] | None = None) -> str:
     lines = ["flowchart LR"]
     n = [0]
 
@@ -364,7 +454,9 @@ def _process_map(store: Store, zones: dict[str, set[str]], inbound: list,
         outbound_by_zone[zone_of(o["routine_id"])][_host_of(o["target"], o["evidence"])] += 1
 
     node_ids: dict[tuple[str, str], str] = {}
-    active = sorted(set(inbound_by_zone) | set(outbound_by_zone))
+    by_name = by_name or {}
+    answering = {dst for _, dst in by_name}
+    active = sorted(set(inbound_by_zone) | set(outbound_by_zone) | answering)
 
     for zname in active:
         n[0] += 1
@@ -381,7 +473,22 @@ def _process_map(store: Store, zones: dict[str, set[str]], inbound: list,
             nid = f"N{n[0]}"
             node_ids[(zname, "out:" + host)] = nid
             lines.append(f'        {nid}["calls out"]:::caller')
+        if zname in answering:
+            # One node for every command this process answers by name. One per command
+            # would be 168 boxes on DunneNote, and a diagram is bounded (rule 8).
+            n[0] += 1
+            nid = f"N{n[0]}"
+            node_ids[(zname, "ipc")] = nid
+            lines.append(f'        {nid}["answers commands by name"]:::inbound')
         lines.append("    end")
+
+    # A client that sends by name and is no process of this program's sits outside them.
+    client_ids: dict[str, str] = {}
+    for sender, _ in sorted(by_name):
+        if sender not in client_ids and sender not in zones:
+            n[0] += 1
+            client_ids[sender] = f"C{n[0]}"
+            lines.append(f'    {client_ids[sender]}(["{_san(sender, 30)}"]):::client')
 
     # Remote destinations sit outside every process box, which is the point.
     remote_ids: dict[str, str] = {}
@@ -398,7 +505,14 @@ def _process_map(store: Store, zones: dict[str, set[str]], inbound: list,
             if src:
                 lines.append(f"    {src} ==>|network ×{count}| {remote_ids[host]}")
 
-    lines.append("""    classDef inbound fill:#d1e7dd,stroke:#0f5132,color:#0f5132,font-weight:bold
+    for (sender, dst), count in sorted(by_name.items()):
+        frm = client_ids.get(sender) or node_ids.get((sender, "ipc"))
+        to = node_ids.get((dst, "ipc"))
+        if frm and to:
+            lines.append(f"    {frm} -.->|by name ×{count}| {to}")
+
+    lines.append("""    classDef client  fill:#fff,stroke:#666,color:#222,stroke-dasharray: 3 3
+    classDef inbound fill:#d1e7dd,stroke:#0f5132,color:#0f5132,font-weight:bold
     classDef caller  fill:#f5f5f5,stroke:#999,color:#222
     classDef remote  fill:#f8d7da,stroke:#842029,color:#842029,stroke-width:3px,\
 stroke-dasharray: 6 3""")

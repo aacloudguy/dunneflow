@@ -110,8 +110,12 @@ def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
         "in": {
             "callers": _rows(store, queries.ROUTINE_CALLERS, args),
             "entrypoints": _rows(store, queries.ROUTINE_ENTRYPOINTS, args),
+            # Senders in another process that name this command (`resolve/ipc.py`).
+            "by_name": _rows(store, queries.ROUTINE_SENT_TO, args),
         },
-        "out": {"calls": _rows(store, queries.ROUTINE_CALLEES, args)},
+        "out": {"calls": _rows(store, queries.ROUTINE_CALLEES, args),
+                # Commands this routine sends by name, and what answered each, if anything.
+                "by_name": _rows(store, queries.ROUTINE_SENDS, args)},
         "touches": {
             "boundaries": _rows(store, queries.ROUTINE_BOUNDARIES, args),
             "sql": _rows(store, queries.ROUTINE_SQL_OPS, args),

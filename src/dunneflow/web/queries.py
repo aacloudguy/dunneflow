@@ -198,6 +198,18 @@ GROUP BY caller_id, callee_id, confidence
 ORDER BY src, dst, confidence
 """
 
+# A command sent by name and the command that answers it (`resolve/ipc.py`), as its own
+# kind of edge: never a `CALL`, because it is not one (rule 2), and always `INFERRED`,
+# because a string equal to a name is not a reference. Only `linked` rows: an unknown or
+# ambiguous name has no far end to draw a line to.
+IPC_EDGES = """
+SELECT caller_id AS src, routine_id AS dst, COUNT(*) AS weight
+FROM ipc_links
+WHERE status = 'linked' AND routine_id IS NOT NULL
+GROUP BY caller_id, routine_id
+ORDER BY src, dst
+"""
+
 BOUNDARY_EDGES = """
 SELECT routine_id                              AS src,
        'bnd:' || kind || ':' || target         AS dst,
@@ -278,6 +290,30 @@ WHERE c.callee_id = :id
 -- inspector lists first was decided by the order the rows happened to be in (rule 66).
 -- It is the call site's own identity, which is what `golden.py` sorts `calls` by.
 ORDER BY r.qualname, c.line, c.callee_expr, c.site_id
+"""
+
+# Commands sent by name (`resolve/ipc.py`), in both directions, kept **out of the call
+# lists**: a crossing matched by a string is not a call (rule 2), and folded into callers
+# it would wear a call's badge. `how` travels with every row, because the reader is owed
+# how it was matched (design rule 13). Into a command, only `linked` rows -- those are the
+# senders it answers; out of a sender, every status, because a name sent to nothing is
+# exactly what a reader looking at the sender needs to see.
+ROUTINE_SENT_TO = """
+SELECT l.caller_id AS id, l.line, l.command, l.how, l.confidence, l.status,
+       r.name, r.qualname, r.module, r.file
+FROM ipc_links l
+JOIN routines r ON r.id = l.caller_id
+WHERE l.routine_id = :id AND l.status = 'linked'
+ORDER BY r.qualname, l.line, l.site_id
+"""
+
+ROUTINE_SENDS = """
+SELECT l.routine_id AS id, l.line, l.command, l.how, l.confidence, l.status,
+       r.name, r.qualname, r.module, r.file
+FROM ipc_links l
+LEFT JOIN routines r ON r.id = l.routine_id
+WHERE l.caller_id = :id
+ORDER BY l.line, l.command, l.site_id
 """
 
 # A routine that is itself a way in. Declared registration, not inferred reach:

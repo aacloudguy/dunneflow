@@ -235,3 +235,43 @@ def test_a_store_that_cannot_change_walks_the_same_crossing(store):
         assert [x["command"] for x in ro.ipc_received([cmd])] == ["list_notes"]
     finally:
         ro.close()
+
+
+def test_the_network_page_names_the_far_end_and_draws_one_dotted_arrow(store, tmp_path):
+    """5d: a crossing is a dotted arrow per client and process, never a box per command."""
+    from dunneflow.render.network import render_network
+    from dunneflow.render.page import Stamp
+
+    page = render_network(store, tmp_path, "ipc", Stamp(generated="x", revision="", analysed=""))
+    text = page.read_text(encoding="utf-8")
+    assert "## Commands called by name" in text and "INFERRED" in text
+    assert "| a client in apps/app | `(not started by this program)` | 3 | 3 |" in text
+    assert text.count("-.->|by name ×3|") == 1  # the tie links nothing, so one client
+    assert text.count("answers commands by name") == 1
+
+
+def test_the_inspector_lists_a_crossing_apart_from_the_calls(store):
+    from dunneflow.web.detail import describe
+
+    cmd = _id(store, "apps.app.src-tauri.src.lib.list_notes")
+    d = describe(store, cmd, None)
+    assert d["in"]["callers"] == []
+    assert [(r["qualname"], r["how"]) for r in d["in"]["by_name"]] == [
+        ("apps.app.src.store.load", "by name")]
+    sends = describe(store, _id(store, "apps.app.src.store.load"), None)["out"]["by_name"]
+    assert [r["status"] for r in sends] == [
+        "linked", "unknown", "foreign", "unregistered", "dynamic", "linked"]
+
+
+def test_about_counts_the_crossings(store):
+    got = store.ipc_of_map()
+    assert got == {"sites": 8, "status": {"ambiguous": 1, "dynamic": 1, "foreign": 1,
+                                         "linked": 3, "unknown": 1, "unregistered": 1},
+                   "commands": 5, "registered": 4, "named": 3, "how": "by name"}
+
+
+def test_a_process_zone_does_not_cross(store):
+    load = _id(store, "apps.app.src.store.load")
+    cmd = _id(store, "apps.app.src-tauri.src.lib.list_notes")
+    assert cmd in store.reachable_from_many([load])
+    assert cmd not in store.reachable_from_many([load], cross=False)

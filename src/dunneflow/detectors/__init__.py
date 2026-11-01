@@ -312,6 +312,21 @@ class RuleSet:
     # **Empty means the module scope**, which is the answer every language had before this
     # key existed; a name means the routine of that name at the file's top level.
     file_entry: str = ""
+    # **How this language calls a command by name across an IPC boundary**, or what a
+    # name that is never a command looks like. `ipc` in the YAML; the reader's own keys
+    # under it (`command_attrs`, `registrars`) are the reader's and are not read here.
+    #
+    # `ipc_clients` is the client side: a function a module exports that sends its first
+    # argument as a command name -- `@tauri-apps/api/core`'s `invoke`. `resolve/ipc.py`
+    # reads these for every language at once and names none of them.
+    #
+    # `ipc_foreign` is the server side: a prefix that marks a name answered by something
+    # this tree does not hold -- Tauri's `plugin:dialog|open` is a plugin's command, and
+    # calling it unknown would be the language working, reported as a defect (rule 98).
+    #
+    # Empty means this language neither sends nor answers commands by name.
+    ipc_clients: tuple[tuple[str, str], ...] = ()
+    ipc_foreign: tuple[str, ...] = ()
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
         """(protocol, is_async_library) for a call, by longest matching prefix.
@@ -549,7 +564,44 @@ def load_rules(lang: str) -> RuleSet:
         private_means=_private_means(data.get("private_means", ""), lang, path),
         redefinition=_redefinition(data.get("redefinition", ""), lang, path),
         file_entry=_file_entry(data.get("file_entry", ""), lang, path),
+        ipc_clients=_ipc_clients(data.get("ipc"), lang, path),
+        ipc_foreign=_ipc_foreign(data.get("ipc"), lang, path),
     )
+
+
+def _ipc_section(raw: Any, lang: str, path: Path) -> dict[str, Any]:
+    if raw in (None, ""):
+        return {}
+    if not isinstance(raw, dict):
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `ipc` as {raw!r}; it has to be a mapping "
+            f"(clients, foreign_prefixes, command_attrs, registrars), or be left out"
+        )
+    return raw
+
+
+def _ipc_clients(raw: Any, lang: str, path: Path) -> tuple[tuple[str, str], ...]:
+    """`ipc.clients`: each a `{module, name}`, refused whole rather than half-read (rule 49)."""
+    out: list[tuple[str, str]] = []
+    for c in _ipc_section(raw, lang, path).get("clients", []) or []:
+        if (not isinstance(c, dict) or not isinstance(c.get("module"), str)
+                or not isinstance(c.get("name"), str) or not c["module"] or not c["name"]):
+            raise RulesMissing(
+                f"the {lang} rules at {path} declare an `ipc.clients` entry as {c!r}; each "
+                f"has to be {{module: <what is imported from>, name: <the function>}}"
+            )
+        out.append((c["module"], c["name"]))
+    return tuple(sorted(set(out)))
+
+
+def _ipc_foreign(raw: Any, lang: str, path: Path) -> tuple[str, ...]:
+    got = _ipc_section(raw, lang, path).get("foreign_prefixes", []) or []
+    if not isinstance(got, list) or not all(isinstance(x, str) and x for x in got):
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `ipc.foreign_prefixes` as {got!r}; it has "
+            f"to be a list of non-empty strings"
+        )
+    return tuple(sorted(set(got)))
 
 
 _UNAWAITED = ("inert", "runs")

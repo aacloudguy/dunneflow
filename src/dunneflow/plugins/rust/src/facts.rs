@@ -197,6 +197,7 @@ pub enum EntrypointKind {
     Scheduled,
     Signal,
     Library,
+    IpcCommand,
 }
 
 impl EntrypointKind {
@@ -211,6 +212,7 @@ impl EntrypointKind {
             EntrypointKind::Scheduled => "SCHEDULED",
             EntrypointKind::Signal => "SIGNAL",
             EntrypointKind::Library => "LIBRARY",
+            EntrypointKind::IpcCommand => "IPC_COMMAND",
         }
     }
 }
@@ -1123,6 +1125,23 @@ impl ToJson for StringLiteral {
     }
 }
 
+/// `schema.IpcRegistration`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct IpcRegistration {
+    pub name: String,
+    pub line: i64,
+}
+
+impl ToJson for IpcRegistration {
+    fn write_json(&self, out: &mut String) {
+        out.push('{');
+        let mut first = true;
+        crate::json::field(out, &mut first, "name", &self.name);
+        crate::json::field(out, &mut first, "line", &self.line);
+        out.push('}');
+    }
+}
+
 /// `schema.FileFacts`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileFacts {
@@ -1152,6 +1171,7 @@ pub struct FileFacts {
     pub module_scope: Option<Routine>,
     pub literals_dropped: i64,
     pub tests_dropped: i64,
+    pub ipc_registrations: Vec<IpcRegistration>,
     pub errors: Vec<String>,
 }
 
@@ -1229,6 +1249,9 @@ impl ToJson for FileFacts {
         }
         if self.tests_dropped != zero.tests_dropped {
             crate::json::field(out, &mut first, "tests_dropped", &self.tests_dropped);
+        }
+        if self.ipc_registrations != zero.ipc_registrations {
+            crate::json::field(out, &mut first, "ipc_registrations", &self.ipc_registrations);
         }
         if self.errors != zero.errors {
             crate::json::field(out, &mut first, "errors", &self.errors);

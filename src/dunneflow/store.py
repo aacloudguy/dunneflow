@@ -189,6 +189,39 @@ CREATE TABLE IF NOT EXISTS supplied_edges (
     reason     TEXT NOT NULL DEFAULT ''
 );
 
+-- Names a file hands to an IPC dispatch (`schema.IpcRegistration`). Per file, like
+-- `entrypoints`: the registrar is a site in one file and is forgotten with it.
+CREATE TABLE IF NOT EXISTS ipc_registrations (
+    file TEXT NOT NULL,
+    name TEXT NOT NULL,
+    line INTEGER NOT NULL
+);
+
+-- A call site that sends a command by name, and the way in that answers it -- or, where
+-- `entrypoint_id` is NULL, the reason none does (`status`). **Never `calls.callee_id`**
+-- (rule 2): the site is a boundary call into the client library, and this is a second
+-- fact about where the far end is, made by matching a string. `resolve/ipc.py` derives it
+-- from the whole tree after edges and replaces it whole, so `forget_file` does not touch
+-- it, for `supplied_edges`' reason.
+--
+-- `status` is `linked`, `unknown` (no command answers the name), `ambiguous` (two
+-- applications answer it equally near) or `dynamic` (the name is not written as a
+-- literal, so nothing is matched and nothing is guessed). `how` says how the match was
+-- made, and `confidence` is `INFERRED` because a string is not a reference.
+CREATE TABLE IF NOT EXISTS ipc_links (
+    site_id       TEXT NOT NULL,
+    caller_id     TEXT NOT NULL,
+    file          TEXT NOT NULL,
+    line          INTEGER NOT NULL,
+    command       TEXT NOT NULL DEFAULT '',
+    carrier_id    TEXT,
+    entrypoint_id TEXT,
+    routine_id    TEXT,
+    status        TEXT NOT NULL,
+    how           TEXT NOT NULL DEFAULT '',
+    confidence    TEXT NOT NULL DEFAULT 'INFERRED'
+);
+
 CREATE TABLE IF NOT EXISTS boundaries (
     file       TEXT NOT NULL,
     routine_id TEXT NOT NULL,
@@ -438,6 +471,9 @@ CREATE INDEX IF NOT EXISTS ix_calls_site       ON calls(site_id);
 CREATE INDEX IF NOT EXISTS ix_callargs_site    ON call_args(site_id);
 CREATE INDEX IF NOT EXISTS ix_supplied_site    ON supplied_edges(site_id);
 CREATE INDEX IF NOT EXISTS ix_supplied_lang    ON supplied_edges(lang);
+CREATE INDEX IF NOT EXISTS ix_ipcreg_name      ON ipc_registrations(name);
+CREATE INDEX IF NOT EXISTS ix_ipclink_caller   ON ipc_links(caller_id);
+CREATE INDEX IF NOT EXISTS ix_ipclink_routine  ON ipc_links(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_routine    ON boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
@@ -1107,7 +1143,7 @@ class Store:
         for table in ("routines", "structures", "calls", "boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
-                      "artefacts", "constants", "control"):
+                      "artefacts", "constants", "control", "ipc_registrations"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
         # **`supplied_edges` is deliberately not here**, and it is the one table a file's
@@ -1253,6 +1289,10 @@ class Store:
             [(e.id, e.kind.value, e.name, e.routine_id, e.module, ff.path, e.evidence,
               e.group, e.parent_id, e.target_expr, int(e.declared), e.target_kind.value)
              for e in ff.entrypoints],
+        )
+        c.executemany(
+            "INSERT INTO ipc_registrations(file,name,line) VALUES(?,?,?)",
+            [(ff.path, g.name, g.line) for g in ff.ipc_registrations],
         )
         c.executemany(
             "INSERT INTO classes(name,qualname,module,file,line,bases)"

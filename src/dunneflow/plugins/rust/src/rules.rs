@@ -36,6 +36,12 @@ pub struct Rules {
     pub verbs: Vec<String>,
     /// `network.timed`: a call and the index of the argument that is its timeout.
     pub timed: Vec<(String, i64)>,
+    /// `ipc.command_attrs`: an attribute that makes a fn a command a client calls by name,
+    /// spelt as the source spells it (`tauri::command`).
+    pub ipc_attrs: Vec<String>,
+    /// `ipc.registrars`: a macro whose path arguments are the names the dispatch answers,
+    /// without its `!` (`tauri::generate_handler`).
+    pub ipc_registrars: Vec<String>,
 }
 
 impl Rules {
@@ -85,6 +91,10 @@ impl Rules {
                     }
                 }
             }
+        }
+        if let Some(ipc) = raw.get("ipc") {
+            r.ipc_attrs = ipc.get("command_attrs").map(Value::strings).unwrap_or_default();
+            r.ipc_registrars = ipc.get("registrars").map(Value::strings).unwrap_or_default();
         }
         r.net.sort_by(|a, b| b.prefix.len().cmp(&a.prefix.len()).then(a.prefix.cmp(&b.prefix)));
         r

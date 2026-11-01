@@ -316,6 +316,7 @@ impl<'a> Ex<'a> {
         ff.control_arms = std::mem::take(&mut f.control_arms);
         ff.literals = std::mem::take(&mut f.literals);
         ff.network = std::mem::take(&mut f.network);
+        ff.ipc_registrations = std::mem::take(&mut f.ipc_registrations);
         ff.literals_dropped = f.literals_dropped;
         ff.tests_dropped = f.tests_dropped;
         // Always sent, claimed or not: a string names its owner before anybody knows
@@ -436,6 +437,13 @@ impl<'a> Ex<'a> {
                 );
                 if top && self.scope.is_empty() && self.rules.entry_names.iter().any(|n| f.sig.ident == n) {
                     self.way_in(r);
+                }
+                if self.scope.is_empty() {
+                    if let Some(attr) = f.attrs.iter().map(|a| colon_path(a.path()))
+                        .find(|p| self.rules.ipc_attrs.iter().any(|x| x == p))
+                    {
+                        self.ipc_command(r, &attr);
+                    }
                 }
             }
             Item::Impl(imp) => {
@@ -863,6 +871,23 @@ impl<'a> Ex<'a> {
         self.facts.entrypoints.push(ep);
     }
 
+    /// A fn a client calls by name (`rust.yaml` `ipc.command_attrs`). The name a client
+    /// sends is the fn's own: Tauri's `rename_all` renames *arguments*, never the command.
+    /// Whether anything registers it is not this file's question (`resolve/ipc.py`).
+    fn ipc_command(&mut self, idx: usize, attr: &str) {
+        let r = &self.routines[idx];
+        let ep = Entrypoint {
+            id: entrypoint_id(&self.path, &[&r.qualname, "ipc"]),
+            kind: EntrypointKind::IpcCommand,
+            name: r.name.clone(),
+            routine_id: Some(r.id.clone()),
+            module: self.module.clone(),
+            evidence: format!("#[{attr}] {}() at {}:{}", r.name, self.path, r.line_start),
+            ..Default::default()
+        };
+        self.facts.entrypoints.push(ep);
+    }
+
     fn block_body(&mut self, b: &syn::Block) {
         for s in &b.stmts {
             self.stmt(s);
@@ -1084,6 +1109,19 @@ impl<'a> Ex<'a> {
         };
         let refs: Vec<&Expr> = args.iter().collect();
         let path: Vec<String> = m.path.segments.iter().map(|s| s.ident.to_string()).collect();
+        // A registrar (`rust.yaml` `ipc.registrars`): every path argument is a name the
+        // dispatch answers, by its last segment. Anything else in the list is left alone —
+        // a registrar argument that is not a path is not a name this reader can say.
+        if self.rules.ipc_registrars.iter().any(|x| *x == colon_path(&m.path)) {
+            for a in &args {
+                if let Expr::Path(p) = a {
+                    if let Some(last) = p.path.segments.last() {
+                        let line = self.line(last.ident.span());
+                        self.facts.ipc_registrations.push(IpcRegistration { name: last.ident.to_string(), line });
+                    }
+                }
+            }
+        }
         self.call(expr, SiteKind::Macro, path, m.span(), &refs);
         for a in &args {
             self.walk_expr(a);
@@ -1422,6 +1460,12 @@ fn string_value(e: &Expr) -> Option<String> {
 
 /// A path as the dotted contract spells it: `::` read as `.`, a leading `::` dropped, and
 /// no type arguments (clause 6).
+/// A path as the source spells it, `::` and all — how `rust.yaml` names an attribute or a
+/// macro, so that the rules file reads as Rust rather than as this reader's dotted form.
+fn colon_path(p: &syn::Path) -> String {
+    p.segments.iter().map(|s| s.ident.to_string()).collect::<Vec<_>>().join("::")
+}
+
 fn dotted_path(p: &syn::Path) -> String {
     p.segments.iter().map(|s| s.ident.to_string()).collect::<Vec<_>>().join(".")
 }

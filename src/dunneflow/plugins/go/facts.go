@@ -111,6 +111,7 @@ const (
 	EntrypointKindScheduled     EntrypointKind = "SCHEDULED"
 	EntrypointKindSignal        EntrypointKind = "SIGNAL"
 	EntrypointKindLibrary       EntrypointKind = "LIBRARY"
+	EntrypointKindIpcCommand    EntrypointKind = "IPC_COMMAND"
 )
 
 // LiteralKind is `schema.LiteralKind`.
@@ -411,35 +412,42 @@ type StringLiteral struct {
 	Kind      LiteralKind `json:"kind,omitempty"`
 }
 
+// IpcRegistration is `schema.IpcRegistration`.
+type IpcRegistration struct {
+	Name string `json:"name"`
+	Line int    `json:"line"`
+}
+
 // FileFacts is `schema.FileFacts`.
 type FileFacts struct {
-	Path            string              `json:"path"`
-	Lang            string              `json:"lang"`
-	Module          string              `json:"module"`
-	ContentHash     string              `json:"content_hash"`
-	Doc             string              `json:"doc,omitempty"`
-	Routines        List[Routine]       `json:"routines,omitempty"`
-	Calls           List[CallSite]      `json:"calls,omitempty"`
-	Boundaries      List[BoundaryHit]   `json:"boundaries,omitempty"`
-	Structures      List[DataStructure] `json:"structures,omitempty"`
-	Entrypoints     List[Entrypoint]    `json:"entrypoints,omitempty"`
-	Imports         List[ImportRec]     `json:"imports,omitempty"`
-	CliApps         List[CliApp]        `json:"cli_apps,omitempty"`
-	CliMounts       List[CliMount]      `json:"cli_mounts,omitempty"`
-	Sql             List[SqlStatement]  `json:"sql,omitempty"`
-	Network         List[NetworkCall]   `json:"network,omitempty"`
-	Classes         List[ClassDef]      `json:"classes,omitempty"`
-	Tables          List[TableSchema]   `json:"tables,omitempty"`
-	Indexes         List[IndexSchema]   `json:"indexes,omitempty"`
-	Artefacts       List[Artefact]      `json:"artefacts,omitempty"`
-	Constants       List[Constant]      `json:"constants,omitempty"`
-	Control         List[ControlPoint]  `json:"control,omitempty"`
-	ControlArms     List[ControlArm]    `json:"control_arms,omitempty"`
-	Literals        List[StringLiteral] `json:"literals,omitempty"`
-	ModuleScope     *Routine            `json:"module_scope,omitempty"`
-	LiteralsDropped int                 `json:"literals_dropped,omitempty"`
-	TestsDropped    int                 `json:"tests_dropped,omitempty"`
-	Errors          List[string]        `json:"errors,omitempty"`
+	Path             string                `json:"path"`
+	Lang             string                `json:"lang"`
+	Module           string                `json:"module"`
+	ContentHash      string                `json:"content_hash"`
+	Doc              string                `json:"doc,omitempty"`
+	Routines         List[Routine]         `json:"routines,omitempty"`
+	Calls            List[CallSite]        `json:"calls,omitempty"`
+	Boundaries       List[BoundaryHit]     `json:"boundaries,omitempty"`
+	Structures       List[DataStructure]   `json:"structures,omitempty"`
+	Entrypoints      List[Entrypoint]      `json:"entrypoints,omitempty"`
+	Imports          List[ImportRec]       `json:"imports,omitempty"`
+	CliApps          List[CliApp]          `json:"cli_apps,omitempty"`
+	CliMounts        List[CliMount]        `json:"cli_mounts,omitempty"`
+	Sql              List[SqlStatement]    `json:"sql,omitempty"`
+	Network          List[NetworkCall]     `json:"network,omitempty"`
+	Classes          List[ClassDef]        `json:"classes,omitempty"`
+	Tables           List[TableSchema]     `json:"tables,omitempty"`
+	Indexes          List[IndexSchema]     `json:"indexes,omitempty"`
+	Artefacts        List[Artefact]        `json:"artefacts,omitempty"`
+	Constants        List[Constant]        `json:"constants,omitempty"`
+	Control          List[ControlPoint]    `json:"control,omitempty"`
+	ControlArms      List[ControlArm]      `json:"control_arms,omitempty"`
+	Literals         List[StringLiteral]   `json:"literals,omitempty"`
+	ModuleScope      *Routine              `json:"module_scope,omitempty"`
+	LiteralsDropped  int                   `json:"literals_dropped,omitempty"`
+	TestsDropped     int                   `json:"tests_dropped,omitempty"`
+	IpcRegistrations List[IpcRegistration] `json:"ipc_registrations,omitempty"`
+	Errors           List[string]          `json:"errors,omitempty"`
 }
 
 // SuppliedEdge is `schema.SuppliedEdge`.

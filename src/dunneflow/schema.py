@@ -93,6 +93,11 @@ class EntrypointKind(StrEnum):
     SCHEDULED = "SCHEDULED"
     SIGNAL = "SIGNAL"
     LIBRARY = "LIBRARY"
+    # A command a client in the same application calls **by name** across a process
+    # boundary it does not own: Tauri's `#[tauri::command]`, which the front end reaches
+    # with `invoke("name")`. It is a way in, because nothing in this program calls it --
+    # the host's IPC dispatch does. Added with schema 17, for PLAN-v2's question 7.
+    IPC_COMMAND = "IPC_COMMAND"
 
 
 class TargetKind(StrEnum):
@@ -891,6 +896,22 @@ class ImportRec:
 
 
 @dataclass(slots=True)
+class IpcRegistration:
+    """One name a registrar hands to the IPC dispatch: `generate_handler![a, m::b]`.
+
+    A command that exists and is not registered cannot be called, and the program says
+    nothing -- DunneNote guards it with four tests that split `lib.rs` on the macro's name.
+    So registration is its own fact rather than a flag on the command: the registrar is a
+    different site, often a different file, and the question *is this name registered
+    anywhere?* is a query over the whole tree, which no reader standing in one file can
+    answer. `name` is the path's last segment, which is the name a client sends.
+    """
+
+    name: str
+    line: int
+
+
+@dataclass(slots=True)
 class FileFacts:
     """Everything one source file yields. The unit of extraction and of caching."""
 
@@ -945,6 +966,8 @@ class FileFacts:
     # that keeps its tests inline reads as one with none (design rule 1). Added for Rust,
     # with schema 17.
     tests_dropped: int = 0
+    # Names this file hands to an IPC dispatch. See `IpcRegistration`. Schema 17.
+    ipc_registrations: list[IpcRegistration] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 

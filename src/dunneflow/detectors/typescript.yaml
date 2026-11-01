@@ -442,3 +442,13 @@ redefinition: shadows
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # `_name` and `#name`, the only two the reader records as private, are kept inside their file or class.
 private_means: module
+
+# **The client side of a command called by name** (`RuleSet.ipc_clients`). A function that
+# sends its first argument to another process as the name of a command: Tauri's `invoke`.
+# Read **host-side**, by `resolve/ipc.py`, which finds the sites that send a name — this
+# function called directly, or a routine that hands its own first parameter on to it — and
+# matches the name against the commands the tree registers. The plugin reads nothing here.
+ipc:
+  clients:
+    - {module: "@tauri-apps/api/core", name: "invoke"}
+    - {module: "@tauri-apps/api/tauri", name: "invoke"}

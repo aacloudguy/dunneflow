@@ -34,7 +34,7 @@ export type ControlKind = "LOOP" | "COMPREHENSION" | "DECISION" | "GUARD" | "HAN
 
 export type Direction = "IN" | "OUT" | "BOTH";
 
-export type EntrypointKind = "CLI" | "MAIN" | "MCP_TOOL" | "HTTP_ROUTE" | "QUEUE_CONSUMER" | "SCHEDULED" | "SIGNAL" | "LIBRARY";
+export type EntrypointKind = "CLI" | "MAIN" | "MCP_TOOL" | "HTTP_ROUTE" | "QUEUE_CONSUMER" | "SCHEDULED" | "SIGNAL" | "LIBRARY" | "IPC_COMMAND";
 
 export type LiteralKind = "PLAIN" | "INTERPOLATED";
 
@@ -283,6 +283,11 @@ export interface StringLiteral {
   kind?: LiteralKind;
 }
 
+export interface IpcRegistration {
+  name: string;
+  line: number;
+}
+
 export interface FileFacts {
   path: string;
   lang: string;
@@ -310,6 +315,7 @@ export interface FileFacts {
   module_scope?: Routine | null;
   literals_dropped?: number;
   tests_dropped?: number;
+  ipc_registrations?: IpcRegistration[];
   errors?: string[];
 }
 

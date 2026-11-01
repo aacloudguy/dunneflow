@@ -235,6 +235,34 @@ fn wire(addr: std::net::SocketAddr, budget: Duration, rsa: bool) -> Option<u8> {
 }
 ''',
     "build.rs": "fn main() { println!(\"cargo:rerun-if-changed=x\"); }\n",
+    "app.rs": '''use tauri::command;
+
+#[tauri::command]
+pub fn list_notes() -> Vec<String> { Vec::new() }
+
+#[command]
+async fn save_note(body: String) {}
+
+#[tauri::command]
+fn forgotten() {}
+
+mod inner {
+    #[tauri::command]
+    pub fn nested_cmd() {}
+}
+
+pub fn run() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            list_notes,
+            save_note,
+            inner::nested_cmd,
+            crate::ipc::commands::ping::ping,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running");
+}
+''',
     "bom.rs": "﻿#!/usr/bin/env run-cargo-script\nfn main() { std::env::var(\"HOME\"); }\n",
 }
 
@@ -341,6 +369,21 @@ def test_a_match_is_a_decision_with_its_arms(facts):
     m = next(p for p in ff.control if p.word == "match")
     arms = [(a.kind.value, a.header) for a in ff.control_arms if a.point_id == m.point_id]
     assert arms == [("case", "Some(1)"), ("case", "Some(n) if n > 5"), ("default", "")]
+
+
+def test_a_command_is_a_way_in_and_a_registrar_names_what_it_answers(facts):
+    """`rust.yaml` `ipc`: an attributed fn, at any module depth, is an IPC_COMMAND under
+    either spelling; each path in the registrar is a registration by its last segment. An
+    attributed fn nobody registers is still a command -- whether anything registers it is
+    `resolve/ipc.py`'s question, asked of the whole tree."""
+    ff = facts["app.rs"]
+    cmds = {e.name: e for e in ff.entrypoints if e.kind.value == "IPC_COMMAND"}
+    assert sorted(cmds) == ["forgotten", "list_notes", "nested_cmd", "save_note"]
+    assert cmds["save_note"].evidence.startswith("#[command] save_note() at app.rs:")
+    routine = {r.id: r.qualname for r in ff.routines}
+    assert routine[cmds["nested_cmd"].routine_id] == "app.inner.nested_cmd"
+    assert [(g.name, g.line) for g in ff.ipc_registrations] == [
+        ("list_notes", 20), ("save_note", 21), ("nested_cmd", 22), ("ping", 23)]
 
 
 def test_a_build_script_is_not_a_way_into_the_program(facts):

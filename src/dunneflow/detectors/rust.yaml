@@ -229,3 +229,20 @@ builtins: [
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # `pub(crate)` and `pub(super)` are recorded as private beside true module privacy, so a call from another module is often correct code.
 private_means: surface
+
+# **A command a client in the same application calls by name** (`EntrypointKind.IPC_COMMAND`).
+# Tauri's front end reaches a Rust function with `invoke("name")`; the function says so with
+# an attribute and is reachable only once a registrar hands its name to the dispatch. The
+# reader reads both and judges neither: an attributed fn is a way in, and each path inside a
+# registrar is an `IpcRegistration` named by its last segment. Whether a command is
+# registered, and who sends it, is `resolve/ipc.py`'s question over the whole tree.
+#
+# Spelt as the source spells them, `::` and all. `command` alone is the attribute after
+# `use tauri::command;`, which DunneNote does not do and the Tauri guide does.
+#
+# `foreign_prefixes`: a name a client sends that is answered by a Tauri **plugin**, never by
+# this tree — `plugin:dialog|open` — and so is not an unknown command.
+ipc:
+  command_attrs: ["tauri::command", "command"]
+  registrars: ["tauri::generate_handler", "generate_handler"]
+  foreign_prefixes: ["plugin:"]

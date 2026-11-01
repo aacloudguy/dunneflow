@@ -312,6 +312,32 @@ xcrun notarytool store-credentials dunneflow \
 After that the key, its id and the issuer id are the keychain's business; `release.sh` knows
 only the profile name.
 
+## Readers on the far side of a pipe, and what the bundle carries for them
+
+**Two of the five readers are other programs, and neither is inside the interpreter the spec
+freezes.** What the bundle carries for each is `plugin.json` and the files it names in
+`fingerprint`, which `_plugin_files` copies off the manifests, so a reader's shipped bytes
+are exactly the bytes its stamp is computed from (rule 12). Nothing else of a plugin
+directory ships: not `node_modules`, not a test file, not a build product.
+
+- **TypeScript ships built.** `main.bundle.cjs` is committed, and `node` runs it. The
+  machine needs Node 20 or newer and nothing else.
+- **Go ships as source and is built where it runs** (`plugin.json`'s `build`). The `.go`
+  files and `go.mod` travel in the bundle; the first analysis of a Go tree runs `go build`
+  into `runtime.reader_cache_root()`, which is the platform data directory and never the
+  signed, read-only bundle, keyed by the reader's stamp, the platform and what `go version`
+  says. A warm start is 7 ms. So there is **nothing to cross-compile, lipo or sign** for
+  Go: the spec, `release.sh`, `release.ps1` and `release-linux.sh` are unchanged by it.
+
+**A machine without the toolchain still runs the application.** The walk asks each language
+with files whether its reader can start, and one that cannot is reported as *not read, no
+toolchain*, with what to install, while everything else is read.
+
+**The build machines need both toolchains for the gates, not for the build.**
+`tools/fingerprints.py` refuses when a registered language contributed no rows, and the
+polyglot probe tree holds a `.go` file, so `verify` on a machine without `go` fails by
+naming it. As of 2026-11-01 neither GIZA nor maclab has Go (`BACKLOG.md`).
+
 *This paragraph said "still to do: notarisation, the universal build, an icon, and Windows"
 until 2026-09-15, by which point all four were done and shipped — it was four milestones
 stale in the one file every session loads, and it was found by a chapter of the user guide

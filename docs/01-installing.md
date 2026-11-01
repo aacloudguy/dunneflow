@@ -115,19 +115,27 @@ Unlike the Windows chooser, this one **comes to the front on its own**.
 ## Which languages it reads, and the one thing you may have to install
 
 DunneFlow reads **Python**; **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and TSX
-included; **C++** — `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings; and
-**Kotlin** — `.kt` and `.kts`.
+included; **C++** — `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings;
+**Kotlin** — `.kt` and `.kts`; and **Go** — `.go`.
 
-**Only one of the four needs anything installed.** Python, C++ and Kotlin DunneFlow reads
+**Two of the five need something installed.** Python, C++ and Kotlin DunneFlow reads
 itself.
 TypeScript it reads by asking TypeScript's own compiler, which needs **Node.js 20 or newer**
-on the machine.
+on the machine, and Go by asking Go's own type checker, which needs **Go 1.22 or newer**.
+The Go reader is built on your machine the first time it is needed, which takes about a
+second and is not repeated, and it never downloads anything: a package your Go program
+imports from outside the tree being read is counted as outside it, not fetched.
 
 That asymmetry is deliberate rather than untidy. A language is best read by the thing that
 already understands it, and the alternative — bundling a parser for every language — is
 what makes a tool either enormous or wrong. So the compiler that reads your TypeScript is
-the compiler TypeScript ships, and a name it resolves is a name *it* resolved and not one
-DunneFlow guessed at.
+the compiler TypeScript ships, the checker that reads your Go is the one Go ships, and a
+name either of them resolves is a name *it* resolved and not one DunneFlow guessed at.
+
+**One thing to expect in a Go map in particular.** A function written once per platform —
+`run_linux.go` and `run_windows.go` — is drawn to its **Linux** definition, so that a call
+through it is connected and the map is the same on every machine that reads it. The other
+platforms' versions are still in the map; they are drawn as uncalled.
 
 **C++ and Kotlin are read without a compiler, and it is worth knowing why before you read
 one of those maps.** For C++ the reason is that a compiler needs to know how your program is
@@ -154,17 +162,20 @@ per-element rate hidden inside one is not drawn as a loop, where the same rate w
 `for` is. The map is not wrong about it; it simply does not see it, and that is worth knowing
 before you read the Algorithms page of a Kotlin program.
 
-If Node is not there, DunneFlow says so before it reads anything:
+If Node or Go is not there, DunneFlow reads everything else and says, at the end of the run
+and in the map, what it could not read and why:
 
 ```
-typescript needs `node` ≥ 20.0.0 and nothing answers `node --version` on this machine.
-Install it (brew install node, or nodejs.org), or run again with `--without typescript`
-and the map will say those files were declined.
+  read: python 132
+  not read, no toolchain: 11 files of typescript — typescript needs `node` ≥ 20.0.0 and
+  nothing answers `node --version` on this machine. Install it (brew install node, or
+  nodejs.org), or run again with `--without typescript` and the map will say those files
+  were declined.
 ```
 
 Both halves of that are real. Install Node and the whole tree is read; or decline the
-language and get a map of everything else, with the count of what you left out printed at
-the end of the run and recorded in the map:
+language yourself and get the same map of everything else, with the count of what you left
+out recorded as your choice rather than the machine's:
 
 ```
 files 131 (parsed 131, cached 0, removed 0, failed 0) in 1.0s

@@ -17,10 +17,40 @@ what happened and when; this says what has not. When an item is done it leaves h
 
 ## Open
 
-Nothing, as of 2026-10-02. Every item found while photographing the docs, and every older
-one, was closed that day or moved to the residues below with the decision that put it there.
-The last of them, 29 — a Python routine that calls itself was never an edge to itself — was
-found rewriting the tutorial against the third retake and closed the same evening.
+Nothing from before 2026-11-01: every older item was closed on 2026-10-02 or moved to the
+residues below. These five came out of the Go reader, and each says what would settle it.
+
+**30. GIZA and maclab have no Go.** Found checking the build machines, 2026-11-01. Without it
+`tests/test_identity.py` and `tools/fingerprints.py` fail there, because the polyglot probe
+tree now holds `probe.go` and a registered language that contributes no rows is refused
+(rule 37), and `test_go_reader.py` skips by its named reason. Not done because installing a
+toolchain on Tom's machines is his to approve. *Settled by* Go 1.22 or newer on both, and the
+suite and `verify` green on each.
+
+**31. The tour maps and screenshots predate the Go reader.** DunneFlow's own tree now holds
+the reader's seven `.go` files, so a self-map reads `python · typescript · go`, and the
+figures the guide was photographed against (`python 131 · typescript 11`, chapters 1 and 4)
+move. Not done because a retake is its own session with its own record. *Settled by* the next
+retake, with `GROUND-TRUTH.md`'s screenshot-map figures rewritten from it.
+
+**32. A dependency is an empty stand-in, so methods on its types are *unknown*, not
+*outside*.** Measured: rain's 628 unknown calls are mostly cobra's `Cmd.Flags()` and
+friends. Not done because reading a dependency means finding it, and the honest place is the
+local module cache (`go env GOMODCACHE`, pinned by `go.sum`), read only where it is already
+present, never fetched (design rule 14). *Settled by* a reader that consults the module cache
+when it exists, with the unknown count retaken on rain and beads.
+
+**33. Cobra's command tree is not drawn.** A group (`rain cc`) is correctly not a way in, but
+the `AddCommand` calls that hang commands under it are not read as `cli_mounts`, so the CLI
+tree is flat. Not done because it is a second fact kind for a reader one day old. *Settled by*
+`AddCommand` read as a mount and resolved like Python's, and `cli: … (n in a tree)` above
+zero on rain.
+
+**34. Built readers are never pruned.** `runtime.reader_cache_root()` gains a directory per
+stamp, platform and toolchain, and nothing removes the old ones: ten during the session that
+built the Go reader, 3.4 to 3.6 MB each. Not done because nothing yet decides when a build is no
+longer wanted. *Settled by* keeping the newest few per language, or the ones whose stamp a map
+on this machine still holds.
 
 ---
 
@@ -44,4 +74,8 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A killed analysis can leave its pool behind** | Nine `ProcessPoolExecutor` workers from the original Unreal ingest were still alive 22 hours later, parented to init, idle at 5.5 MB each. Harmless where they are, and the 86-part re-read on 2026-09-20 added none — so it is an interrupted run's leak rather than an ordinary one's. Stated because a batch runner doing this nightly would accumulate them, and the batch-ingest design is the place that would have to care. 2026-09-20. |
 | **The size guard counts files and nothing else** | `walk.TOO_BIG` is 20,000 *files*, which is the shape of the evidence — `Engine/Source/Runtime` is 18,191 and is the largest tree read end to end. A tree of 19,000 enormous files passes it and a tree of 25,000 tiny ones is refused, and neither is what the bound is really about: the thing that hurts is rows written, not files read. Bytes or an estimate of rows would be the honest key, and taking one needs a corpus spread wide enough to separate the two — which is a measurement, not an edit. Stated so the number is read as what it is. 2026-09-19. |
 | **A part's documents are whatever is under its root, vendored prose included** | Unreal's 86 parts hold **12,886 documents, and 11,850 of them are `Engine.Source.ThirdParty`'s**: a part of 620 code files on 57,373 files of vendored library source, which the C++ reader skips by name for code. Every other part is in double or single figures. Tom's decision, 2026-10-02: vendored prose **is** documentation of the program, so it is read. Design rule 11 holds as written, and a reader's `skip_dirs` stays a statement about program source and never about prose. Measured with `analyze --timings` on 2026-09-20; formerly BACKLOG 9. |
+| **A Go function defined per platform is drawn to its linux/amd64 definition** | Tom's decision, 2026-11-01. Each package is checked under linux/amd64, darwin/arm64 and windows/amd64; where they name different definitions the edge goes to the first, and its `how` counts the variants (38 on beads). The other platforms' versions read as uncalled. Ambiguous was the plan's answer and cost 16 false LOST_EDGE SUSPECT on beads. |
+| **A Go call through a renamed standard-library import is not a boundary** | `import stdos "os"` then `stdos.Getenv` is not matched, because rules match the spelling written and a reader never expands an alias (rule 4). Rare, since `goimports` never renames. Stated in `detectors/go.yaml`. |
+| **`f[MyType]()` records no call name in Go** | `x[y]` is a type argument or a subscript and only the checker can always tell; the reader answers *type* only where the index cannot be a value, so a call instantiated with a named type is left unnamed for rule matching. Its edge still comes from the checker. Stated in `extract.go:looksLikeType`. |
+| **`plugin.json`'s `workers` is read and used by nothing** | Every manifest declares it and no reader is started more than once. Found writing the Go manifest; harmless, and a field nothing reads is rule 35's shape, so it is stated here rather than relied on. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

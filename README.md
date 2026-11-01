@@ -38,10 +38,11 @@ browser on the start page, which is where you make your first map.
 | **Windows** | `DunneFlow-<version>-windows-x64.zip` | **Unsigned**, so SmartScreen warns once: **More info → Run anyway**. `DunneFlow.exe` is what you double-click; `dunneflow-cli.exe` beside it is the command line. |
 | **Linux** | `DunneFlow-<version>-linux-x86_64.tar.gz` | `tar -xzf` it, then `./dunneflow/install.sh`. Installs into `~/.local` with a menu entry and icons; nothing needs root. |
 
-Each release carries a `SHA256SUMS` file. **Reading TypeScript needs Node.js 20 or newer** on
-the machine, because TypeScript is read by its own compiler; the other three languages need
-nothing. Without Node, DunneFlow says so before it starts, and `--without typescript` reads the
-rest and records in the map that those files were declined.
+Each release carries a `SHA256SUMS` file. **Reading TypeScript needs Node.js 20 or newer**, and
+**reading Go needs Go 1.22 or newer**, on the machine, because each is read by its own
+compiler; the other three languages need nothing. Without one, DunneFlow reads everything else
+and says, in the run and in the map, which files it could not read and what to install;
+`--without typescript` or `--without go` makes the same choice deliberately.
 
 Details for each platform, including where maps are kept and how to move them, are in
 [docs/01-installing.md](docs/01-installing.md).
@@ -57,9 +58,9 @@ uv run dunneflow serve
 
 ## What it reads
 
-Four languages, each read by whatever understands it best. No language is a special case:
+Five languages, each read by whatever understands it best. No language is a special case:
 a reader is a plugin, and nothing above the graph names one ([`LANGUAGES.md`](LANGUAGES.md)
-says what a fifth would cost).
+says what the fifth cost).
 
 | | Files | Read by | Recognises | Calls inside the program |
 |---|---|---|---|---|
@@ -67,6 +68,7 @@ says what a fifth would cost).
 | **TypeScript** | `.ts` `.tsx` `.mts` `.cts`, JSX | TypeScript's own compiler, out of process | Next.js App Router pages and route handlers, React hook callbacks, Prisma and Supabase, `fetch` / WebSocket / EventSource / socket.io | resolved — by the compiler, not guessed |
 | **C++** | `.cpp` `.cc` `.cxx` `.h` `.hpp` `.inl` … | syntactically, in process | Unreal `UFUNCTION`s that are Blueprint-callable, replicated or `Exec`; `UE_LOG`; Unreal's file APIs | not resolved, and counted |
 | **Kotlin** | `.kt` `.kts` | syntactically, in process | Android and Hilt entry points, Jetpack `@Composable`, Retrofit, scheduled work | not resolved, and counted |
+| **Go** | `.go` | Go's own type checker (`go/types`), out of process | `main`, `net/http` and router handlers registered by a call, cobra commands | resolved — by the checker, not guessed |
 
 **C++ and Kotlin are read without a compiler**, for two different reasons. Most large C++
 trees cannot tell a compiler how they are built without being built first, and asking

@@ -203,3 +203,55 @@ in the language's own terms, not in the tool's.
 `resolve/manifests/` already reads `go.mod` and `Cargo.toml` for what a program declares
 about itself, which is the half that does not need a reader at all.
 
+## A fifth reader, and the seam it found that four had not
+
+*Written after Go, 2026-11-01, the first reader since TypeScript to run on the far side of a
+pipe and the first to supply edges after it.* Kotlin said the seam cost almost nothing. For a
+second **checker-backed** reader that was not yet true, and what it cost is worth knowing
+before the next one.
+
+**Three things in the seam had only ever been asked by one reader, and each was quietly
+TypeScript's.** The supplied-edge lookup hardcoded `"typescript"` in both of its queries,
+so a second reader's edges would have been written to `supplied_edges` and read by nothing
+(rule 35); it is `resolve/supplied.py` now and reads its `lang`. `plugin_argv` could start
+`[command, entry]` and nothing else. And **`probe_toolchain` had never been called outside a
+test**, so a missing `node` reached the walk as an uncaught refusal from a worker that could
+not start and took the whole analysis with it. A second reader of the same kind is what
+finds the places the first one was assumed (rule 92's shape, one layer up).
+
+**A reader may be shipped as source and built where it runs.** `plugin.json`'s `build` is
+the argv of a build, with `{output}` for where the program goes; the host builds it once per
+stamp, platform and toolchain, and starts what it built. Choose it when the toolchain has to
+be present at run time anyway, as Go's does to read the standard library. It keeps one
+`fingerprint` for every platform, where one binary per platform would give each its own
+stamp and make every map unreadable on every other machine (rule 12).
+
+**The second implementations are pinned from both sides, by a fixture the host writes.**
+BLAKE2b, every id function, and Python's `errors="replace"` decoding had to be written again
+in Go. `tools/gen_facts_go.py` writes `tests/fixtures/ids/vectors.json` from `schema.py` and
+from Python's own decoder, `go test` asserts it, and a test regenerates it without Go. The
+decoding is the one that would have bitten: Go's own conveniences replace an ill-formed
+sequence once per byte or once per run, and Python replaces it once per *maximal subpart*,
+so a file with stray bytes would have hashed differently on the two sides and been reported
+as *changed while it was being read*. A tampered vector was seen to fail before any was
+believed (rule 59).
+
+**A judgement can be about the targets as well as the language.** Go defines a function once
+per platform as an ordinary thing, and a reader that checked only the host's `GOOS` would
+draw a different map on each machine (rule 66). So every package is checked under a fixed
+set of three targets and the answers are joined per call site. The plan said a site the
+targets disagree about is ambiguous; beads showed what that costs: 16 `LOST_EDGE` SUSPECT
+findings saying *anything downstream is missing* about Go that was correct, and every flow
+through them cut. Tom's decision on 2026-11-01 was the **reference target**, linux/amd64:
+the edge goes to its definition, the edge's `how` counts the variants, and the residue
+(the other platforms' versions drawn uncalled) is stated in the user guide. Ask the next
+language what it does per platform before choosing.
+
+**And rule 98 found three defects in a day, every one of them this reader's.**
+`MISSING_RETURN_TYPE` read 183 of rain's 715 routines as undeclared, because a Go function
+with no results was sent as `None`, which means *undeclared*, and no Go function is. A cobra
+command with no handler is a group, and as a way in it *led nowhere*, four times. And
+`os.Exit` was a PROCESS boundary, which was 714 of beads' 5,891 touches. Each was fixed in the
+reader or in `go.yaml`, and each was found the way this chapter says: `dunneflow check` on a
+real tree, with every finding read against the source before it was believed.
+

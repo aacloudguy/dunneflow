@@ -498,6 +498,25 @@ queries know a language exists.
   no DOM and answers anyway. `src/facts.ts` is **generated** from `schema.py` and a test
   compares, so the two sides of the wire cannot drift. The bundle is committed and a test
   asserts it is the committed source (rule 37).
+
+  **`plugins/go/` is shipped as source and built on the machine that reads**, which is the
+  third shape a reader can take and the reason `plugin.json` has a `build` field. Go's
+  checker needs the `go` toolchain at run time anyway, to read the standard library's
+  source, so building with it costs nothing beyond being able to run at all; one binary per
+  platform would instead have meant one `fingerprint` per platform, and a map written on one
+  machine refused as stale on another (rule 12). `ingest/outofprocess.built_reader` builds it
+  once per stamp, platform and toolchain into `runtime.reader_cache_root()`, with
+  `GOTOOLCHAIN=local` so that a build can never download a toolchain. It is stdlib-only, so
+  nothing is ever fetched; `facts.go` is generated from `schema.py` by
+  `tools/gen_facts_go.py` and compared by a test that needs no Go, and its hand-written
+  BLAKE2b and Python-compatible decoding are pinned by `tests/fixtures/ids/vectors.json`.
+
+  **A toolchain that is not installed declines its language and the rest is read.**
+  `walk._runnable` asks each language that has files whether its reader can run, before any
+  cache key is read, and a missing `node` or `go` removes that language's files from the
+  walk with its own residue line, *not read, no toolchain*, which is neither *unread* (no
+  reader) nor *declined by you* (design rule 21). Until 2026-11-01 nothing asked, and a
+  machine without `node` lost the Python half of a mixed tree to an uncaught refusal.
 - `extractors/python/` — stdlib `ast` + `tokenize` only. No third-party parser. It is the
   **in-process plugin's reader**, named by `plugins/python/plugin.json`'s `reader:` field
   rather than imported by the walk: the one language that runs in this interpreter still
@@ -934,7 +953,9 @@ queries know a language exists.
   count**, which is a shippable state rather than a gap: TypeScript extraction landed a
   chunk before its edges did, and a map with routines, boundaries and SQL and no internal
   edges is honest. **Where a reader's own toolchain names the far end, it is taken rather
-  than re-guessed** — `resolve/typescript/calls.py` turns a location into an id, and the
+  than re-guessed** — `resolve/supplied.py` turns a location into an id for every reader
+  that supplies edges, and names none of them (it was `resolve/typescript/calls.py` until Go
+  needed the same lookup, and that address now delegates to it). The
   1,935 internal edges DunneNote gained that way are supplied, not inferred: an import
   alias that collides with a local name and a method reached through a typed receiver are
   two cases a name cannot get right (rule 5).

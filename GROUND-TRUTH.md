@@ -198,6 +198,43 @@ Ground truth for code: the four executables declared in its
 `mensores-scriba` — must all appear in "Where to start" with plausible reach. If one
 collapses to a reach of 1 or 2, a registration idiom is being missed.
 
+## Go: two public trees, and what each reproduces (2026-11-01)
+
+**Neither is Society, and neither is the pair.** They are what the Go reader was measured on,
+in `../beads-main` and `../AppGraphs/rain-main`, both public projects copied to this machine,
+and both **read-only** like every other corpus here. Analyse into a scratch output root.
+
+```bash
+uv run dunneflow analyze ../AppGraphs/rain-main --name rain --output <tmp> --no-render
+uv run dunneflow analyze ../beads-main --name beads --output <tmp> --no-render
+uv run dunneflow check   ../beads-main --name beads --output <tmp> --all --limit 300
+```
+
+At `go-reader` 2a9dedf, with Go 1.25.6:
+
+| | rain | beads |
+|---|---:|---:|
+| Go files read (tests left out) | 147 (49) | 484 (386) |
+| routines | 758 | 3,721 |
+| Go edges supplied, every one matched to a routine by its first line | 3,615 | 7,449 |
+| several declarations (interface calls) | 16 | 852 |
+| of which drawn to linux/amd64 of several platform variants | 0 | 38 |
+| outside / unknown, as the reader counts them | 2,661 / 628 | 17,907 / 4,570 |
+| findings | 0 broken · 1 suspect · 3 informational | 0 broken · 13 suspect · 44 informational |
+
+**Every SUSPECT left on both was read against the source.** On rain, `NO_TIMEOUT`: six
+`http.Get` calls through Go's default client, which has none. On beads, `NO_TIMEOUT` again; ten
+`SCHEMA_DRIFT`, every one a table its SQLite and Dolt backends create with different column
+types, which is true; `/static/` leading nowhere, whose handler is `http.StripPrefix(...)`,
+a value a library builds, which the finding's blind spot names; and one belonging to the
+Python reader. Three earlier defects found the same way were this reader's and are fixed
+(`LANGUAGES.md`, *A fifth reader*).
+
+**The unknowns are two things, and both are stated rather than guessed.** A method on a type
+from a dependency (cobra's `Cmd.Flags()`), because a package from outside the tree is an empty
+stand-in and nothing is downloaded; and a function held in a package variable (rain's
+`console.Yellow`). `BACKLOG.md` says what would turn the first into *outside*.
+
 ## The screenshot map — what `docs/` and `docs/tutorial/` were photographed against
 
 **Every figure in the user guide and the tutorial is one this map reproduces**, so a retake

@@ -945,6 +945,31 @@ point exposes no `createProgram`, no `SyntaxKind` and no `createSourceFile` — 
 `typeof ts.createProgram` is `undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins
 5.9.3.
 
+### Go, read over the pipe and checked by `go/types` (measured 2026-11-01)
+
+Apple M1, Go 1.25.6, warm disk, `--no-docs --no-render`, the output directory removed before
+each cold run, median of three. **The figure includes the edge pass**: every package checked
+under three targets (linux/amd64, darwin/arm64, windows/amd64) and the standard library
+checked from GOROOT's source, once per run. The reader binary was already built.
+
+| | rain (147 of 205 `.go`; 49 tests left out, 9 skipped) | beads (484 of 870; 386 tests left out) |
+|---|---:|---:|
+| cold | **1.8 s** extraction · 2.2 s wall | **6.3 s** extraction · 7.1 s wall |
+| warm, nothing changed | 0.1 s · 0.4 s wall | 0.1 s · 0.8 s wall |
+| edges supplied | 3,615 | 7,449 |
+
+**Building the reader is a one-off and costs under a second.** `go build` of the 2,000-line
+reader into `runtime.reader_cache_root()` took **0.92 s** with Go's own build cache warm and
+**7 ms** when it was already built; a machine whose Go build cache is cold pays the
+standard library's compilation on top, once. The first cold run of rain above was 6.1 s wall
+against the 2.2 s median, which is that warming plus the disk; it is reported, not counted.
+
+**The edge pass is the smaller part of the cost.** Without it, rain's extraction was 1.4 s
+and beads' 5.8 s (chunk 2, the same machine, one run each rather than a median), so the
+checker costs about **0.4 s on rain and 0.5 s on beads** and buys every internal edge in the
+map. Checking three targets triples the type-checking of the tree's own packages and not of
+the standard library, which is checked once, for the host.
+
 ---
 
 ## The C++ reader, and the first tree that is not small (v2, measured 2026-09-18)

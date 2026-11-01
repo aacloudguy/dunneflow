@@ -106,8 +106,8 @@ wedged job or a long step is your call, not the tool's.
 ## What it read, and what it left out
 
 A run ends by saying both, and the second half is as much the point as the first. This is
-DunneFlow reading itself — two of the four languages it reads, because its own source holds
-neither C++ nor Kotlin:
+DunneFlow reading itself — two of the five languages it reads, because when this was taken
+its own source held neither C++ nor Kotlin, nor yet the Go of its own Go reader:
 
 ```
 files 142 (parsed 142, cached 0, removed 0, failed 0) in 3.5s

@@ -1,0 +1,41 @@
+{
+  "lang": "go",
+  "display": "Go",
+  "version": "0.1.0",
+  "protocol": 1,
+  "schema_version": 16,
+  "rules": "go.yaml",
+  "in_process": false,
+  "workers": 1,
+  "toolchain": {
+    "command": "go",
+    "probe": ["version"],
+    "min_version": "1.22.0",
+    "install": "brew install go, or go.dev/dl"
+  },
+  "build": ["go", "build", "-trimpath", "-buildvcs=false", "-o", "{output}", "."],
+  "receiver_words": [],
+  "supplies_edges": true,
+  "reports_literals": true,
+  "discovery": {
+    "suffixes": [".go"],
+    "skip_dirs": ["vendor", "testdata"],
+    "skip_names": [],
+    "test_dirs": [],
+    "test_name_suffixes": ["_test.go"],
+    "test_stem_prefixes": [],
+    "test_stem_suffixes": [],
+    "test_stem_exact": []
+  },
+  "fingerprint": [
+    "plugin.json",
+    "go.mod",
+    "main.go",
+    "ids.go",
+    "text.go",
+    "facts.go",
+    "rules.go",
+    "extract.go",
+    "edges.go"
+  ]
+}

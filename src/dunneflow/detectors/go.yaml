@@ -1,0 +1,33 @@
+# Extraction rules for Go.
+#
+# Read **in this process** and handed to the reader over the wire
+# (`detectors.rules_document`), like TypeScript's: the reader is a Go program and must not
+# carry its own copy, and this file is in Go's extraction stamp so an edit re-reads every
+# Go file and costs the other languages nothing.
+#
+# Rules are matched against the **dotted form** of a call (`ingest/dotted.py`), the same
+# contract as every other reader's. The boundaries arrive with chunk 2 of the Go reader.
+
+version: 1
+
+boundaries: []
+
+# Only in `package main`, and never a method: the reader enforces both, because a function
+# called `main` anywhere else is an ordinary function.
+entry_names: [main]
+
+# **No `unawaited_async` and no `redefinition`, and both are decisions.** Go has no
+# async/await: `go f()` starts a goroutine, which is a different act with no dropped
+# result to report. And the compiler already refuses a real duplicate, while a function
+# defined once per build target (`run_linux.go`, `run_windows.go`) is ordinary Go, so a
+# redefinition finding here would report the language working as a defect (rule 98).
+# Absent means the detector does not fire, which is the declared answer rather than a
+# default (rule 49).
+
+# Go's predeclared functions. A bare call to one of these is never a routine of yours
+# (rule 3), even where a package declares a function of the same name, because the
+# checker has already said which one was meant.
+builtins: [
+  "append", "cap", "clear", "close", "complex", "copy", "delete", "imag", "len", "make",
+  "max", "min", "new", "panic", "print", "println", "real", "recover",
+]

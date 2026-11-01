@@ -9,7 +9,8 @@
     "`expect` is a dotted form the reader must record for the snippet. `expect: \"\"` means",
     "the reader must record **no call at all** — rule 3, where the chain cannot be named.",
     "A case with no snippet for a language is a rule that language has no syntax for; the",
-    "runner names it unexercised and never counts it as passing."
+    "runner names it unexercised and never counts it as passing.",
+    "Go has no syntax for clauses 5, 7 and 8: no optional chain, no constructor (`new(T)` is a builtin call and `T{}` is not a call at all), and a receiver named per method rather than a fixed word."
   ],
   "cases": [
     {
@@ -19,7 +20,8 @@
       "why": "the identifier chain in source order, dot-joined",
       "source": {
         "python": "import a\na.b.c()\n",
-        "typescript": "declare const a: { b: { c(): void } };\na.b.c();\n"
+        "typescript": "declare const a: { b: { c(): void } };\na.b.c();\n",
+        "go": "package p\n\nfunc f() {\n\ta.b.c()\n}\n"
       }
     },
     {
@@ -29,7 +31,8 @@
       "why": "a chain of one is still a chain",
       "source": {
         "python": "def helper():\n    pass\n\nhelper()\n",
-        "typescript": "function helper(): void {}\nhelper();\n"
+        "typescript": "function helper(): void {}\nhelper();\n",
+        "go": "package p\n\nfunc helper() {}\n\nfunc f() {\n\thelper()\n}\n"
       }
     },
     {
@@ -39,7 +42,8 @@
       "why": "a call in the middle folds to its callee — reading a file this way is one of the commonest boundary touches there is",
       "source": {
         "python": "from pathlib import Path\n\ndef f(p):\n    return Path(p).read_text()\n",
-        "typescript": "declare function Path(p: string): { read_text(): string };\nexport function f(p: string) {\n  return Path(p).read_text();\n}\n"
+        "typescript": "declare function Path(p: string): { read_text(): string };\nexport function f(p: string) {\n  return Path(p).read_text();\n}\n",
+        "go": "package p\n\nfunc f(p string) {\n\tPath(p).read_text()\n}\n"
       }
     },
     {
@@ -49,7 +53,8 @@
       "why": "the fold is not once",
       "source": {
         "python": "import a\na.b(1).c(2).d()\n",
-        "typescript": "declare const a: any;\na.b(1).c(2).d();\n"
+        "typescript": "declare const a: any;\na.b(1).c(2).d();\n",
+        "go": "package p\n\nfunc f() {\n\ta.b(1).c(2).d()\n}\n"
       }
     },
     {
@@ -59,7 +64,8 @@
       "why": "no name at the root, so nothing may be matched against a rule",
       "source": {
         "python": "d = {}\nd['k']()\n",
-        "typescript": "const d: Record<string, () => void> = {};\nd['k']();\n"
+        "typescript": "const d: Record<string, () => void> = {};\nd['k']();\n",
+        "go": "package p\n\nfunc f() {\n\td[\"k\"]()\n}\n"
       }
     },
     {
@@ -69,7 +75,8 @@
       "why": "a subscript anywhere kills the chain: naming it would mean deciding what handlers['x'] is, and deciding that is resolution",
       "source": {
         "python": "import reg\nreg.handlers['x'].run()\n",
-        "typescript": "declare const reg: any;\nreg.handlers['x'].run();\n"
+        "typescript": "declare const reg: any;\nreg.handlers['x'].run();\n",
+        "go": "package p\n\nfunc f() {\n\treg.handlers[\"x\"].run()\n}\n"
       }
     },
     {
@@ -79,7 +86,8 @@
       "why": "the written library prefix, never the resolved one — rules are written against the spelling people use",
       "source": {
         "python": "import numpy as np\nnp.array([1])\n",
-        "typescript": "import * as np from 'numpy';\nnp.array([1]);\n"
+        "typescript": "import * as np from 'numpy';\nnp.array([1]);\n",
+        "go": "package p\n\nimport np \"example.com/numpy\"\n\nfunc f() {\n\tnp.array(1)\n}\n"
       }
     },
     {
@@ -89,7 +97,8 @@
       "why": "`from json import loads` then `loads(x)` is `loads`, not `json.loads`",
       "source": {
         "python": "from json import loads\nloads('{}')\n",
-        "typescript": "import { loads } from 'json';\nloads('{}');\n"
+        "typescript": "import { loads } from 'json';\nloads('{}');\n",
+        "go": "package p\n\nimport . \"example.com/json\"\n\nfunc f() {\n\tloads(\"{}\")\n}\n"
       }
     },
     {
@@ -107,7 +116,8 @@
       "expect": "foo",
       "why": "a type argument is not part of the name",
       "source": {
-        "typescript": "declare function foo<T>(): void;\nfoo<string>();\n"
+        "typescript": "declare function foo<T>(): void;\nfoo<string>();\n",
+        "go": "package p\n\nfunc f() {\n\tfoo[string]()\n}\n"
       }
     },
     {

@@ -6,11 +6,147 @@
 # Go file and costs the other languages nothing.
 #
 # Rules are matched against the **dotted form** of a call (`ingest/dotted.py`), the same
-# contract as every other reader's. The boundaries arrive with chunk 2 of the Go reader.
+# contract as every other reader's.
+#
+# **The package name is what a Go rule matches, and that is rule 4.** A Go call is written
+# through the package's local name (`os.Getenv`, `http.Get`), and this reader never expands
+# an import, so a rule names the package as it is written. A file that renames an import
+# (`import stdhttp "net/http"`) is spelled `stdhttp.Get` and is not matched: the residue is
+# real and small, because renaming the standard library is rare and `goimports` never does it.
+#
+# **A bare method name is declared only where it is specific to its kind** (rule 5).
+# `QueryContext` and `ExecContext` are `database/sql`'s and nobody else's; bare `Query`,
+# `Exec`, `Read` and `Write` are on half the types in any module and are deliberately not
+# here. The SQL itself is still found: a string that reads as SQL is judged by the host
+# (`ingest/literals.py`) whatever called it.
 
 version: 1
 
-boundaries: []
+boundaries:
+  # -- environment ------------------------------------------------------------ #
+  - kind: ENV
+    direction: IN
+    salience: high
+    exact: [os.Getenv, os.LookupEnv, os.Environ, os.ExpandEnv, syscall.Getenv]
+    target_arg: 0
+  - kind: ENV
+    direction: OUT
+    salience: high
+    exact: [os.Setenv, os.Unsetenv, os.Clearenv]
+    target_arg: 0
+
+  # -- files ------------------------------------------------------------------ #
+  - kind: FILE
+    direction: IN
+    salience: high
+    exact: [os.Open, os.ReadFile, os.ReadDir, os.Stat, os.Lstat, os.DirFS,
+            ioutil.ReadFile, ioutil.ReadDir, ioutil.ReadAll,
+            filepath.Walk, filepath.WalkDir, filepath.Glob, fs.ReadFile, fs.WalkDir,
+            fs.ReadDir, embed.FS]
+    target_arg: 0
+  - kind: FILE
+    direction: OUT
+    salience: high
+    exact: [os.Create, os.WriteFile, os.Remove, os.RemoveAll, os.Mkdir, os.MkdirAll,
+            os.MkdirTemp, os.CreateTemp, os.Rename, os.Chmod, os.Chown, os.Truncate,
+            os.Symlink, os.Link, ioutil.WriteFile, ioutil.TempFile, ioutil.TempDir]
+    target_arg: 0
+  - kind: FILE
+    direction: BOTH
+    salience: high
+    exact: [os.OpenFile]
+    target_arg: 0
+
+  # -- processes -------------------------------------------------------------- #
+  # **Another process, and never this one ending.** `os.Exit` was here and was 714 of
+  # beads' 5,891 touches: it stops the program and touches nothing outside it, which is
+  # why Python's rules have never listed `sys.exit` (rule 24). `exec.LookPath` searches
+  # `PATH` and starts nothing, and went with it.
+  - kind: PROCESS
+    direction: BOTH
+    salience: high
+    exact: [exec.Command, exec.CommandContext, syscall.Exec, os.StartProcess, syscall.Kill]
+    target_arg: 0
+
+  # -- network ---------------------------------------------------------------- #
+  - kind: NETWORK
+    direction: OUT
+    salience: high
+    exact: [http.Get, http.Post, http.PostForm, http.Head, http.NewRequest,
+            http.NewRequestWithContext, net.Dial, net.DialTimeout, net.DialTCP, net.DialUDP,
+            tls.Dial, grpc.Dial, grpc.DialContext, grpc.NewClient, websocket.Dial]
+    target_arg: 0
+  - kind: NETWORK
+    direction: IN
+    salience: high
+    exact: [http.ListenAndServe, http.ListenAndServeTLS, http.Serve, http.ServeTLS,
+            net.Listen, net.ListenTCP, net.ListenUDP, net.ListenPacket, tls.Listen]
+    method: [ListenAndServe, ListenAndServeTLS]
+    target_arg: 0
+
+  # -- databases -------------------------------------------------------------- #
+  - kind: DATABASE
+    direction: BOTH
+    salience: high
+    exact: [sql.Open, sql.OpenDB, sqlx.Open, sqlx.Connect, pgx.Connect, pgxpool.New,
+            pgxpool.Connect, gorm.Open, redis.NewClient, mongo.Connect, bolt.Open,
+            badger.Open]
+    method: [QueryContext, QueryRowContext, ExecContext, PrepareContext, BeginTx]
+    target_arg: 0
+
+  # -- standard streams ------------------------------------------------------- #
+  - kind: STDIO
+    direction: OUT
+    salience: normal
+    exact: [fmt.Print, fmt.Println, fmt.Printf, os.Stdout.Write, os.Stdout.WriteString,
+            os.Stderr.Write, os.Stderr.WriteString]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: high
+    exact: [fmt.Scan, fmt.Scanln, fmt.Scanf, os.Stdin.Read]
+    target_arg: 0
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    prefix: [log., slog.]
+    target_arg: 0
+
+  # -- cryptography ----------------------------------------------------------- #
+  # Not I/O, but load-bearing: worth seeing on a flow that handles trust.
+  - kind: CRYPTO
+    direction: BOTH
+    salience: normal
+    prefix: [aes., cipher., hmac., rsa., ecdsa., ed25519., bcrypt., argon2., x509.]
+    exact: [sha256.New, sha256.Sum256, sha512.New, sha512.Sum512, sha1.New, sha1.Sum,
+            md5.New, md5.Sum, subtle.ConstantTimeCompare]
+    target_arg: 0
+
+# Remote calls, in the detail an infrastructure engineer needs. **Every Go client is
+# `async: false`**: a Go call blocks its goroutine and returns its result, and concurrency
+# is a `go` statement around it rather than a property of the library.
+#
+# **Named calls, never a package prefix** (rule 1). `http.` would make `http.StatusText`
+# and `http.NewServeMux` remote calls and `net.` would make `net.ParseIP` one; a key with a
+# dot is a prefix, so each is the call that actually goes somewhere.
+network:
+  libraries:
+    "http.Get":             {protocol: HTTP, async: false}
+    "http.Post":            {protocol: HTTP, async: false}
+    "http.Head":            {protocol: HTTP, async: false}
+    "http.NewRequest":      {protocol: HTTP, async: false}
+    "grpc.Dial":            {protocol: gRPC, async: false}
+    "grpc.NewClient":       {protocol: gRPC, async: false}
+    "net.Dial":             {protocol: TCP,  async: false}
+    "tls.Dial":             {protocol: TCP,  async: false}
+    "websocket.Dial":       {protocol: WebSocket, async: false}
+  verbs: [Get, Post, Head, PostForm]
+  kwargs: []
+
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3, bolt, badger]
+    CONFIG: [json, yaml, yml, toml, ini, cfg, conf, env]
 
 # Only in `package main`, and never a method: the reader enforces both, because a function
 # called `main` anywhere else is an ordinary function.
@@ -31,3 +167,40 @@ builtins: [
   "append", "cap", "clear", "close", "complex", "copy", "delete", "imag", "len", "make",
   "max", "min", "new", "panic", "print", "println", "real", "recover",
 ]
+
+# ---------------------------------------------------------------------------- #
+# Ways in beyond `main`. **Two idioms, and neither is a decorator or a file path**, so
+# neither fits a key another reader already has: Go registers a handler by calling
+# something, and cobra declares a command with a composite literal. Each is data here and
+# never a branch in the reader, so a router this file does not name is an edit to this
+# file (`LANGUAGES.md`: prefer a rule to a branch).
+#
+# A handler written inline is a routine named by the word that registered it (`HandleFunc`,
+# `RunE`), with an ordinal where one routine registers several; that is the word written
+# at that line, and never a name invented for it (rule 30). A handler named by an
+# identifier is linked to the function of that name in the same file; one named any other
+# way keeps its expression in `target_expr` and is still a way in.
+
+# A call whose last segment is one of `method`, whose `route_arg` is a string literal
+# shaped like a route (`/x`, or a verb and a path, `GET /x`), and whose `handler_arg` is
+# the handler (-1 is the last argument). The route test is what makes a bare method name
+# safe here (rule 5): `cache.Get("k", v)` is not a route, because "k" is not one.
+registrations:
+  - kind: HTTP_ROUTE
+    method: [HandleFunc, Handle, Get, Post, Put, Patch, Delete, Head, Options, Any,
+             GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, Group, Route, Mount]
+    route_arg: 0
+    handler_arg: -1
+    evidence: "an HTTP handler, registered by a call"
+
+# A composite literal of one of `type`, named by the first word of its `name_field`, whose
+# work is the first of `handler_fields` it sets. **One that sets none is a group**, a
+# namespace with subcommands under it, and is not a way in: recorded as one, each read as a
+# way in that *leads nowhere* (four SUSPECT on rain, every one this reader's). The tree a
+# group makes with `AddCommand` is not drawn yet, and that is the residue.
+commands:
+  - kind: CLI
+    type: [cobra.Command]
+    name_field: Use
+    handler_fields: [RunE, Run]
+    evidence: "a cobra command"

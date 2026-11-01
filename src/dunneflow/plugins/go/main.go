@@ -75,6 +75,13 @@ func (r *reader) hello() frame {
 
 func (r *reader) open(f frame) frame {
 	r.root, _ = f["root"].(string)
+	// Absolute, because every path this reader is asked about is made absolute before it
+	// is related to the root, and `filepath.Rel` cannot relate a relative root to an
+	// absolute path: every file then fell back to its absolute spelling, which is a bad key
+	// (rule 60). Found reading the probe tree with a root given as `tests/fixtures/...`.
+	if abs, err := filepath.Abs(r.root); err == nil {
+		r.root = abs
+	}
 	r.files = r.files[:0]
 	if raw, ok := f["files"].([]any); ok {
 		for _, x := range raw {

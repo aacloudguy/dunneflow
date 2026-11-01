@@ -30,6 +30,7 @@ from . import ingest, revisions
 from .docstore import DocStore
 from .extractors.docs import DOC_SUFFIXES, extract_doc
 from .ingest import literals
+from .ingest.acts import one_act
 from .ingest.contract import DiscoveryRules, ToolchainMissing
 
 # **The one import this module makes into `resolve/`, and it is a name rather than a
@@ -980,6 +981,7 @@ def analyze_tree(
                     # place both kinds of reader pass through, which is why it is here
                     # and not in each of the two wrappers.
                     literals.judge(ff, _plugin.manifest.reports_literals)
+                    one_act(ff)
                     if ff.literals_dropped:
                         stats.literals_dropped[_lang] = (
                             stats.literals_dropped.get(_lang, 0) + ff.literals_dropped

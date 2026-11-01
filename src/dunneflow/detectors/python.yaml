@@ -44,8 +44,14 @@ boundaries:
   - kind: FILE
     direction: OUT
     salience: high
-    method: [write_text, write_bytes, mkdir, touch, unlink, rmdir, rename, replace, chmod]
-    exact: [os.remove, os.unlink, os.rename, os.replace, os.makedirs, os.mkdir]
+    # **Not `replace`**, which is rule 5's own example: `str.replace` is everywhere and
+    # `Path.replace` almost nowhere. As a bare method it made 175 FILE boundaries in
+    # Society, most of them `datetime.now().isoformat().replace(...)` and `text.replace`.
+    # `Path(p).replace(q)` is still seen, through the fold (`ingest/dotted.py` clause 2);
+    # `tmp.replace(target)` on a name holding a Path is not, and that is rule 1's price.
+    method: [write_text, write_bytes, mkdir, touch, unlink, rmdir, rename, chmod]
+    exact: [os.remove, os.unlink, os.rename, os.replace, os.makedirs, os.mkdir,
+            Path.replace, pathlib.Path.replace]
     prefix: [shutil.]
     target_arg: 0
   - kind: FILE

@@ -336,7 +336,10 @@ toolchain*, with what to install, while everything else is read.
 **The build machines need both toolchains for the gates, not for the build.**
 `tools/fingerprints.py` refuses when a registered language contributed no rows, and the
 polyglot probe tree holds a `.go` file, so `verify` on a machine without `go` fails by
-naming it. As of 2026-11-01 neither GIZA nor maclab has Go (`BACKLOG.md`).
+naming it. Both have Go 1.25.6 since 2026-11-01, installed per user and needing no
+administrator: maclab in `~/.local/go` (on a login shell's `PATH`, so a non-interactive SSH
+command exports it as it does `uv`), and GIZA in `%LOCALAPPDATA%\Programs\go`, on the user's
+`Path`.
 
 *This paragraph said "still to do: notarisation, the universal build, an icon, and Windows"
 until 2026-09-15, by which point all four were done and shipped — it was four milestones

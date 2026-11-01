@@ -18,14 +18,9 @@ what happened and when; this says what has not. When an item is done it leaves h
 ## Open
 
 Nothing from before 2026-11-01: every older item was closed on 2026-10-02 or moved to the
-residues below. These five came out of the Go reader, and each says what would settle it.
-
-**30. GIZA and maclab have no Go.** Found checking the build machines, 2026-11-01. Without it
-`tests/test_identity.py` and `tools/fingerprints.py` fail there, because the polyglot probe
-tree now holds `probe.go` and a registered language that contributes no rows is refused
-(rule 37), and `test_go_reader.py` skips by its named reason. Not done because installing a
-toolchain on Tom's machines is his to approve. *Settled by* Go 1.22 or newer on both, and the
-suite and `verify` green on each.
+residues below. These came out of the Go reader, and each says what would settle it. (30,
+Go on the build machines, was settled the same day: Go 1.25.6 on both, and the suite green
+on each.)
 
 **31. The tour maps and screenshots predate the Go reader.** DunneFlow's own tree now holds
 the reader's seven `.go` files, so a self-map reads `python · typescript · go`, and the

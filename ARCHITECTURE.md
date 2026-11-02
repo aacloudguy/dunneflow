@@ -528,6 +528,20 @@ queries know a language exists.
   with each file's hash in `meta` (`test_modules:<lang>`) so an unchanged one is never
   parsed again.
 
+  **`plugins/java/` is javac's public tree API behind the pipe**, built by `java Build.java`
+  into a jar that `run` starts (`PACKAGING.md`), with no dependency: `Json.java`, `Ids.java`
+  (BLAKE2b) and `Text.java` (Python's maximal-subpart decoding) are written by hand and
+  pinned by `vectors.json` through the reader's own `--self-test`. `Extract.java` parses one
+  file from the host's text and never from the file; `Edges.java` parses every file in one
+  `JavacTask`, walks each with the extractor's own walk **before** attribution so every site
+  carries the facts' `site_id`, then `analyze()`s with `-XDshould-stop.ifError=FLOW` so a
+  missing class does not end attribution. Its dispatch rule is Tom's (2026-11-01, in the
+  class comment), narrowed to overrides that can answer the receiver's static type, and a
+  javac pick among overloads under an argument it could not type is refused as `untyped`.
+  For each `dynamic` call it sends the location of every body that may answer
+  (`SuppliedEdge.answers`). `Deps.java` reads the jars the build files declare out of the
+  local Maven and Gradle caches, never fetched, onto the edge pass's own classpath.
+
   **A toolchain that is not installed declines its language and the rest is read.**
   `walk._runnable` asks each language that has files whether its reader can run, before any
   cache key is read, and a missing `node`, `go` or `cargo` removes that language's files from the
@@ -1011,6 +1025,18 @@ queries know a language exists.
   - *About this map*'s "Between languages" row;
   - `08-network.md`'s "Commands called by name";
   - the anomalies UNREGISTERED_COMMAND and UNKNOWN_COMMAND, both SUSPECT.
+- `resolve/dispatch.py` — **the bodies a dispatched call may reach** (Tom, 2026-11-02). A
+  call a reader marked `dynamic` is resolved to a slot several bodies fill; the reader sends
+  each body's location (`SuppliedEdge.answers`, stored as JSON in `supplied_edges.answers`)
+  and this module locates them through `supplied.py`'s own index, checks each name, and
+  replaces `dispatch_links` whole. It names no language and is not inference: the checker
+  named every body. **Rule 2 holds by shape** here too. Every recursive query in `store.py`
+  has a third arm over `dispatch_links`, and `_reach_graph` adds them to **both** in-memory
+  graphs, `cross=False` included, because dispatch never leaves the process. A writable store
+  walks in memory as a read-only one does, its cache stamped with `total_changes`, because
+  the recursive query's `(id, depth)` revisits made the arm sixteen times slower there. It
+  surfaces as `touches` and `impact` ("by dispatch … may run"), MCP `by_dispatch`, *About
+  this map*'s "Dispatch" row and UNREACHABLE's detail, and it is not drawn (BACKLOG 44).
 - `render/` — Markdown and Mermaid. **A map needs neither the source tree nor the
   documentation tree**, and saying so cost twenty-eight signatures: `root` and `docs_root`
   were threaded through every renderer and read by none of them, left behind when the nine

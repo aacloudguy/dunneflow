@@ -109,6 +109,20 @@ cli._emit  (cli.py:77)
 The second one is the question worth asking before you touch anything: not who calls it,
 but **which ways into the program stop working**.
 
+**A call that several bodies may answer is followed into all of them.** In Java, a call to
+an interface method or to one a subclass overrides is decided by the object at run time,
+so there is no single routine to draw an edge to. Both questions go on into every body that
+could answer it, and say so:
+
+```
+  goes on by dispatch at 3 calls, into 4 bodies any of which may run: r.run, s.area, step
+```
+
+and on the `impact` side, *reached by dispatch from …*. Those routines are counted in the
+reach and among the dependents, because a change to one of them can be what runs. The map
+never draws a dispatched call as an edge, because the program runs one of the bodies and the
+map cannot say which.
+
 **What do its words mean, and who says so?**
 
 ```bash

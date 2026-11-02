@@ -272,6 +272,7 @@ public final class Extract {
         final LineMap lines;
         final String pkg;
         final Comments.Scan scanned;
+        final int[] docEnds;
         final SiteSink sink;
 
         final List<Facts.Routine> routines = new ArrayList<>();
@@ -306,6 +307,8 @@ public final class Extract {
             this.lines = unit.getLineMap();
             this.pkg = unit.getPackageName() == null ? "" : text(unit.getPackageName());
             this.scanned = Comments.scan(src);
+            // The scan finds blocks in text order, so their ends are already sorted.
+            this.docEnds = scanned.docs.stream().mapToInt(d -> d.end).toArray();
             this.moduleScope = moduleScope(rel, module, src);
         }
 
@@ -366,16 +369,35 @@ public final class Extract {
             return Extract.declStart(pos, unit, src, decl, mods);
         }
 
-        /** The Javadoc that ends just before a declaration, with only blank text between. */
+        /** The Javadoc that ends just before a declaration, with only blank text between.
+         *  Only the last block ending at or before the declaration can be its Javadoc, so it
+         *  is found by a binary search and checked once. Scanning every block for every
+         *  declaration, with a substring each, was cubic on the Android SDK's largest files
+         *  and held one reader at 100% for 25 minutes (rule 55: bound the work). */
         String javadocFor(Tree decl) {
             long s = start(decl);
-            Comments.Doc best = null;
-            for (Comments.Doc d : scanned.docs) {
-                if (d.end <= s && src.substring(d.end, (int) s).isBlank()) {
-                    best = d;
+            int lo = 0;
+            int hi = docEnds.length - 1;
+            int at = -1;
+            while (lo <= hi) {
+                int mid = (lo + hi) >>> 1;
+                if (docEnds[mid] <= s) {
+                    at = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
                 }
             }
-            return best == null || best.text.isEmpty() ? null : best.text;
+            if (at < 0) {
+                return null;
+            }
+            Comments.Doc d = scanned.docs.get(at);
+            for (int i = d.end; i < s; i++) {
+                if (!Character.isWhitespace(src.charAt(i))) {
+                    return null;
+                }
+            }
+            return d.text.isEmpty() ? null : d.text;
         }
 
         // ------------------------------------------------------------ owner --- //

@@ -330,3 +330,72 @@ judgement that one would fit belongs to a real tree, not to this paragraph.
 Each was found the way this chapter keeps saying: `dunneflow check` on two real trees
 (DunneNote and pdfcraft), every finding read against the source, and the survivors fixed
 where they live rather than where they showed.
+
+
+## A seventh reader, and what a checker's answer still needs from the host
+
+*Written after Java, 2026-11-02.* Out of process on javac's public tree API
+(`com.sun.source`, `javax.lang.model`), with no internals and no `--add-exports`; shipped as
+source and built where it runs, as Go's and Rust's are. Its first two real trees (petclinic
+and traccar) found more to fix in the host's judgements than in the reader, and the reader's
+own two defects were both a checker answering more confidently than it had the right to.
+
+**The build seam grew one word, `run`.** A JVM reader's product is a jar, which no platform
+will execute, so `run` is the argv that starts what the build wrote: the toolchain's command
+first and `{reader}` for the file (`["-Xss16m", "-XX:+UseSerialGC", "-jar", "{reader}"]`).
+The cached file is then `<lang>.reader` and is never marked executable. And because the seam
+runs one command, **the build is a Java program**: `java Build.java {output}`, through the
+JDK's single-file launcher, compiles `src/` with the system compiler and writes a
+reproducible jar itself. No Maven, no Gradle, nothing fetched; a JRE is refused by name.
+
+**Decide identity by the language's nearest neighbour, not by the last reader.** The
+qualname is the **package's**, as Kotlin's is (`org.traccar.model.Event.setDeviceId`),
+because that is how a Java author addresses a method; the module and the id carry the file,
+as every reader's do (rule 106). A constructor is spelt with its class's name, as C++ does; an
+anonymous class takes javac's `$n`, counted within its method; an enum constant's body is
+named by the constant. A method with no body is a field of its interface, not a routine.
+
+**javac writes things nobody wrote, and every one has to be refused by hand.** An enum
+constant arrives as a field whose initialiser is a `new` javac made, so a reader that walked
+it recorded `Colour` as a construction at every constant. A record's accessors and
+canonical constructor, an enum's `values()` and a class's default constructor are members
+the source never declared (`Elements.getOrigin`); a call to an implicit constructor points at
+the class it builds (`SuppliedEdge.constructs`) rather than at a routine that does not exist.
+
+**A checker resolves with what it has, and with a missing dependency that is a guess.**
+javac given an argument whose type it cannot see still chooses one overload, silently:
+`width(m.part())` went to `width(int)` with nothing to rule out `width(String)`. Refusing
+that choice where a rival overload exists withdrew about 2,000 of traccar's edges into
+`untyped` (Netty is not on this machine). The second defect was the same shape over
+dispatch: an override counts only where it can answer **this receiver** — `Event`'s
+`setDeviceId()` is `Message`'s whatever `Command`, a sibling, does with its own — which
+supplied 1,241 more edges and took ambiguous calls from 1,582 to 293.
+
+**Dispatch is the language working, so the host learned to say so.** Tom's rule (2026-11-01):
+an edge is CERTAIN where nothing else can answer — static, private, final, a constructor, a
+final class or record, `super.m()`, or nothing in the tree overriding it — and otherwise the
+call is `dynamic` with the answering bodies counted. Three host judgements followed from
+traccar, each read off `calls.reason` and never off a language's name:
+- **LOST_EDGE** stands for a `dynamic` call and says it is *dispatched to one of N
+  implementations*, not that N definitions share a name (Python's sentence).
+- **DEAD_CODE** spares a routine whose name an untyped call uses, and says how many.
+- **Every walk crosses dispatch** (`dispatch_links`, `resolve/dispatch.py`): the reader sends
+  the location of every body that may answer (`SuppliedEdge.answers`), the host links them,
+  and reach, `touches`, `impact`, MCP and UNREACHABLE follow them, said as *may run* and never
+  drawn as an edge. traccar's unreachable count fell from 3,575 to 2,946; most of the rest is
+  classes it builds by reflection.
+
+**The frontier can be read from this machine's caches.** `Deps.java` reads what a tree
+declares as its build tool would, without running it — Maven's effective POM (parents,
+properties, imported BOMs), Gradle's literal, map and catalog coordinates with `$name` filled,
+the Spring Boot plugin's BOM — mediates nearest-first through cached POMs, and puts the jars
+it finds on the edge pass's own classpath, so `untyped` becomes `outside` with the library's
+own name. Neither corpus's jars were on this machine; the behaviour is proved on a fake
+repository with real compiled jars. A coordinate a script computes (traccar's
+`jacksonVersion`) is listed as not found, never guessed.
+
+**Ask the next reader the two Kotlin questions and one more.** Java has expression-bodied
+lambdas and a stream house style, so `.forEach(x -> …)` is a COMPREHENSION span where the
+function is written in place. The third question is Java's: **what does your checker do when
+it cannot see a type?** If the answer is *it picks*, that pick is a guess, and the map may
+not draw it.

@@ -348,6 +348,22 @@ directory ships: not `node_modules`, not a test file, not a build product.
   `.cargo-checksum.json` beside it and refuses to build one that has changed. Anyone asked
   to trust the build should be told that it runs them.
 
+- **Java ships as source, and its build is a Java program.** `plugins/java/` is
+  `Build.java` and `src/`, all of it in `fingerprint`, with no dependency at all: JSON,
+  BLAKE2b and the UTF-8 decoding are written by hand. The build is
+  `java Build.java {output}`, run by the JDK's single-file source launcher. It compiles
+  `src/` with the system compiler (`--release 17`) and writes a jar whose every entry carries
+  one fixed time, so one source tree on one JDK writes one jar. A `java` with no compiler (a
+  JRE) is refused by name rather than writing an empty jar. One word in `plugin.json`
+  exists for it:
+  - **`run`** is the argv that starts what the build wrote, because a jar is not a program
+    the machine runs: the toolchain's command first, and `{reader}` for the cached file
+    (`-Xss16m -XX:+UseSerialGC -jar {reader}`). With `run`, the cached file is
+    `<lang>.reader` and is never marked executable.
+
+  The reader's cache key carries what `java -version` says, so a JDK upgrade builds a new
+  reader rather than running one compiled against another JDK's compiler.
+
 **A machine without the toolchain still runs the application.** The walk asks each language
 with files whether its reader can start, and one that cannot is reported as *not read, no
 toolchain*, with what to install, while everything else is read.
@@ -361,7 +377,10 @@ non-interactive SSH command exports it as it does `uv`), and GIZA in
 `%LOCALAPPDATA%\Programs\go`, on the user's `Path`. **Rust through rustup on both**: maclab
 had rustup with no default toolchain until stable 1.99.1 was set on 2026-11-01, in
 `~/.cargo/bin`, which a non-interactive shell exports too; GIZA already had stable 1.94.1
-(MSVC, with Visual Studio 2022's build tools) on the user's `Path`.
+(MSVC, with Visual Studio 2022's build tools) on the user's `Path`. **A JDK on both since
+2026-11-02**: GIZA already had JDK 25.0.1; maclab's `sudo` needs a password, so Eclipse
+Temurin 21.0.13 was installed per user in `~/.local/jdk-21` (checksum-verified against
+Adoptium's), which a non-interactive shell exports as it does `go` and `cargo`.
 
 *This paragraph said "still to do: notarisation, the universal build, an icon, and Windows"
 until 2026-09-15, by which point all four were done and shipped — it was four milestones

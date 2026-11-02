@@ -18,7 +18,7 @@ what happened and when; this says what has not. When an item is done it leaves h
 ## Open
 
 Nothing from before 2026-11-01: every older item was closed on 2026-10-02 or moved to the
-residues below. These came out of the Go and Rust readers, and each says what would settle
+residues below. These came out of the Go, Rust and Java readers, and each says what would settle
 it. (30,
 Go on the build machines, was settled the same day: Go 1.25.6 on both, and the suite green
 on each.)
@@ -114,7 +114,46 @@ is labelled where it is shown"), or rewording one of the rows.
 also joins `ipc_links`. That table is empty on every map but DunneNote's, and a read-only
 store walks in memory, so the cost is expected to be small. Nobody has timed it (rule 24).
 *Settled by* timing `touches` and the cover on Unreal's Runtime part, before and after
-f61514d.
+f61514d. *Part measured, 2026-11-02:* the dispatch arm (a third arm, `dispatch_links`) made a
+**writable** store's recursive query sixteen times slower on traccar (`ways_in` 0.3 s →
+4.8 s), because the query deduplicates on `(id, depth)` and fan-out multiplies the paths. A
+writable store now walks in memory too, its cache stamped with `total_changes`, and the same
+`ways_in` is 0.20 s; the in-memory walk itself is 27 ms over traccar's 105 ways in. Unreal is
+still untimed.
+
+---
+
+**43. Only the Java reader sends the bodies a dispatched call may reach.** `SuppliedEdge.answers`
+is filled by `Edges.java`, and `dispatch_links` holds Java's alone. Go knows its
+`implementers` and Rust its `Dispatch::Many`, and both still send only the count, so their
+interface and trait calls stop every walk as Java's did before 2026-11-02. *Settled by* each
+reader sending its locations, and a corpus (beads, pdfcraft) retaken before and after.
+
+**44. A dispatch link is followed by every walk and shown nowhere on the graph.** The
+inspector and the canvas draw calls and IPC crossings; a body reached by dispatch is in the
+reach and in `touches`/`impact` and MCP, and has no row or line of its own on screen. Not
+drawn because a 271-way fan-out (traccar's `decode`) is noise by default (design rule 19).
+*Settled by* Tom choosing how a dispatched call should look when it is asked for.
+
+**45. Java registers by supertype, and the grammar cannot say so.** Spring Data writes a
+repository at run time from an interface that extends `JpaRepository`, so petclinic's every
+`owners.save(…)` is `outside`/`unimplemented` and petclinic reads **0** boundary touches;
+`HttpServlet.doGet` and Netty's `channelRead` are ways in by inheritance. Whether a receiver
+extends a framework type is a whole-program fact and a file's facts may not depend on one
+(rule 95), so this is the edge pass's to say. *Settled by* an `extends:` key in `java.yaml`
+read by the edge pass, measured on petclinic (DATABASE) and traccar (ways in).
+
+**46. JAX-RS's client is not NETWORK.** `client.target(url).request().get()` is 18 of traccar's
+network calls and is read as calls on a value named `client`; `target` and `request` are far
+too common to match bare (rule 5). *Settled by* the edge pass naming the far end's type
+(`jakarta.ws.rs.client.WebTarget`) where the jars are present, and a frontier-to-boundary rule
+deciding it, or by a stated decision that it stays a residue.
+
+**47. A Kotlin file in a Java tree is a missing class to javac.** A call from Java into
+Kotlin is `untyped`, and a call from Kotlin into Java has no edge at all (the Kotlin reader
+supplies none). anki-android is all Kotlin and no corpus here mixes them. *Settled by* a
+mixed tree to measure, then deciding whether the Kotlin reader's declarations are handed to
+javac as a classpath stub.
 
 ## Stated residues — known, bounded, and not defects
 
@@ -137,6 +176,12 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
+| **A Java class built by reflection is unreachable** | traccar finds its protocols by scanning a package and has Guice build them, so no call reaches their constructors and 1,968 of its 2,946 unreachable routines are under `protocol/`. A static reading cannot follow a class name held in a string or a scan; UNREACHABLE says *possible* and its blind spot names library code, and this is the same honest limit. 2026-11-02. |
+| **javac's pick among overloads under an unknown argument is refused** | Where an argument's type is a missing dependency's, javac still chooses one overload and says nothing; `Edges.java` refuses that choice when a rival overload exists, and the call is `untyped`. On traccar without Netty that is about 2,000 calls (`BufferUtil.indexOf(…, buf)`). Its jars on the machine (`Deps.java`) is what settles each one. DEAD_CODE spares a routine an untyped call may name. 2026-11-02. |
+| **Java's edge pass reads no annotation processor** | `-proc:none`, so a Lombok getter, a Dagger component or a MapStruct mapper is not there to resolve to; a call to one is `untyped`. Running a processor is running somebody's build. 2026-11-02. |
+| **The JDK on the machine bounds the Java syntax read** | javac parses at its own `--release`, so a file using a feature newer than the installed JDK is a parse error, and two machines on two JDKs can read one tree differently. The reader's cache key carries the JDK's version (rule 81); the map's stamp does not, which is Go's stdlib residue in Java's terms. 2026-11-02. |
+| **A Java overload's id is an ordinal, and order-dependent** | `pkg.C.helper` and `pkg.C.helper#2`, as Kotlin's and C++'s overloads are, so inserting an overload above another renumbers it. Putting the parameter types in the qualname would change how every name reads, on every surface, to fix a churn nobody has yet seen. 2026-11-02. |
+| **A jar that arrives in the cache later changes no edge until a Java file does** | Supplied edges are replaced only when the language's reader runs, and a run where every file is a cache hit does not run it. So `untyped` stays `untyped` after a build fills `~/.m2` until something in the tree moves. Rust's cached crates have the same shape. 2026-11-02. |
 | **A killed analysis can leave its pool behind** | Nine `ProcessPoolExecutor` workers from the original Unreal ingest were still alive 22 hours later, parented to init, idle at 5.5 MB each. Harmless where they are, and the 86-part re-read on 2026-09-20 added none — so it is an interrupted run's leak rather than an ordinary one's. Stated because a batch runner doing this nightly would accumulate them, and the batch-ingest design is the place that would have to care. 2026-09-20. |
 | **The size guard counts files and nothing else** | `walk.TOO_BIG` is 20,000 *files*, which is the shape of the evidence — `Engine/Source/Runtime` is 18,191 and is the largest tree read end to end. A tree of 19,000 enormous files passes it and a tree of 25,000 tiny ones is refused, and neither is what the bound is really about: the thing that hurts is rows written, not files read. Bytes or an estimate of rows would be the honest key, and taking one needs a corpus spread wide enough to separate the two — which is a measurement, not an edit. Stated so the number is read as what it is. 2026-09-19. |
 | **A part's documents are whatever is under its root, vendored prose included** | Unreal's 86 parts hold **12,886 documents, and 11,850 of them are `Engine.Source.ThirdParty`'s**: a part of 620 code files on 57,373 files of vendored library source, which the C++ reader skips by name for code. Every other part is in double or single figures. Tom's decision, 2026-10-02: vendored prose **is** documentation of the program, so it is read. Design rule 11 holds as written, and a reader's `skip_dirs` stays a statement about program source and never about prose. Measured with `analyze --timings` on 2026-09-20; formerly BACKLOG 9. |

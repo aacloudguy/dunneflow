@@ -116,18 +116,21 @@ Unlike the Windows chooser, this one **comes to the front on its own**.
 
 DunneFlow reads **Python**; **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and TSX
 included; **C++** — `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings;
-**Kotlin** — `.kt` and `.kts`; **Go** — `.go`; and **Rust** — `.rs`.
+**Kotlin** — `.kt` and `.kts`; **Go** — `.go`; **Rust** — `.rs`; and **Java** — `.java`.
 
-**Three of the six need something installed.** Python, C++ and Kotlin DunneFlow reads
+**Four of the seven need something installed.** Python, C++ and Kotlin DunneFlow reads
 itself.
 TypeScript it reads by asking TypeScript's own compiler, which needs **Node.js 20 or newer**
 on the machine; Go by asking Go's own type checker, which needs **Go 1.22 or newer**; and
-Rust with a reader built by **Rust 1.79 or newer** (`cargo`, as `rustup` installs it).
-The Go and Rust readers are built on your machine the first time each is needed — about a
-second for Go and ten for Rust — and neither build is repeated or downloads anything. A
-package your program imports from outside the tree being read is counted as outside it,
-not fetched; for Rust, a dependency already in your local cargo cache is *read*, so the map
-can say what each outside call reaches, and one that is not there is said to be missing.
+Rust with a reader built by **Rust 1.79 or newer** (`cargo`, as `rustup` installs it); and
+Java by asking javac, which needs a **JDK 17 or newer** — a JDK, with its compiler, and not
+only a Java runtime. The Go, Rust and Java readers are built on your machine the first time
+each is needed — about a second for Go, ten for Rust and a few for Java — and no build is
+repeated or downloads anything. A package your program imports from outside the tree being
+read is counted as outside it, not fetched; for Rust, a dependency already in your local
+cargo cache is *read*, and for Java a jar already in your local Maven or Gradle cache is, so
+the map can say what each outside call reaches, and one that is not there is said to be
+missing.
 
 That asymmetry is deliberate rather than untidy. A language is best read by the thing that
 already understands it, and the alternative — bundling a parser for every language — is

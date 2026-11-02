@@ -39,10 +39,12 @@ browser on the start page, which is where you make your first map.
 | **Linux** | `DunneFlow-<version>-linux-x86_64.tar.gz` | `tar -xzf` it, then `./dunneflow/install.sh`. Installs into `~/.local` with a menu entry and icons; nothing needs root. |
 
 Each release carries a `SHA256SUMS` file. **Reading TypeScript needs Node.js 20 or newer**, and
-**reading Go needs Go 1.22 or newer**, and **reading Rust needs Rust 1.79 or newer**, on the
-machine, because each is read by its own toolchain; the other three languages need nothing. Without one, DunneFlow reads everything else
+**reading Go needs Go 1.22 or newer**, **reading Rust needs Rust 1.79 or newer**, and
+**reading Java needs a JDK 17 or newer**, on the machine, because each is read by its own
+toolchain; the other three languages need nothing. Without one, DunneFlow reads everything else
 and says, in the run and in the map, which files it could not read and what to install;
-`--without typescript`, `--without go` or `--without rust` makes the same choice deliberately.
+`--without typescript`, `--without go`, `--without rust` or `--without java` makes the same
+choice deliberately.
 
 Details for each platform, including where maps are kept and how to move them, are in
 [docs/01-installing.md](docs/01-installing.md).
@@ -58,7 +60,7 @@ uv run dunneflow serve
 
 ## What it reads
 
-Six languages, each read by whatever understands it best. No language is a special case:
+Seven languages, each read by whatever understands it best. No language is a special case:
 a reader is a plugin, and nothing above the graph names one ([`LANGUAGES.md`](LANGUAGES.md)
 says what the fifth and sixth cost).
 
@@ -70,6 +72,7 @@ says what the fifth and sixth cost).
 | **Kotlin** | `.kt` `.kts` | syntactically, in process | Android and Hilt entry points, Jetpack `@Composable`, Retrofit, scheduled work | not resolved, and counted |
 | **Go** | `.go` | Go's own type checker (`go/types`), out of process | `main`, `net/http` and router handlers registered by a call, cobra commands | resolved — by the checker, not guessed |
 | **Rust** | `.rs` | `syn`, out of process, built on your machine and never fetching | each Cargo binary's `fn main`; `std::net`, `reqwest`/`ureq`, `rusqlite`, the OS keychain, the crypto crates | resolved by path — only where a path, or a type the source writes down, names one definition; every other call says where it stops and why |
+| **Java** | `.java` | javac, out of process, built on your machine and never fetching | `main`; Spring MVC and JAX-RS routes; `@Scheduled`, listeners, Guice and Spring `@Provides`/`@Bean`; JDBC, Netty, `java.net`, `java.nio.file`, the JCA | resolved — by javac, not guessed; a call several bodies may answer is followed into all of them, *by dispatch*, and never drawn as an edge |
 
 **C++ and Kotlin are read without a compiler**, for two different reasons. Most large C++
 trees cannot tell a compiler how they are built without being built first, and asking

@@ -1002,6 +1002,33 @@ that did not reproduce, and the figure here is the one taken.*
 
 ---
 
+### Java, read over the pipe and resolved by javac (measured 2026-11-02)
+
+Apple M1, macOS 26.6.2, JDK 21.0.5, traccar on the external volume with its disk warm, at
+`java-reader` 21810a9, **with the docs scan and the render** (no `--no-docs`/`--no-render`,
+unlike the Rust rows). Cold is `--no-source`, which names a fresh snapshot by the clock; the
+reader jar was already built.
+
+| | traccar (1,059 `.java` read, 430 tests left out) |
+|---|---:|
+| cold, two runs | **22.9 s · 21.6 s** wall |
+| of which the reader: extract / edge pass | 5.4 s / 8.1 s (53,090 edge rows, one `JavacTask` over the tree) |
+| warm, nothing changed | **7.2 s** wall |
+| edges supplied | 28,077, and 749 dispatched calls into 2,180 bodies |
+| peak resident (the analysis, not the JVM) | 365 MB |
+
+**Building the reader is a one-off, and costs about a second.** `java Build.java` compiled
+`src/` and wrote the jar in **1.81, 1.09 and 1.09 s** (three builds), and the jars were
+byte-identical. A built reader is reused for as long as its stamp, the platform and what
+`java -version` says agree.
+
+**The dispatch arm cost sixteen times its worth on a writable store, and nothing now.**
+The render's `ways_in` over traccar's 105 ways in was 0.3 s without `dispatch_links` and
+**4.8 s** with them, because the recursive query revisits a routine at every depth it can be
+reached at and dispatch multiplies the paths. A writable store now walks in memory, stamped
+with `total_changes`, and the same call is **0.20 s**; the in-memory walk alone is 27 ms. A
+read-only store's is 0.04 s.
+
 ## The C++ reader, and the first tree that is not small (v2, measured 2026-09-18)
 
 Apple M1, macOS 26.2, corpus on an external volume — **which is load-bearing here and is

@@ -325,6 +325,59 @@ At `rust-reader` 8881fc2, on the Mac, `analyze ../DunneNote` says
 and those machines prove the reader builds and reads; they do not retake these numbers
 (rule 24).
 
+## Java: spring-petclinic and traccar, and what each reproduces (2026-11-02)
+
+**Neither is Society, and both are public.** Cloned at depth 1 into `../`, read-only, with
+Tom's leave on 2026-11-01: `../spring-petclinic` at **500158f** (2026-09-29), Spring MVC and
+Spring Data JPA, 30 program files and 20 tests; and `../traccar` at **f941c40**
+(2026-11-01), a GPS tracking server on Netty, Guice, JAX-RS and JDBC, 1,059 program files
+and 430 tests. Neither has its dependencies on this machine: there is no `~/.m2`, and the
+Gradle cache holds 58 modules, none of theirs. `../Android/sources/android-37.0` (16,403
+files) is the scale probe and is not a program.
+
+```bash
+uv run dunneflow analyze ../traccar          --name traccar   --output <tmp>
+uv run dunneflow analyze ../spring-petclinic --name petclinic --output <tmp>
+uv run dunneflow check   ../traccar          --name traccar   --output <tmp> --all --verbose
+```
+
+At `java-reader` 21810a9, JDK 21.0.5, on the Mac:
+
+| | petclinic | traccar |
+|---|---:|---:|
+| `.java` files read / left out as tests | 25 / 20 (5 `package-info.java` skipped) | 1,059 / 430 |
+| Java edges supplied, every one matched to a routine by its first line | 76 | 28,077 |
+| built one of the program's own types (`calls.constructs`) | 5 | 539 |
+| several declarations — no edge | 0 | 284 |
+| outside / could not resolve | 63 / 109 | 7,970 / 16,220 |
+| dispatched calls / the bodies they may reach | — | 749 / 2,180 |
+| ways in | 21 (17 routes, `main`, 3 `@Bean`) | 106 |
+| boundary touches | **0** (Spring Data, BACKLOG 45) | 277 (218 NETWORK, 2 DATABASE) |
+| dependencies spelt, not on this machine | 17 | 62 |
+| findings | 0 broken · 0 suspect · 1 informational | 0 broken · 23 suspect · 6 informational |
+
+**Every SUSPECT left on traccar was read against the source.** Twenty-two `LOST_EDGE`, each
+dispatch the rule correctly calls `dynamic` and the finding now says so: the abstract
+`decode` with 271 implementations, `sendMessage` with two (`RedisBroadcastService`,
+`MulticastBroadcastService`), `getDeviceSession` overridden in `BaseMediaProtocolDecoder`. One
+`NO_TIMEOUT`, at `PositionForwarderWialon`'s `new DatagramSocket()`, which is right about
+the Java site; the other seven remote calls it counts are traccar's Python tools.
+`LOOPED_BOUNDARY` is a real alarm reply written on every pass of a record loop
+(`ProgressProtocolDecoder:156`). `DEAD_CODE`'s six are test-only helpers, correctly listed.
+
+**Thirty-seven earlier findings were this tool's, and are fixed** (`LANGUAGES.md`, *A seventh
+reader*): five `LOST_EDGE` whose second definition was a sibling class's override, which
+can never answer the receiver; twenty-four `DEAD_CODE` that were Guice's `@Provides`; three
+that were called through a Netty-typed argument javac could not see; and, the one no finding
+showed, about 2,000 edges javac had chosen among overloads it could not tell apart.
+
+**UNREACHABLE is 2,946 of 4,296 with the dispatch arm, from 3,575 without.** 1,968 of the
+remaining are under `protocol/`: traccar finds its protocols by scanning a package and has
+Guice build them, which no static reading follows (`BACKLOG.md`'s residues).
+
+**Society still reads 7 of 7** against `output/GOLDEN-v2.txt` at 21810a9, and the ordering
+probe passes on traccar's map and its `--api`.
+
 ## The screenshot map — what `docs/` and `docs/tutorial/` were photographed against
 
 **Every figure in the user guide and the tutorial is one this map reproduces**, so a retake

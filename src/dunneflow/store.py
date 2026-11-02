@@ -1885,10 +1885,15 @@ class Store:
     def unresolved_named(self, name: str) -> list[tuple[str, int]]:
         """Calls with no edge whose method is called `name`, by reason: the callers a routine
         may have that the map could not draw. `x.save()` on a receiver of unwritten type
-        could be any `save`; that is a reason to look, never an edge (rule 1)."""
+        could be any `save`; that is a reason to look, never an edge (rule 1).
+
+        A dispatched call whose bodies are linked (`dispatch_links`) is left out: `impact`
+        already says it *reached by dispatch*, and the same call counted again here would
+        be two facts about one thing (rule 40)."""
         rows = self.conn.execute(
             "SELECT reason, COUNT(*) AS n FROM calls"
             " WHERE callee_id IS NULL AND reason IN ('untyped', 'dynamic')"
+            "   AND site_id NOT IN (SELECT site_id FROM dispatch_links)"
             "   AND (callee_expr = ? OR callee_expr LIKE ? ESCAPE '\\')"
             " GROUP BY reason ORDER BY n DESC, reason",
             # `_` is a wildcard to LIKE and in every other Rust name.

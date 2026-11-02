@@ -215,6 +215,14 @@ class Toolchain:
     probe: tuple[str, ...] = ("--version",)
     min_version: str = ""
     install: str = ""
+    # **The command is not the whole toolchain, so the reader is asked too.** `clang++`
+    # answering its version does not mean libclang can be opened, and only the reader can
+    # find out: it answers `hello` with `declined` and a reason, and the probe turns that
+    # into `ToolchainMissing` — *not read, no toolchain* — rather than the refused plugin a
+    # surprised handshake is. Off by default, because it starts the reader once more per
+    # run, and a toolchain that is only a command has nothing more to say (C and C++,
+    # 2026-11-02).
+    asks_reader: bool = False
 
 
 @dataclass(frozen=True, slots=True)

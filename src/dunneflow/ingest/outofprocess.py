@@ -318,6 +318,15 @@ class OutOfProcessPlugin:
 
     def probe(self) -> None:
         probe_toolchain(self.manifest)
+        tc = self.manifest.toolchain
+        if tc is not None and tc.asks_reader:
+            # Started and handshaken once, here, so a reader that cannot read declines
+            # before any store is opened (`Toolchain.asks_reader`).
+            worker = NdjsonWorker(plugin_argv(self.manifest), self.manifest)
+            try:
+                worker.start()
+            finally:
+                worker.stop()
 
     def open(self, root: Path, all_files: Sequence[Path]) -> None:
         worker = NdjsonWorker(plugin_argv(self.manifest), self.manifest)

@@ -1,20 +1,50 @@
 {
   "lang": "cpp",
-  "display": "C++",
-  "version": "1.2.0",
+  "display": "C and C++",
+  "version": "2.0.0",
   "protocol": 1,
   "schema_version": 17,
   "rules": "cpp.yaml",
-  "in_process": true,
-  "reader": "extractors/cpp",
-  "receiver_words": ["this"],
+  "in_process": false,
+  "workers": 1,
+  "toolchain": {
+    "command": "clang++",
+    "probe": [
+      "--version"
+    ],
+    "min_version": "15.0.0",
+    "install": "clang and libclang: the Xcode Command Line Tools on macOS (xcode-select --install), an LLVM release or your distribution's clang and libclang packages on Linux, LLVM or Visual Studio's C++ Clang tools on Windows",
+    "asks_reader": true
+  },
+  "build": [
+    "clang++",
+    "-std=c++17",
+    "-O2",
+    "-pthread",
+    "-Ivendor",
+    "-o",
+    "{output}",
+    "reader.cpp"
+  ],
+  "receiver_words": [
+    "this"
+  ],
   "supplies_edges": false,
   "reports_literals": true,
   "discovery": {
     "suffixes": [
-      ".cpp", ".cc", ".cxx", ".c++",
-      ".hpp", ".hh", ".hxx", ".h++",
-      ".h", ".inl", ".ipp"
+      ".c",
+      ".cpp",
+      ".cc",
+      ".cxx",
+      ".c++",
+      ".hpp",
+      ".hh",
+      ".hxx",
+      ".h++",
+      ".h",
+      ".inl",
+      ".ipp"
     ],
     "skip_dirs": [
       "ThirdParty",
@@ -29,11 +59,52 @@
       "_deps"
     ],
     "skip_names": [],
-    "test_dirs": ["Tests", "tests", "test", "gtest", "googletest"],
+    "test_dirs": [
+      "Tests",
+      "tests",
+      "test",
+      "gtest",
+      "googletest"
+    ],
     "test_name_suffixes": [],
     "test_stem_prefixes": [],
-    "test_stem_suffixes": ["Test", "Tests", "_test", "_tests", ".test", ".spec"],
+    "test_stem_suffixes": [
+      "Test",
+      "Tests",
+      "_test",
+      "_tests",
+      ".test",
+      ".spec"
+    ],
     "test_stem_exact": []
   },
-  "fingerprint": ["plugin.json"]
+  "fingerprint": [
+    "plugin.json",
+    "reader.cpp",
+    "src/clang.hpp",
+    "src/config.hpp",
+    "src/edges.hpp",
+    "src/extract.hpp",
+    "src/facts.hpp",
+    "src/ids.hpp",
+    "src/json.hpp",
+    "src/rules.hpp",
+    "src/selftest.hpp",
+    "src/text.hpp",
+    "vendor/LICENSE.TXT",
+    "vendor/README.md",
+    "vendor/clang-c/BuildSystem.h",
+    "vendor/clang-c/CXCompilationDatabase.h",
+    "vendor/clang-c/CXDiagnostic.h",
+    "vendor/clang-c/CXErrorCode.h",
+    "vendor/clang-c/CXFile.h",
+    "vendor/clang-c/CXSourceLocation.h",
+    "vendor/clang-c/CXString.h",
+    "vendor/clang-c/Documentation.h",
+    "vendor/clang-c/ExternC.h",
+    "vendor/clang-c/FatalErrorHandler.h",
+    "vendor/clang-c/Index.h",
+    "vendor/clang-c/Platform.h",
+    "vendor/clang-c/Rewrite.h"
+  ]
 }

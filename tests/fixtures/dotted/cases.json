@@ -25,7 +25,8 @@
         "typescript": "declare const a: { b: { c(): void } };\na.b.c();\n",
         "go": "package p\n\nfunc f() {\n\ta.b.c()\n}\n",
         "rust": "fn f() {\n    a::b::c();\n}\n",
-        "java": "class C {\n    void f() {\n        a.b.c();\n    }\n}\n"
+        "java": "class C {\n    void f() {\n        a.b.c();\n    }\n}\n",
+        "cpp": "void f() {\n    a.b.c();\n}\n"
       }
     },
     {
@@ -38,7 +39,8 @@
         "typescript": "function helper(): void {}\nhelper();\n",
         "go": "package p\n\nfunc helper() {}\n\nfunc f() {\n\thelper()\n}\n",
         "rust": "fn helper() {}\n\nfn f() {\n    helper();\n}\n",
-        "java": "class C {\n    void helper() {}\n\n    void f() {\n        helper();\n    }\n}\n"
+        "java": "class C {\n    void helper() {}\n\n    void f() {\n        helper();\n    }\n}\n",
+        "cpp": "void helper() {}\n\nvoid f() {\n    helper();\n}\n"
       }
     },
     {
@@ -51,7 +53,8 @@
         "typescript": "declare function Path(p: string): { read_text(): string };\nexport function f(p: string) {\n  return Path(p).read_text();\n}\n",
         "go": "package p\n\nfunc f(p string) {\n\tPath(p).read_text()\n}\n",
         "rust": "fn f(p: &str) {\n    Path(p).read_text();\n}\n",
-        "java": "class C {\n    void f(String p) {\n        Path(p).read_text();\n    }\n}\n"
+        "java": "class C {\n    void f(String p) {\n        Path(p).read_text();\n    }\n}\n",
+        "cpp": "void f(const char* p) {\n    Path(p).read_text();\n}\n"
       }
     },
     {
@@ -64,7 +67,8 @@
         "typescript": "declare const a: any;\na.b(1).c(2).d();\n",
         "go": "package p\n\nfunc f() {\n\ta.b(1).c(2).d()\n}\n",
         "rust": "fn f() {\n    a.b(1).c(2).d();\n}\n",
-        "java": "class C {\n    void f() {\n        a.b(1).c(2).d();\n    }\n}\n"
+        "java": "class C {\n    void f() {\n        a.b(1).c(2).d();\n    }\n}\n",
+        "cpp": "void f() {\n    a.b(1).c(2).d();\n}\n"
       }
     },
     {
@@ -77,7 +81,8 @@
         "typescript": "const d: Record<string, () => void> = {};\nd['k']();\n",
         "go": "package p\n\nfunc f() {\n\td[\"k\"]()\n}\n",
         "rust": "fn f() {\n    d[\"k\"]();\n}\n",
-        "java": "class C {\n    void f() {\n        handlers[0].run();\n    }\n}\n"
+        "java": "class C {\n    void f() {\n        handlers[0].run();\n    }\n}\n",
+        "cpp": "void f() {\n    handlers[0].run();\n}\n"
       }
     },
     {
@@ -90,7 +95,8 @@
         "typescript": "declare const reg: any;\nreg.handlers['x'].run();\n",
         "go": "package p\n\nfunc f() {\n\treg.handlers[\"x\"].run()\n}\n",
         "rust": "fn f() {\n    reg.handlers[\"x\"].run();\n}\n",
-        "java": "class C {\n    void f() {\n        reg.handlers[0].run();\n    }\n}\n"
+        "java": "class C {\n    void f() {\n        reg.handlers[0].run();\n    }\n}\n",
+        "cpp": "void f() {\n    reg.handlers[0].run();\n}\n"
       }
     },
     {
@@ -102,7 +108,8 @@
         "python": "import numpy as np\nnp.array([1])\n",
         "typescript": "import * as np from 'numpy';\nnp.array([1]);\n",
         "go": "package p\n\nimport np \"example.com/numpy\"\n\nfunc f() {\n\tnp.array(1)\n}\n",
-        "rust": "use numpy as np;\n\nfn f() {\n    np::array(1);\n}\n"
+        "rust": "use numpy as np;\n\nfn f() {\n    np::array(1);\n}\n",
+        "cpp": "namespace numpy {}\nnamespace np = numpy;\n\nvoid f() {\n    np::array();\n}\n"
       }
     },
     {
@@ -115,7 +122,8 @@
         "typescript": "import { loads } from 'json';\nloads('{}');\n",
         "go": "package p\n\nimport . \"example.com/json\"\n\nfunc f() {\n\tloads(\"{}\")\n}\n",
         "rust": "use json::loads;\n\nfn f() {\n    loads(\"{}\");\n}\n",
-        "java": "import static json.Json.loads;\n\nclass C {\n    void f() {\n        loads(\"{}\");\n    }\n}\n"
+        "java": "import static json.Json.loads;\n\nclass C {\n    void f() {\n        loads(\"{}\");\n    }\n}\n",
+        "cpp": "using json::loads;\n\nvoid f() {\n    loads(\"{}\");\n}\n"
       }
     },
     {
@@ -135,7 +143,8 @@
       "source": {
         "typescript": "declare function foo<T>(): void;\nfoo<string>();\n",
         "go": "package p\n\nfunc f() {\n\tfoo[string]()\n}\n",
-        "rust": "fn f() {\n    foo::<String>();\n}\n"
+        "rust": "fn f() {\n    foo::<String>();\n}\n",
+        "cpp": "void f() {\n    foo<int>();\n}\n"
       }
     },
     {
@@ -145,7 +154,8 @@
       "why": "`new Foo()` is `Foo` **and** carries `is_construction`, so the two spellings stay two facts — asserting only the name would pass on a reader that had flattened them (rule 37)",
       "source": {
         "typescript": "class Foo {}\nnew Foo();\n",
-        "java": "class Foo {\n    void f() {\n        new Foo();\n    }\n}\n"
+        "java": "class Foo {\n    void f() {\n        new Foo();\n    }\n}\n",
+        "cpp": "struct Foo {};\n\nvoid f() {\n    new Foo();\n}\n"
       },
       "expect_construction": true
     },
@@ -175,7 +185,8 @@
       "why": "TypeScript's receiver word is `this`, written as written and never expanded",
       "source": {
         "typescript": "class C {\n  m(): void {\n    this.other();\n  }\n\n  other(): void {}\n}\n",
-        "java": "class C {\n    void m() {\n        this.other();\n    }\n\n    void other() {}\n}\n"
+        "java": "class C {\n    void m() {\n        this.other();\n    }\n\n    void other() {}\n}\n",
+        "cpp": "struct C {\n    void other() {}\n\n    void m() {\n        this->other();\n    }\n};\n"
       }
     },
     {
@@ -193,7 +204,8 @@
       "expect": "List.of",
       "why": "a type argument written between the qualifier and the name is not part of either; Java cannot write one on a bare name",
       "source": {
-        "java": "import java.util.List;\n\nclass C {\n    void f() {\n        List.<String>of();\n    }\n}\n"
+        "java": "import java.util.List;\n\nclass C {\n    void f() {\n        List.<String>of();\n    }\n}\n",
+        "cpp": "void f() {\n    List::of<std::string>();\n}\n"
       }
     },
     {
@@ -203,7 +215,8 @@
       "expect_construction": true,
       "why": "a construction is spelt as the type is written, package and all, and without its type arguments",
       "source": {
-        "java": "class C {\n    void f() {\n        new java.net.Socket();\n    }\n}\n"
+        "java": "class C {\n    void f() {\n        new java.net.Socket();\n    }\n}\n",
+        "cpp": "void f() {\n    new java::net::Socket();\n}\n"
       }
     },
     {
@@ -212,8 +225,12 @@
       "expect": "x.run",
       "why": "a cast says how a value is had, not which value it is, as a non-null assertion does",
       "source": {
-        "java": "class C {\n    void f(Object x) {\n        ((Runnable) x).run();\n    }\n}\n"
+        "java": "class C {\n    void f(Object x) {\n        ((Runnable) x).run();\n    }\n}\n",
+        "cpp": "struct Runnable { void run(); };\n\nvoid f(void* x) {\n    static_cast<Runnable*>(x)->run();\n}\n"
       }
     }
-  ]
+  ],
+  "suffixes": {
+    "cpp": ".cpp"
+  }
 }

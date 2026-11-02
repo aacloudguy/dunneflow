@@ -1,393 +1,291 @@
-"""The C++ reader above the lexer: scopes, routines, calls, control and identity.
+"""The C and C++ reader: generated where it can be, pinned where it cannot, and asked through
+the host.
 
-Every test here is a shape that was wrong at some point while the reader was being written,
-and most of them were wrong in a way that produced a *plausible* map rather than an error.
-That is the argument for the file: a C++ reader with no compiler cannot be checked by
-compiling anything, so what checks it is a list of shapes whose right answer is known.
+The three kinds of claim `test_java_reader.py` makes, and only the last two need clang:
 
-The Unreal shapes are not decoration. `UCLASS(...) class FOO_API AThing : public AActor`
-and `GENERATED_BODY()` are on essentially every class in the demo corpus, and each of them
-broke the reader in a different way before it was right.
+- **What is generated is current.** `facts.hpp` and the fingerprint list are regenerated from
+  `schema.py` and from the tree, and compared.
+- **The second implementations agree with the first.** BLAKE2b, every id function and the
+  decoding are written again in C++, and the reader's own `--self-test` holds them to the
+  vectors the host wrote (`tests/fixtures/ids/vectors.json`).
+- **The reader answers the host as the host asks.** Built by the host's own `build` seam,
+  handshaken, opened and read through `OutOfProcessPlugin` (rule 48's shape).
+
+Skipped for two named reasons only, each said in the skip: this build has no C and C++
+plugin, or this machine has no `clang++` and libclang the plugin's probe accepts.
 """
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from dunneflow.extractors.cpp import names, routines, scopes
-from dunneflow.extractors.cpp.ctx import Ctx
-from dunneflow.extractors.cpp.extract import extract_file
-from dunneflow.extractors.cpp.lexer import mask
-from dunneflow.extractors.cpp.preprocessor import scan
-from dunneflow.extractors.cpp.tokens import tokenize
+from dunneflow import ingest
+from dunneflow.ingest.contract import ToolchainMissing
+from dunneflow.ingest.outofprocess import built_reader
+from dunneflow.schema import ControlKind, FileFacts, hash_source
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import gen_facts_cpp  # noqa: E402
+
+PLUGIN = ingest.PLUGINS.get("cpp")
+HERE = PLUGIN.manifest.root if PLUGIN is not None else None
+VECTORS = ROOT / "tests" / "fixtures" / "ids" / "vectors.json"
+FIXTURE = ROOT / "tests" / "fixtures" / "cpp"
 
 
-def ctx_of(src: str, path: str = "m.cpp") -> Ctx:
-    m = mask(src)
-    pre = scan(m)
-    toks = tokenize(pre.code, m)
-    return Ctx(path=path, module="m", masked=m, pre=pre, toks=toks,
-               root=scopes.build(toks))
+def _clang_missing() -> str:
+    if PLUGIN is None:
+        return "this build ships no C and C++ reader"
+    try:
+        PLUGIN.probe()
+    except ToolchainMissing as exc:
+        return f"no clang and libclang this reader accepts on this machine: {exc}"
+    return ""
 
 
-def kinds(src: str) -> list[tuple[str, str]]:
-    return [(s.kind.value, s.name) for s in scopes.walk(ctx_of(src).root)
-            if s.kind is not scopes.ScopeKind.FILE]
+_WHY = _clang_missing()
+needs_plugin = pytest.mark.skipif(PLUGIN is None, reason="this build ships no C and C++ reader")
+needs_clang = pytest.mark.skipif(bool(_WHY), reason=_WHY or "-")
 
 
-def routine_names(src: str) -> list[str]:
-    return [r.qualname for r in routines.read(ctx_of(src))[0]]
+# -------------------------------------------------------- generated, no clang --- #
+
+@needs_plugin
+def test_the_reader_s_types_are_the_schema_s():
+    assert HERE is not None
+    facts = HERE / "src" / "facts.hpp"
+    assert facts.read_text(encoding="utf-8") == gen_facts_cpp.generate(), (
+        "facts.hpp is not what schema.py generates: uv run python tools/gen_facts_cpp.py --write")
 
 
-def fold(src: str) -> str:
-    return names.fold(tokenize(src), 0)[0]
+@needs_plugin
+def test_every_file_the_reader_is_built_from_is_in_the_fingerprint():
+    """Rule 12. Named, never globbed — so this is the glob, and it is what catches a file
+    added to `src/` or `vendor/` without `--write`."""
+    assert PLUGIN is not None
+    named = list(PLUGIN.manifest.fingerprint)
+    assert named == gen_facts_cpp.fingerprint(), (
+        "plugin.json's fingerprint is not the files on disk: "
+        "uv run python tools/gen_facts_cpp.py --write")
+    assert {"plugin.json", "reader.cpp", "vendor/clang-c/Index.h",
+            "vendor/LICENSE.TXT"} <= set(named)
 
 
-# ------------------------------------------------- the dotted contract, in C++ --- #
+@needs_plugin
+def test_the_build_is_one_argv_and_libclang_is_never_linked():
+    """One command for every platform: nothing names where this machine keeps libclang,
+    because the reader opens it at run time (`src/clang.hpp`)."""
+    assert PLUGIN is not None
+    m = PLUGIN.manifest
+    assert m.build[0] == "clang++" and "{output}" in m.build and "reader.cpp" in m.build
+    assert not any(a.startswith(("-l", "-L")) for a in m.build), "libclang is opened, not linked"
+    assert m.toolchain is not None and m.toolchain.command == "clang++"
+    assert m.toolchain.asks_reader, "clang++ answering is not libclang opening"
+    assert not m.in_process
 
-@pytest.mark.parametrize(("written", "folded"), [
-    ("FGuid::ExportTextItem", "FGuid.ExportTextItem"),
-    ("ptr->Method", "ptr.Method"),
-    ("obj.Method", "obj.Method"),
-    ("A::B::C::d", "A.B.C.d"),
-    # Clause 2 — and this one is the commonest file boundary in the demo corpus.
-    ("IFileManager::Get().Delete", "IFileManager.Get.Delete"),
-    ("a.b(1).c(2).d", "a.b.c.d"),
-    # Clause 6. Without it every templated call in Unreal is a name nothing matches.
-    ("TArray<FString>::Add", "TArray.Add"),
-    ("MakeShared<FThing>", "MakeShared"),
-    # `>>` has to split, or the outer list never closes.
-    ("TArray<TArray<int>>::Add", "TArray.Add"),
-    # Clause 3 — naming this would mean deciding what `handlers[k]` holds.
-    ("handlers[k].run", ""),
-    # Clause 8: the receiver word is written as written.
-    ("this->Foo", "this.Foo"),
-    ("Outer::~Outer", "Outer.~Outer"),
+
+@needs_plugin
+def test_the_reader_claims_c_and_keeps_every_suffix_the_old_one_had():
+    """Tom's decision: one plugin for C and C++, which owns `.h`."""
+    assert PLUGIN is not None
+    suffixes = set(PLUGIN.manifest.discovery.suffixes)
+    assert {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".inl"} <= suffixes
+    assert "ThirdParty" in PLUGIN.manifest.discovery.skip_dirs
+
+
+@pytest.mark.parametrize("said, ok", [
+    ("Apple clang version 21.0.0 (clang-2100.3.34.2)", True),
+    ("Homebrew clang version 22.1.0", True),
+    ("clang version 19.1.5", True),
+    ("Ubuntu clang version 18.1.3 (1ubuntu1)", True),
+    ("clang version 14.0.0", False),
+    ("", False),
 ])
-def test_the_three_separators_fold_to_one_name(written, folded):
-    """`::`, `->` and `.` are three *acts* and one *name*.
+def test_the_version_probe_reads_what_each_clang_says(said, ok):
+    from dunneflow.ingest.outofprocess import _at_least
 
-    A rule matching `FFileHelper.SaveStringToFile` has to fire whether the code reached it
-    through a scope, a pointer or a reference — and a reader that spelled them differently
-    would not fail, it would make every rule miss, and the map would come back with no
-    boundaries at all, looking exactly like a program that has none.
-    """
-    assert fold(written) == folded
+    assert _at_least(said, "15.0.0") is ok
 
 
-# ------------------------------------------------------------- what a `{` is --- #
+# -------------------------------------------------------------- with clang --- #
 
-def test_a_declaration_with_no_body_is_not_a_routine():
-    """The rule the whole reader is built on, and it settles two problems at once.
+@pytest.fixture(scope="module")
+def binary() -> Path:
+    if _WHY:
+        pytest.skip(_WHY)
+    assert PLUGIN is not None
+    return built_reader(PLUGIN.manifest)
 
-    Unreal is 51,282 headers against 23,322 `.cpp`. Read as declarations they would roughly
-    double the map with rows that have nothing in them — and there would then be a header's
-    `void C::d();` and a `.cpp`'s `void C::d() {}` to reconcile, which `make_id` cannot do
-    because `module` is per file. Refusing the declaration dissolves both.
-    """
-    assert kinds("class C { void d(); };") == [("record", "C")]
-    assert routine_names("class C { void d(); };") == []
 
-
-def test_an_out_of_line_definition_and_a_nested_one_fold_to_the_same_name():
-    """`void A::B::C::d()` at file scope, and `void C::d()` inside `namespace A::B`."""
-    flat = routine_names("void A::B::C::d() { int x = 1; }")
-    nested = routine_names("namespace A { namespace B { void C::d() { int x = 1; } } }")
-    assert flat == nested == ["A.B.C.d"]
-
-
-def test_a_constructors_member_initialiser_list_is_not_a_parameter_list():
-    """`Foo::Foo(int x) : x_(x), y_(0) {` ends in `)` and is a definition.
-
-    Read backwards from the `{` this is indistinguishable from an expression; read forwards
-    from the declarator the initialisers are simply what follows a `:`, and a `:` is where
-    the qualifier scan stops.
-    """
-    assert routine_names("Foo::Foo(int x) : x_(x), y_(0) { }") == ["Foo.Foo"]
-
-
-def test_a_braced_initialiser_is_not_a_function():
-    assert ("function", "") not in kinds("int a[] = {1,2,3};")
-    assert routine_names("int a[] = {1,2,3};\nvoid f() { }") == ["f"]
-
-
-def test_a_function_pointer_declaration_is_not_a_routine():
-    assert routine_names("void (*fp)(int) = nullptr;\nvoid g() { }") == ["g"]
-
-
-def test_an_operator_owns_the_parentheses_that_are_part_of_its_name():
-    """`operator()(int)` is a nullary-looking name taking one argument.
-
-    Treating the first `(` after `operator` as the parameter list silently garbles every
-    functor in the corpus — and `operator<<` is defined 180 times in one Unreal module.
-    """
-    got = routine_names(
-        "struct S { int operator()(int a) const { return a; } "
-        "bool operator==(const S& o) const { return true; } };")
-    assert got == ["S.operator()", "S.operator=="]
-
-
-def test_a_template_header_is_stepped_over():
-    assert routine_names("template<typename T>\nvoid Apply(T v) { }") == ["Apply"]
-
-
-# ------------------------------------------------ the two Unreal shapes --- #
-
-def test_a_macro_wearing_a_parameter_list_is_not_a_function():
-    """`UCLASS(Blueprintable) class FOO_API AThing : public AActor {`.
-
-    A name, a parameter list and then a base clause — the exact shape of a constructor. The
-    tell is that a record keyword can never sit between a parameter list and a body, so one
-    there means the candidate was a macro. Without it the class is a routine called
-    `UCLASS` and the class itself is not in the map at all.
-    """
-    got = kinds("UCLASS(Blueprintable)\nclass FOO_API AThing : public AActor\n{\n};")
-    assert got == [("record", "AThing")]
-
-
-def test_generated_body_does_not_steal_the_first_methods_body():
-    """`GENERATED_BODY()` carries no `;`, so it runs into the method after it.
-
-    Two defects met here. The macro's own `()` reads as a parameter list, so the first
-    method of every UObject was called `GENERATED_BODY` and owned `Tick`'s body; and
-    `public:` after it reads as a member-initialiser list, because `:` is how one begins.
-    An access label is a statement boundary for exactly that reason.
-    """
-    src = ("UCLASS()\nclass FOO_API AThing : public AActor\n{\n"
-           "    GENERATED_BODY()\npublic:\n"
-           "    void Tick(float D) override { Count += 1; }\n"
-           "private:\n    void Secret() { }\n    int Count = 0;\n};")
-    rs, structs, _, _ = routines.read(ctx_of(src))
-    assert [r.qualname for r in rs] == ["AThing.Tick", "AThing.Secret"]
-    assert [r.visibility for r in rs] == ["public", "private"]
-    assert [f.name for f in structs[0].fields] == ["Count"]
-
-
-def test_each_macro_argument_becomes_its_own_decorator():
-    """The one idea that lets Blueprint be a way in with no new rule grammar.
-
-    `EntrypointRule.matches_decorator` tests a decorator's *name* and has no `contains`
-    form, so flattened into one string `BlueprintCallable` is matchable by nothing the
-    detector grammar can express. Split, the existing exact-match list reaches it.
-    """
-    src = ('class A {\n UFUNCTION(BlueprintCallable, Category="Combat")\n'
-           ' void Fire(int R) { Shoot(R); }\n};')
-    rs, _, _, _ = routines.read(ctx_of(src))
-    assert rs[0].decorators == ["UFUNCTION", "BlueprintCallable", "Category"]
-    assert rs[0].returns == "void", "the annotation leaked into the return type"
-
-
-def test_a_macro_in_a_default_argument_is_not_a_decorator():
-    """`void Fire(const FString& N = TEXT("x"))` registers nothing.
-
-    Decorators sit *before* the declarator and parameters after it, so the scan is bounded
-    by where the name begins. Scanned over the whole header, `TEXT` — a string wrapper — is
-    recorded as a registration.
-    """
-    src = 'class A { void Fire(const FString& N = TEXT("x")) { } };'
-    rs, _, _, _ = routines.read(ctx_of(src))
-    assert rs[0].decorators == []
-
-
-def test_a_return_type_does_not_take_the_class_qualifier_with_it():
-    """`void AThing::Fire(` returns `void`, not `void AThing`.
-
-    Walking back from the `(` over "identifiers and `::`" eats the qualifier, because a
-    qualifier is made of exactly the tokens a return type is made of. The one walk that
-    knows where the name begins is the one that decides where the type ends.
-    """
-    rs, _, _, _ = routines.read(ctx_of("void AThing::Fire(int R) { }"))
-    assert rs[0].returns == "void"
-    rs2, _, _, _ = routines.read(ctx_of("FORCEINLINE static int Helper(int a) { return a; }"))
-    assert rs2[0].returns == "int", "a storage specifier is not part of a type"
-
-
-# ------------------------------------------------------------------ identity --- #
-
-def test_a_name_defined_in_two_files_is_two_routines():
-    """The file is part of a routine's identity, and Unreal proved it has to be.
-
-    `IoDispatcherFilesystemStats.h` gives its methods empty inline bodies under one arm of
-    an `#if` and the `.cpp` defines them for real. Both arms are read as live, so **221
-    qualnames in 400 files had a body in two places** and the store refused the second with
-    `UNIQUE constraint failed: routines.id`.
-    """
-    a = routines.read(ctx_of("void C::d() { }", path="a.h"))[0][0]
-    b = routines.read(ctx_of("void C::d() { }", path="a.cpp"))[0][0]
-    assert a.qualname == b.qualname == "C.d"
-    assert a.id != b.id, "two files' definitions of one name collided"
-
-
-def test_two_definitions_in_one_file_are_two_identities():
-    """Overloads, and both arms of an `#ifdef` read as live. Neither replaces the other."""
-    rs, _, _, _ = routines.read(ctx_of(
-        "void f(int a) { }\nvoid f(const char* b) { }\nvoid f(double c) { }"))
-    assert [r.qualname for r in rs] == ["f", "f", "f"]
-    assert len({r.id for r in rs}) == 3
-
-
-def test_a_record_declared_twice_in_one_file_is_two_identities():
-    """The same defect one table over — it refused `structures.id` on the second run."""
-    _, structs, _, _ = routines.read(ctx_of(
-        "#ifdef A\nstruct S { int x; };\n#else\nstruct S { int y; };\n#endif"))
-    assert [s.name for s in structs] == ["S", "S"]
-    assert len({s.id for s in structs}) == 2
-
-
-# -------------------------------------------------------- calls and boundaries --- #
-
-def test_a_chained_call_takes_its_arguments_from_the_last_call():
-    """`IFileManager::Get().FileExists(*InPath)` touches `*InPath`.
-
-    Taking them from the parentheses the fold started at sliced from `Get()`'s `(` to
-    `FileExists(...)`'s `)`, so every chained boundary in Unreal recorded a target of
-    `').FileExists(*InPath'` — a string that is in the file, starts mid-expression, and is
-    an argument to nothing.
-    """
-    facts = _facts("void f() { IFileManager::Get().FileExists(*InPath); }")
-    hit = [b for b in facts.boundaries if b.evidence == "IFileManager.Get.FileExists"]
-    assert hit and hit[0].target == "*InPath"
-
-
-def test_a_string_literal_argument_is_still_an_argument():
-    """A boundary's target is usually a literal, and literals are blanked for the matcher.
-
-    So `getenv("HOME")` came back with an empty target — in a reader whose whole job at a
-    boundary is to say *what* it touches. The mask puts them back as single tokens, at the
-    same offsets, so a `{` inside one still cannot be mistaken for a brace.
-    """
-    facts = _facts('void f() { const char* h = getenv("HOME"); }')
-    assert [b.target for b in facts.boundaries if b.evidence == "getenv"] == ['"HOME"']
-
-
-def test_a_control_keyword_is_never_a_call():
-    """Without this every `if (x)` is a call to a routine named `if`."""
-    facts = _facts("void f() { if (x) { g(); } while (y) { h(); } }")
-    assert sorted(c.callee_expr for c in facts.calls) == ["g", "h"]
-
-
-def test_every_call_is_external_and_says_so():
-    """`supplies_edges` is false: a C++ call cannot be resolved without types, and a
-    name-matched edge in a language with overloading would be wrong often enough to make
-    the whole map untrustworthy (rule 5). The walk names the count."""
-    facts = _facts("void f() { g(); }")
-    assert all(c.external and c.callee_id is None for c in facts.calls)
-
-
-# ------------------------------------------------------------------- control --- #
-
-def test_the_control_vocabulary_maps_without_inventing_an_arm_word():
-    facts = _facts(
-        "void f() {\n"
-        "  for (auto& x : xs) { use(x); }\n"
-        "  while (a) { b(); }\n"
-        "  if (c) { d(); } else if (e) { g(); } else { h(); }\n"
-        "  switch (k) { case 1: p(); break; default: q(); }\n"
-        "  try { r(); } catch (const E& ex) { s(); }\n"
-        "}")
-    got = {(c.kind.value, c.word) for c in facts.control}
-    assert ("LOOP", "for") in got
-    assert ("LOOP", "while") in got
-    assert ("DECISION", "if") in got
-    assert ("DECISION", "switch") in got
-    assert ("HANDLER", "try") in got
-    arms = {a.kind.value for a in facts.control_arms}
-    assert {"if", "else if", "else", "case", "default", "try", "catch"} <= arms
-
-
-def test_a_range_for_records_its_container_as_the_once_span():
-    """The one thing evaluated before the first pass — Python's `for x in y`, exactly.
-
-    A three-clause `for` gets nothing: its init is arithmetic and its condition and
-    increment run every pass, which is `while`'s shape.
-    """
-    ranged = _facts("void f() { for (auto& x : Items) { use(x); } }").control[0]
-    assert ranged.once_start > 0
-    three = _facts("void f() { for (int i = 0; i < n; ++i) { use(i); } }").control[0]
-    assert (three.once_start, three.once_end) == (0, 0)
-
-
-def test_a_short_if_that_leaves_is_a_guard():
-    guard = _facts("void f() { if (!ok) { return; } work(); }").control[0]
-    assert guard.kind.value == "GUARD"
-
-
-def test_a_point_with_one_way_through_it_gets_no_arms():
-    """The schema's own rule: an arm row is a choice that was recorded."""
-    facts = _facts("void f() { if (x) { a(); } }")
-    assert facts.control_arms == []
-
-
-# ------------------------------------------------------------------- the file --- #
-
-def test_the_probe_file_reads_as_a_whole_program():
-    """The smallest real C++ in this repository, read end to end.
-
-    It is the tree `tools/fingerprints.py` gates against, so if this stops being true the
-    gate is comparing a stamp over an empty map — which is the nothing it exists to refuse
-    (rule 37).
-    """
-    root = Path(__file__).resolve().parent / "fixtures" / "polyglot"
-    facts = extract_file(root / "probe.cpp", root)
-    assert facts.errors == []
-    assert [r.qualname for r in facts.routines] == ["probe.LoadConfig", "main"]
-    assert [e.kind.value for e in facts.entrypoints] == ["MAIN"]
-    assert {b.kind.value for b in facts.boundaries} == {"FILE", "ENV", "STDIO"}
-    assert [s.name for s in facts.structures] == ["Setting"]
-    assert [c.name for c in facts.constants if c.name == "Retries"]
-    assert {i.module for i in facts.imports} == {"cstdio", "cstdlib", "string", "vector"}
-
-
-def _facts(src: str):
-    """One in-memory file through the whole reader, so what is tested is what runs."""
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        path = root / "m.cpp"
-        path.write_text(src, encoding="utf-8")
-        return extract_file(path, root)
-
-
-def test_a_letter_outside_ascii_does_not_cost_the_file(tmp_path):
-    """One typo in one file took that file and its header out of the map entirely.
-
-    `Engine/Plugins/AI/MassAI/.../MassStateTreeSubsystem.cpp` in `UnrealEngine-release`
-    contains `ĘntityManager` — U+0118, where somebody meant `E`. `ch.isalpha()` is true of
-    it and `_IDENT_RE` was `[A-Za-z_$]`, so the character was steered into a branch whose
-    pattern could not match it and fell on a bare `assert`. The reader died, the file was
-    counted as failed, and **no `files` row was written for it** — so the map itself could
-    not say the file had ever been seen.
-
-    Found by analysing Unreal in parts: four parts held one or two fewer files than the walk
-    had found, seven files in all, and every one of them read perfectly well by hand.
-
-    The identifier is kept **whole**. Skipping the character instead would tokenise
-    `ntityManager`, an identifier that appears in no source file anywhere, and report it with
-    the same confidence as a real one.
-    """
-    src = (
-        "struct Holder { int x; };\n"
-        "void Use()\n"
-        "{\n"
-        "\tHolder* ĘntityManager = nullptr;\n"
-        "\t(void)ĘntityManager;\n"
-        "}\n"
+def _self_test(binary: Path, vectors: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
+        [str(binary), "--self-test", str(vectors)],
+        capture_output=True, text=True, timeout=120, check=False,
     )
-    root = tmp_path / "tree"
-    root.mkdir()
-    (root / "m.cpp").write_text(src, encoding="utf-8")
 
-    facts = extract_file(root / "m.cpp", root)
-    assert facts.errors == [], facts.errors
-    assert [r.name for r in facts.routines] == ["Use"]
 
-    from dunneflow.extractors.cpp.lexer import mask
-    from dunneflow.extractors.cpp.preprocessor import scan
-    from dunneflow.extractors.cpp.tokens import tokenize
-    masked = mask(src)
-    words = [t.text for t in tokenize(scan(masked).code, masked)]
-    assert "ĘntityManager" in words, "the identifier must survive as one word"
-    assert "ntityManager" not in words, "a half-eaten identifier is worse than none"
+@needs_clang
+def test_the_second_implementations_agree_with_the_first(binary):
+    out = _self_test(binary, VECTORS)
+    assert out.returncode == 0, out.stderr[-3000:]
+    assert " 0 disagreeing" in out.stderr
+
+
+@needs_clang
+def test_a_tampered_vector_is_seen_to_fail(binary, tmp_path):
+    """Rule 59: a harness whose every check passes has not shown it can fail."""
+    data = json.loads(VECTORS.read_text(encoding="utf-8"))
+    data["definition_id"][0][3] = "0" * 16
+    data["decode"][2][1] = "A"
+    bad = tmp_path / "tampered.json"
+    bad.write_text(json.dumps(data), encoding="utf-8")
+    out = _self_test(binary, bad)
+    assert out.returncode == 2, out.stderr[-3000:]
+    assert "DISAGREES definition_id" in out.stderr and "DISAGREES decode" in out.stderr
+
+
+@needs_clang
+def test_a_machine_without_libclang_is_a_missing_toolchain_not_a_refused_plugin(monkeypatch):
+    """`clang++` answers and libclang cannot be opened: the reader declines the handshake, and
+    the walk reads that as *not read, no toolchain* (`walk._runnable`) — never as the build
+    defect a `PluginRefused` would stop the run for (rule 49)."""
+    assert PLUGIN is not None
+    monkeypatch.setenv("DUNNEFLOW_LIBCLANG", "/nowhere/libclang.so")
+    with pytest.raises(ToolchainMissing, match="no libclang could be opened"):
+        PLUGIN.probe()
+
+
+def _read(root: Path, files: list[Path]) -> tuple[dict[str, FileFacts], list[str]]:
+    assert PLUGIN is not None
+    PLUGIN.open(root, files)
+    try:
+        notes = list(PLUGIN.opened_notes)
+        return {ff.path: ff for ff in PLUGIN.extract(files, root)}, notes
+    finally:
+        PLUGIN.close()
+
+
+@pytest.fixture(scope="module")
+def read():
+    if _WHY:
+        pytest.skip(_WHY)
+    files = sorted(p for p in FIXTURE.rglob("*") if p.is_file())
+    return _read(FIXTURE, files)
+
+
+@needs_clang
+def test_every_file_is_read_and_none_is_an_error(read):
+    facts, _ = read
+    assert set(facts) == {"c/tool.c", "include/lib/store.h", "src/app.cpp"}
+    assert all(not ff.errors for ff in facts.values()), {p: ff.errors for p, ff in facts.items()}
+    assert {ff.lang for ff in facts.values()} == {"cpp"}
+
+
+@needs_clang
+def test_an_include_directory_is_inferred_from_a_unique_suffix(read):
+    """`#include "lib/store.h"` names a file under `include/`, which nothing declares: one
+    file in the tree ends with that spelling, so its prefix is an include directory."""
+    _, notes = read
+    assert any(n.startswith("1 include directories inferred") for n in notes), notes
+
+
+@needs_clang
+def test_routines_are_definitions_named_by_namespace_and_record(read):
+    facts, _ = read
+    app = {r.qualname: r for r in facts["src/app.cpp"].routines}
+    assert set(app) == {"lib.Store.Fire", "lib.FileStore.Load", "classify", "run", "main"}
+    fire = app["lib.Store.Fire"]
+    assert fire.is_method and fire.class_name == "Store"
+    assert [(p.name, p.type) for p in fire.params] == [("Times", "int")]
+    header = {r.qualname for r in facts["include/lib/store.h"].routines}
+    # An inline body is a routine; a declaration and `= default` are not.
+    assert header == {"lib.Store.Count"}
+
+
+@needs_clang
+def test_a_way_in_is_read_off_a_declaration_whose_body_is_elsewhere(read):
+    facts, _ = read
+    eps = facts["include/lib/store.h"].entrypoints
+    assert [(e.kind.value, e.name, e.routine_id) for e in eps] == [("LIBRARY", "Fire", None)]
+    mains = [e for ff in facts.values() for e in ff.entrypoints if e.kind.value == "MAIN"]
+    assert sorted(e.name for e in mains) == ["main", "main"]
+
+
+@needs_clang
+def test_a_construction_written_as_a_declaration_is_one(read):
+    """`std::ifstream in(key);` opens a file. The syntactic reader documented a refusal of this
+    shape and never implemented it; clang knows it is a construction."""
+    facts, _ = read
+    app = facts["src/app.cpp"]
+    made = {c.callee_expr for c in app.calls if c.is_construction}
+    assert made == {"std.ifstream", "std.vector"}, made
+    hits = {(b.kind.value, b.direction.value, b.target) for b in app.boundaries}
+    assert ("FILE", "IN", "key") in hits
+    # `lib::FileStore store;` constructs nothing anybody wrote parentheses for.
+    assert "lib.FileStore" not in {c.callee_expr for c in app.calls}
+
+
+@needs_clang
+def test_a_call_keeps_the_dotted_contract(read):
+    facts, _ = read
+    calls = {c.callee_expr for c in facts["src/app.cpp"].calls}
+    assert {"store.Load.size", "store.Fire", "std.getline", "classify", "run"} <= calls
+
+
+@needs_clang
+def test_an_else_if_ladder_is_one_decision_with_its_arms(read):
+    facts, _ = read
+    app = facts["src/app.cpp"]
+    by_word = {(p.word, p.line_start): p for p in app.control}
+    ladder = by_word[("if", 28)]
+    assert ladder.kind is ControlKind.DECISION and ladder.arms == 3
+    arms = [a.kind.value for a in app.control_arms if a.point_id == ladder.point_id]
+    assert arms == ["if", "else if", "else"]
+    assert not any(w == "if" and 28 < line <= 34 for w, line in by_word), "an else-if is an arm"
+    assert by_word[("for", 40)].once_start == 40
+    assert by_word[("switch", 43)].arms == 2
+    assert by_word[("try", 49)].kind is ControlKind.HANDLER
+
+
+@needs_clang
+def test_c_is_read(read):
+    facts, _ = read
+    tool = facts["c/tool.c"]
+    assert {r.qualname for r in tool.routines} == {"count_lines", "main"}
+    assert {(b.kind.value, b.evidence) for b in tool.boundaries} >= {
+        ("FILE", "fopen"), ("ENV", "getenv"), ("STDIO", "printf")}
+    guard = [p for p in tool.control if p.word == "if" and p.line_start == 11]
+    assert guard and guard[0].kind is ControlKind.GUARD
+
+
+@needs_clang
+def test_a_crlf_file_hashes_as_the_host_reads_it(tmp_path):
+    """`SOURCE_TEXT`: the reader parses and hashes the text the host hashed, so a CRLF file is
+    not refused as having changed while it was read."""
+    f = tmp_path / "crlf.c"
+    f.write_bytes(b"int main(void)\r\n{\r\n    return 0;\r\n}\r\n")
+    facts, _ = _read(tmp_path, [f])
+    ff = facts["crlf.c"]
+    assert not ff.errors, ff.errors
+    assert ff.content_hash == hash_source(f.read_text(encoding="utf-8", errors="replace"))
+    assert [r.line_start for r in ff.routines] == [1]
+
+
+@needs_clang
+def test_an_include_two_files_answer_adds_no_directory(tmp_path):
+    """Rule 1: a guess between two headers is a wrong declaration as often as a right one."""
+    for d in ("a", "b"):
+        (tmp_path / d / "inc").mkdir(parents=True)
+        (tmp_path / d / "inc" / "same.h").write_text("int x;\n", encoding="utf-8")
+    src = tmp_path / "main.c"
+    src.write_text('#include "inc/same.h"\nint main(void) { return 0; }\n', encoding="utf-8")
+    files = [src, tmp_path / "a" / "inc" / "same.h", tmp_path / "b" / "inc" / "same.h"]
+    _, notes = _read(tmp_path, files)
+    assert any("1 answered by more than one file" in n for n in notes), notes

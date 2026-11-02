@@ -148,6 +148,15 @@ def load(path: Path | None = None) -> list[Case]:
     ]
 
 
+def _suffixes(path: Path | None = None) -> dict[str, str]:
+    """`cases.json`'s `suffixes`: the file suffix a language's snippets are written with."""
+    where = path or CASES
+    if not where.exists():
+        return {}
+    raw = json.loads(where.read_text(encoding="utf-8"))
+    return {str(k): str(v) for k, v in (raw.get("suffixes") or {}).items()}
+
+
 def run(plugin: IngestPlugin, lang: str, cases: Sequence[Case] | None = None) -> list[Result]:
     """Put every case through this reader's **ordinary** extract, and report.
 
@@ -157,7 +166,9 @@ def run(plugin: IngestPlugin, lang: str, cases: Sequence[Case] | None = None) ->
     not the one the map is built from.
     """
     cases = cases or load()
-    suffix = sorted(plugin.manifest.discovery.suffixes)[0]
+    # A language whose suffixes hold more than one dialect names the one its snippets are
+    # written in: C and C++ share a reader, and `.c` sorts first and is the wrong one.
+    suffix = _suffixes().get(lang) or sorted(plugin.manifest.discovery.suffixes)[0]
     out: list[Result] = []
     with tempfile.TemporaryDirectory(prefix="dunneflow-conform-") as td:
         root = Path(td)

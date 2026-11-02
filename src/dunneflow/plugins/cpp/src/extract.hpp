@@ -1,0 +1,1851 @@
+// One file in, one `FileFacts` out, from one parse — and, from the same parse, what the
+// edge pass will need to know about every call this file makes.
+//
+// **Structure from the AST, spelling from the tokens.** clang says what a thing *is*: a
+// definition, a call, a construction, a loop. What the map *shows* is what the author wrote,
+// so every name, header and argument is taken from the file's own tokens (rules 8 and 75),
+// folded by the same algorithm the syntactic reader used (`names.py`), so `cpp.yaml` and the
+// dotted contract hold unchanged. One tokenisation per file serves every question.
+//
+// **Only what is in this file is this file's.** A translation unit holds every header it
+// includes; a cursor whose expansion is not in the main file is somebody else's fact and is
+// never descended into. A header is parsed as its own main file, so its facts never depend
+// on which file included it (rule 66).
+//
+// **What carries over from the syntactic reader, deliberately** (`extractors/cpp`, retired
+// by this reader):
+//   - a declaration with no body is not a routine; a routine's identity is
+//     `definition_id(file, qualname, ordinal)` (rule 106);
+//   - the module is not in a C++ qualname, and a namespace or a record is;
+//   - lambdas are not routines, and their calls are their enclosing routine's;
+//   - a macro in declaration position is a decorator, and so is each identifier argument
+//     of it (`UFUNCTION(BlueprintCallable)`), because that is what the entrypoint grammar
+//     can match;
+//   - a ternary is not a control point, and an STL algorithm is a call, not a loop.
+//
+// **What changed, because a compiler now reads it:**
+//   - only the active `#if` arm is read; the skipped lines are counted, not guessed at;
+//   - `std::ifstream f(path);` is a construction of `std.ifstream`, because clang knows it
+//     is one — the syntactic reader's documented refusal was never implemented;
+//   - a call written through a macro is named by the macro as written (`UE_LOG(...)`);
+//   - an overloaded operator is not a call here, as it was not before.
+
+#pragma once
+
+#include <algorithm>
+#include <cctype>
+#include <climits>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "clang.hpp"
+#include "facts.hpp"
+#include "ids.hpp"
+#include "rules.hpp"
+
+namespace extract {
+
+// ------------------------------------------------------------------- tokens --- //
+
+enum TokKind { PUNCT = CXToken_Punctuation, KEYWORD = CXToken_Keyword, IDENT = CXToken_Identifier,
+               LITERAL = CXToken_Literal, COMMENT = CXToken_Comment };
+
+struct Tok {
+    int kind;
+    std::string text;
+    unsigned off;   // byte offset of the first character
+    unsigned end;   // byte offset just past the last
+    unsigned line;
+};
+
+// A name-like token: an identifier, or a keyword clang lexes as one (`this`, `operator`).
+inline bool namey(const Tok& t) { return t.kind == IDENT || t.kind == KEYWORD; }
+
+// ------------------------------------------------- what the edge pass needs --- //
+
+// One call this file makes, as clang resolved it. Kept compact: the edge pass holds one of
+// these for every call in the tree.
+struct Site {
+    std::string site_id, caller_id, expr;
+    std::string usr;            // the referenced declaration's USR, or "" when clang named none
+    std::string qualified;      // its qualified name, for a frontier
+    std::string decl_file;      // where clang says the declaration is ("" when nowhere)
+    bool is_method = false, is_virtual = false, is_dynamic = false, is_ctor = false;
+    bool final_ = false;        // the method or its class is `final`
+    bool construction = false;
+    bool bound = false;         // a call through a function value
+    bool untyped = false;       // an argument clang could not type, under an overload set
+    std::string construct_usr;  // a construction's record
+    std::string receiver_usr;   // a member call's receiver type
+};
+
+// One definition this file holds, as the edge pass names it to the host.
+struct Def {
+    std::string usr, file, name;
+    long line = 0;
+    bool has_body = true;
+    bool is_record = false;
+};
+
+// A method that overrides another, by USR, with its class.
+struct Over {
+    std::string usr, overridden, owner;
+    bool has_body = false;
+    std::string file, name;
+    long line = 0;
+};
+
+struct Result {
+    std::string facts_json;
+    std::string hash;
+    std::vector<Site> sites;
+    std::vector<Def> defs;
+    std::vector<Over> overs;
+    std::vector<std::pair<std::string, std::string>> bases;  // record USR -> base USR
+    std::string failed;          // a parse clang refused outright
+    int fatal = 0, errors = 0;   // diagnostics in this file's parse
+    std::string first_missing;   // the first include it could not find
+    long skipped_lines = 0;      // lines in inactive #if arms of this file
+};
+
+// ------------------------------------------------------------------ folding --- //
+
+inline const std::set<std::string> NOT_A_NAME = {
+    "return", "if", "while", "for", "switch", "case", "do", "else", "throw", "sizeof",
+    "alignof", "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast", "typeid",
+    "noexcept", "decltype", "delete", "co_await", "co_return", "co_yield", "new"};
+
+inline const std::set<std::string> EXITS = {"return", "throw", "continue", "break", "goto", "co_return"};
+
+struct Ctx {
+    std::string rel, module, text;
+    std::vector<Tok> toks;
+    std::vector<unsigned> line_starts;
+    CXTranslationUnit tu = nullptr;
+    const rules::Rules* rules = nullptr;
+    facts::FileFacts ff;
+    Result* out = nullptr;
+    std::vector<std::pair<unsigned, unsigned>> macro_spans;  // expansions in this file, by offset
+    std::map<unsigned, std::string> macro_names;             // their names, by start offset
+
+    unsigned line_of(unsigned off) const {
+        auto it = std::upper_bound(line_starts.begin(), line_starts.end(), off);
+        return static_cast<unsigned>(it - line_starts.begin());
+    }
+    // The first token at or after `off`.
+    size_t tok_at(unsigned off) const {
+        auto it = std::lower_bound(toks.begin(), toks.end(), off,
+                                   [](const Tok& t, unsigned o) { return t.off < o; });
+        return static_cast<size_t>(it - toks.begin());
+    }
+    std::string slice(size_t a, size_t b) const {  // tokens a..b inclusive, as written
+        if (a >= toks.size() || b >= toks.size() || b < a) return "";
+        return text.substr(toks[a].off, toks[b].end - toks[a].off);
+    }
+};
+
+// Step over a `<…>` argument list, or return `i` unchanged — only where it balances.
+inline size_t skip_template(const std::vector<Tok>& t, size_t i) {
+    if (i >= t.size() || t[i].kind != PUNCT || t[i].text != "<") return i;
+    int depth = 0;
+    for (size_t j = i; j < t.size(); j++) {
+        if (t[j].kind != PUNCT) continue;
+        const std::string& x = t[j].text;
+        if (x == "<") depth++;
+        else if (x == ">") {
+            if (--depth == 0) return j + 1;
+        } else if (x == ">>") {
+            depth -= 2;
+            if (depth <= 0) return j + 1;
+        } else if (x == ";" || x == "{" || x == "}") return i;
+    }
+    return i;
+}
+
+inline long matching(const std::vector<Tok>& t, size_t i, size_t hi = SIZE_MAX) {
+    if (i >= t.size()) return -1;
+    std::string open = t[i].text, close = open == "(" ? ")" : open == "[" ? "]" : open == "{" ? "}" : "";
+    if (close.empty()) return -1;
+    int depth = 0;
+    for (size_t j = i; j < t.size() && j <= hi; j++) {
+        if (t[j].kind != PUNCT) continue;
+        if (t[j].text == open) depth++;
+        else if (t[j].text == close && --depth == 0) return static_cast<long>(j);
+    }
+    return -1;
+}
+
+inline bool joiner(const Tok& t) { return t.kind == PUNCT && (t.text == "::" || t.text == "." || t.text == "->"); }
+
+// `names.fold`: the name beginning at `i`, through calls in the middle; "" when unnameable.
+inline std::string fold(const std::vector<Tok>& t, size_t i, size_t& end) {
+    std::vector<std::string> parts;
+    bool unnameable = false;
+    size_t n = t.size();
+    while (i < n) {
+        if (!namey(t[i]) || NOT_A_NAME.count(t[i].text)) break;
+        parts.push_back(t[i].text);
+        i = skip_template(t, i + 1);
+        while (i < n && t[i].kind == PUNCT && (t[i].text == "(" || t[i].text == "[")) {
+            long close = matching(t, i);
+            if (close < 0) {
+                end = i;
+                return "";
+            }
+            if (t[i].text == "[") unnameable = true;
+            i = skip_template(t, static_cast<size_t>(close) + 1);
+        }
+        if (i < n && joiner(t[i])) {
+            i++;
+            if (i < n && t[i].kind == PUNCT && (t[i].text == "*" || t[i].text == "~")) {
+                if (t[i].text == "~" && i + 1 < n && namey(t[i + 1])) {
+                    parts.push_back("~" + t[i + 1].text);
+                    i += 2;
+                    continue;
+                }
+                end = i + 1;
+                return "";
+            }
+            continue;
+        }
+        break;
+    }
+    end = i;
+    if (unnameable || parts.empty()) return "";
+    std::string out;
+    for (size_t k = 0; k < parts.size(); k++) out += (k ? "." : "") + parts[k];
+    return out;
+}
+
+// `names.fold_declarator`: the same chain, stopping at the first `(`.
+inline std::string fold_declarator(const std::vector<Tok>& t, size_t i, size_t& end) {
+    std::vector<std::string> parts;
+    size_t n = t.size();
+    while (i < n) {
+        if (!namey(t[i]) || NOT_A_NAME.count(t[i].text) || t[i].text == "operator") break;
+        parts.push_back(t[i].text);
+        i = skip_template(t, i + 1);
+        if (i < n && joiner(t[i])) {
+            i++;
+            if (i < n && t[i].kind == PUNCT && t[i].text == "~") {
+                if (i + 1 < n && namey(t[i + 1])) {
+                    parts.push_back("~" + t[i + 1].text);
+                    i += 2;
+                    if (i < n && joiner(t[i])) {
+                        i++;
+                        continue;
+                    }
+                    break;
+                }
+                end = i;
+                return "";
+            }
+            continue;
+        }
+        break;
+    }
+    end = i;
+    std::string out;
+    for (size_t k = 0; k < parts.size(); k++) out += (k ? "." : "") + parts[k];
+    return out;
+}
+
+// A type as clang spells it, folded to a dotted name: `std::basic_string<char>` is
+// `std.basic_string`, `const Foo &` is `Foo`.
+inline std::string fold_type(std::string s) {
+    for (const char* q : {"const ", "volatile ", "struct ", "class ", "union ", "enum "}) {
+        size_t p;
+        while ((p = s.find(q)) != std::string::npos) s.erase(p, std::strlen(q));
+    }
+    std::string out;
+    int depth = 0;
+    for (size_t i = 0; i < s.size(); i++) {
+        char c = s[i];
+        if (c == '<') depth++;
+        else if (c == '>') depth--;
+        else if (depth == 0) {
+            if (c == ':' && i + 1 < s.size() && s[i + 1] == ':') {
+                out += '.';
+                i++;
+            } else if (c == '*' || c == '&' || c == ' ') {
+                continue;
+            } else {
+                out += c;
+            }
+        }
+    }
+    return out;
+}
+
+inline bool looks_macro(const std::string& w) {
+    bool upper = !w.empty();
+    for (char c : w)
+        if (std::islower(static_cast<unsigned char>(c))) upper = false;
+    return upper && ((w.size() > 1 && w.find('_') != std::string::npos) || w.size() > 2);
+}
+
+inline std::string strip_comment(const std::string& raw) {
+    // `_DOXYGEN`: the leading markers of each line, then blank lines trimmed at both ends.
+    std::vector<std::string> lines;
+    size_t i = 0;
+    while (i <= raw.size()) {
+        size_t e = raw.find('\n', i);
+        if (e == std::string::npos) e = raw.size();
+        std::string line = raw.substr(i, e - i);
+        size_t p = 0;
+        while (p < line.size() && (line[p] == ' ' || line[p] == '\t')) p++;
+        size_t q = p;
+        if (line.compare(q, 2, "/*") == 0) {
+            q += 2;
+            while (q < line.size() && line[q] == '*') q++;
+            if (q < line.size() && line[q] == '<') q++;
+        } else if (line.compare(q, 2, "//") == 0) {
+            q += 2;
+            while (q < line.size() && line[q] == '/') q++;
+            if (q < line.size() && (line[q] == '<' || line[q] == '!')) q++;
+        } else if (q < line.size() && line[q] == '*') {
+            while (q < line.size() && line[q] == '*') q++;
+            if (q < line.size() && line[q] == '/') q++;
+        }
+        if (q > p && q < line.size() && line[q] == ' ') q++;
+        line = q > p ? line.substr(q) : line;
+        // A closing `*/` at the end of a line.
+        size_t close = line.rfind("*/");
+        if (close != std::string::npos && close + 2 == line.size()) line.erase(close);
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) line.pop_back();
+        lines.push_back(line);
+        i = e + 1;
+    }
+    while (!lines.empty() && lines.front().find_first_not_of(" \t") == std::string::npos) lines.erase(lines.begin());
+    while (!lines.empty() && lines.back().find_first_not_of(" \t") == std::string::npos) lines.pop_back();
+    std::string out;
+    for (size_t k = 0; k < lines.size(); k++) out += (k ? "\n" : "") + lines[k];
+    size_t a = out.find_first_not_of(" \t\n"), b = out.find_last_not_of(" \t\n");
+    return a == std::string::npos ? "" : out.substr(a, b - a + 1);
+}
+
+// ------------------------------------------------------------- clang helpers --- //
+
+inline clang::Api& C() { return clang::api(); }
+
+inline std::string spelling(CXCursor c) { return clang::str(C().clang_getCursorSpelling(c)); }
+
+// A location's offset in this file, through macro expansions to where it was written.
+inline bool offset_of(CXSourceLocation loc, unsigned& off) {
+    CXFile f = nullptr;
+    unsigned line = 0, col = 0;
+    C().clang_getFileLocation(loc, &f, &line, &col, &off);
+    return f != nullptr;
+}
+
+inline bool in_main(CXCursor c) { return C().clang_Location_isFromMainFile(C().clang_getCursorLocation(c)) != 0; }
+
+inline void extent(CXCursor c, unsigned& a, unsigned& b) {
+    CXSourceRange r = C().clang_getCursorExtent(c);
+    offset_of(C().clang_getRangeStart(r), a);
+    offset_of(C().clang_getRangeEnd(r), b);
+    if (b < a) b = a;
+}
+
+inline bool is_function_kind(CXCursorKind k) {
+    return k == CXCursor_FunctionDecl || k == CXCursor_CXXMethod || k == CXCursor_Constructor ||
+           k == CXCursor_Destructor || k == CXCursor_ConversionFunction || k == CXCursor_FunctionTemplate;
+}
+inline bool is_record_kind(CXCursorKind k) {
+    return k == CXCursor_ClassDecl || k == CXCursor_StructDecl || k == CXCursor_UnionDecl ||
+           k == CXCursor_ClassTemplate || k == CXCursor_ClassTemplatePartialSpecialization;
+}
+
+// What this cursor is called inside the program: namespaces and records, outermost first.
+// Function scopes are passed through and reported, because a local class is nested in a
+// body and the body is not part of its name (the syntactic reader's rule, kept).
+inline std::vector<std::string> scope_parts(CXCursor c, bool& nested, std::string& record) {
+    std::vector<std::string> parts;
+    nested = false;
+    record.clear();
+    bool first_record = true;
+    for (CXCursor p = C().clang_getCursorSemanticParent(c);
+         !C().clang_Cursor_isNull(p) && C().clang_getCursorKind(p) != CXCursor_TranslationUnit;
+         p = C().clang_getCursorSemanticParent(p)) {
+        CXCursorKind k = C().clang_getCursorKind(p);
+        if (k == CXCursor_Namespace) {
+            if (!C().clang_Cursor_isAnonymous(p)) parts.push_back(spelling(p));
+        } else if (is_record_kind(k) || k == CXCursor_EnumDecl) {
+            std::string name = spelling(p);
+            if (!name.empty() && !C().clang_Cursor_isAnonymous(p)) {
+                parts.push_back(name);
+                if (first_record) record = name;
+            }
+            first_record = false;
+        } else if (is_function_kind(k)) {
+            nested = true;
+        }
+    }
+    std::reverse(parts.begin(), parts.end());
+    return parts;
+}
+
+inline std::string join(const std::vector<std::string>& parts, const std::string& last) {
+    std::string out;
+    for (const auto& p : parts) out += p + ".";
+    return out + last;
+}
+
+inline std::string usr(CXCursor c) { return clang::str(C().clang_getCursorUSR(c)); }
+
+// `final` on a method or a class: the `final` attribute among its children.
+inline bool has_final(CXCursor c) {
+    if (C().clang_Cursor_isNull(c) || !C().clang_Cursor_hasAttrs(c)) return false;
+    bool found = false;
+    C().clang_visitChildren(
+        c,
+        [](CXCursor k, CXCursor, CXClientData d) {
+            if (C().clang_getCursorKind(k) == CXCursor_CXXFinalAttr) {
+                *static_cast<bool*>(d) = true;
+                return CXChildVisit_Break;
+            }
+            return CXChildVisit_Continue;
+        },
+        &found);
+    return found;
+}
+
+// ------------------------------------------------------------------- reader --- //
+
+struct Routine {
+    facts::Routine r;
+    unsigned body_lo = 0, body_hi = 0;  // offsets of `{` and `}`
+};
+
+class Reader {
+public:
+    Reader(Ctx& ctx) : x_(ctx) {}
+
+    void run() {
+        CXCursor root = C().clang_getTranslationUnitCursor(x_.tu);
+        collect_macros(root);
+        module_scope_ = make_module_scope();
+        visit(root);
+        // Calls and control are read from the tokens once the walk has said what each written
+        // call reaches, routine by routine, in the order the routines were defined.
+        for (const auto& r : routines_) {
+            scan_calls(r.get());
+            emit_calls(r.get());
+            scan_control(r.get());
+        }
+        literals();
+        if (module_scope_used_) x_.ff.module_scope = module_scope_;
+    }
+
+private:
+    Ctx& x_;
+    std::vector<Routine*> stack_;               // routines being read, innermost last
+    std::vector<std::unique_ptr<Routine>> routines_;
+    std::map<std::string, int> seen_routines_, seen_records_;
+    std::map<std::pair<std::string, std::string>, int> site_ordinals_;
+    std::set<std::pair<std::string, unsigned>> stream_lines_;
+    std::set<unsigned> annotated_;              // declaration offsets already given an entrypoint
+    std::vector<CXCursor> vars_;               // variable declarations being read, innermost last
+    facts::Routine module_scope_;
+    bool module_scope_used_ = false;
+
+    // ------------------------------------------------------------ walking --- //
+
+    struct Frame {
+        Reader* self;
+    };
+
+    static CXChildVisitResult trampoline(CXCursor c, CXCursor parent, CXClientData d) {
+        static_cast<Reader*>(d)->one(c, parent);
+        return CXChildVisit_Continue;
+    }
+
+    void visit(CXCursor c) { C().clang_visitChildren(c, trampoline, this); }
+
+    void one(CXCursor c, CXCursor parent) {
+        if (!in_main(c)) return;  // somebody else's fact, and never descended into
+        CXCursorKind k = C().clang_getCursorKind(c);
+
+        if (k == CXCursor_InclusionDirective) return include(c);
+        if (k == CXCursor_MacroDefinition) return define(c);
+        if (k == CXCursor_MacroExpansion) return;
+
+        if (is_function_kind(k)) {
+            annotations(c);
+            if (C().clang_isCursorDefinition(c)) {
+                Routine* r = routine(c);
+                if (r) {
+                    stack_.push_back(r);
+                    visit(c);
+                    stack_.pop_back();
+                    return;
+                }
+            } else {
+                overrides(c, nullptr);
+            }
+            visit(c);
+            return;
+        }
+        if ((is_record_kind(k) || k == CXCursor_EnumDecl) && C().clang_isCursorDefinition(c)) {
+            record(c, k);
+            visit(c);
+            return;
+        }
+        if (k == CXCursor_VarDecl && stack_.empty()) constant(c);
+        if (k == CXCursor_EnumConstantDecl) enumerator(c);
+        if (k == CXCursor_VarDecl && !stack_.empty()) {
+            // Held so a construction under it can be told from a call: `Foo x{a}` reaches its
+            // constructor through an initialiser list, not as the declaration's own child.
+            // And its name is a declaration, so `int x(5)` is not a call to `x`.
+            unsigned at;
+            if (offset_of(C().clang_getCursorLocation(c), at)) var_names_.insert(at);
+            vars_.push_back(c);
+            visit(c);
+            vars_.pop_back();
+            return;
+        }
+
+        if (!stack_.empty()) {
+            if (k == CXCursor_CallExpr) note_call(c, parent);
+            else if (k == CXCursor_CXXNewExpr) note_new(c);
+        }
+        visit(c);
+    }
+
+    // ------------------------------------------------------- the preprocessor --- //
+
+    void collect_macros(CXCursor root) {
+        C().clang_visitChildren(
+            root,
+            [](CXCursor c, CXCursor, CXClientData d) {
+                auto* self = static_cast<Reader*>(d);
+                if (C().clang_getCursorKind(c) == CXCursor_MacroExpansion && in_main(c)) {
+                    unsigned a, b;
+                    extent(c, a, b);
+                    self->x_.macro_spans.push_back({a, b});
+                    self->x_.macro_names[a] = spelling(c);
+                }
+                return CXChildVisit_Continue;
+            },
+            this);
+        std::sort(x_.macro_spans.begin(), x_.macro_spans.end());
+    }
+
+    void include(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        facts::ImportRec im;
+        im.module = spelling(c);
+        im.name = "";
+        im.alias = "";
+        // Quoted or angled, off the text as written.
+        size_t q = x_.text.find_first_of("\"<", a);
+        im.is_from = q != std::string::npos && q < b && x_.text[q] == '"';
+        im.line = x_.line_of(a);
+        x_.ff.imports.push_back(im);
+    }
+
+    // An object-like macro with a value is a constant. Nothing else here is a fact.
+    void define(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        size_t i = x_.tok_at(a);
+        if (i >= x_.toks.size() || !namey(x_.toks[i])) return;
+        size_t j = i + 1;
+        // A function-like macro has its `(` touching the name.
+        if (j < x_.toks.size() && x_.toks[j].off < b && x_.toks[j].text == "(" && x_.toks[j].off == x_.toks[i].end) return;
+        if (j >= x_.toks.size() || x_.toks[j].off >= b) return;  // `#define GUARD_H`: no value
+        size_t last = j;
+        while (last + 1 < x_.toks.size() && x_.toks[last + 1].off < b) last++;
+        facts::Constant k;
+        k.name = x_.toks[i].text;
+        k.value = x_.slice(j, last);
+        k.line = x_.line_of(a);
+        k.is_final = true;
+        x_.ff.constants.push_back(k);
+    }
+
+    // The macros written immediately before a declaration, each with its identifier arguments:
+    // `UFUNCTION(BlueprintCallable, Category="Combat")` -> UFUNCTION, BlueprintCallable, Category.
+    std::vector<std::string> decorators(unsigned decl_start, unsigned& first) {
+        std::vector<std::string> out;
+        first = decl_start;
+        std::vector<std::pair<unsigned, unsigned>> found;
+        unsigned at = decl_start;
+        while (true) {
+            size_t p = at;
+            while (p > 0 && std::isspace(static_cast<unsigned char>(x_.text[p - 1]))) p--;
+            auto it = std::find_if(x_.macro_spans.begin(), x_.macro_spans.end(),
+                                   [&](const std::pair<unsigned, unsigned>& s) { return s.second == p; });
+            if (it == x_.macro_spans.end() || it->first >= at) break;
+            found.push_back(*it);
+            at = it->first;
+        }
+        std::reverse(found.begin(), found.end());
+        for (const auto& [a, b] : found) {
+            const std::string& name = x_.macro_names[a];
+            if (!looks_macro(name)) continue;
+            first = std::min(first, a);
+            out.push_back(name);
+            size_t i = x_.tok_at(a) + 1;
+            for (; i < x_.toks.size() && x_.toks[i].off < b; i++)
+                if (x_.toks[i].kind == IDENT && std::find(out.begin(), out.end(), x_.toks[i].text) == out.end())
+                    out.push_back(x_.toks[i].text);
+        }
+        return out;
+    }
+
+    // The comment block that touches a declaration, stripped of its markers.
+    std::optional<std::string> leading_comment(unsigned header_start) {
+        size_t i = x_.tok_at(header_start);
+        if (i == 0) return std::nullopt;
+        size_t j = i;
+        unsigned want = x_.line_of(header_start);
+        std::vector<size_t> block;
+        while (j > 0) {
+            const Tok& t = x_.toks[j - 1];
+            if (t.kind != COMMENT) break;
+            unsigned end_line = x_.line_of(t.end > 0 ? t.end - 1 : t.end);
+            if (end_line + 1 < want) break;   // a blank line: about something else
+            // A comment that shares a line with code before it is that code's.
+            if (j >= 2 && x_.toks[j - 2].kind != COMMENT && x_.toks[j - 2].line == t.line) break;
+            block.push_back(j - 1);
+            want = t.line;
+            j--;
+        }
+        if (block.empty()) return std::nullopt;
+        std::reverse(block.begin(), block.end());
+        std::string raw;
+        for (size_t k : block) raw += (raw.empty() ? "" : "\n") + x_.toks[k].text;
+        std::string s = strip_comment(raw);
+        if (s.empty()) return std::nullopt;
+        return s;
+    }
+
+    // ------------------------------------------------------------ routines --- //
+
+    facts::Routine make_module_scope() {
+        facts::Routine r;
+        std::string q = x_.module.empty() ? "<module>" : x_.module + ".<module>";
+        r.id = ids::definition_id(x_.rel, q, 1);
+        r.name = "<module>";
+        r.qualname = q;
+        r.module = x_.module;
+        r.file = x_.rel;
+        r.line_start = 1;
+        r.line_end = std::max<int64_t>(1, static_cast<int64_t>(x_.line_starts.size()));
+        return r;
+    }
+
+    // The body of a definition: its compound statement (or a function-try-block).
+    bool body(CXCursor c, unsigned& lo, unsigned& hi) {
+        struct B {
+            CXCursor found;
+            bool ok = false;
+        } b;
+        C().clang_visitChildren(
+            c,
+            [](CXCursor k, CXCursor, CXClientData d) {
+                auto* b = static_cast<B*>(d);
+                CXCursorKind kk = C().clang_getCursorKind(k);
+                if (kk == CXCursor_CompoundStmt || kk == CXCursor_CXXTryStmt) {
+                    b->found = k;
+                    b->ok = true;
+                }
+                return CXChildVisit_Continue;
+            },
+            &b);
+        if (!b.ok) return false;
+        extent(b.found, lo, hi);
+        // `= default` is given a body by clang and has none as written: not a routine.
+        size_t i = x_.tok_at(lo);
+        return i < x_.toks.size() && x_.toks[i].off == lo && (x_.toks[i].text == "{" || x_.toks[i].text == "try");
+    }
+
+    Routine* routine(CXCursor c) {
+        unsigned lo, hi;
+        if (!body(c, lo, hi)) return nullptr;  // `= default`, `= delete`: no body, no routine
+        unsigned a, b;
+        extent(c, a, b);
+        bool nested;
+        std::string record;
+        auto parts = scope_parts(c, nested, record);
+        std::string name = spelling(c);
+        std::string qualname = join(parts, name);
+        int n = ++seen_routines_[qualname];
+
+        auto r = std::make_unique<Routine>();
+        r->body_lo = lo;
+        r->body_hi = hi;
+        facts::Routine& f = r->r;
+        f.id = ids::definition_id(x_.rel, qualname, n);
+        f.name = name;
+        f.qualname = qualname;
+        f.module = x_.module;
+        f.file = x_.rel;
+        unsigned header = a;
+        f.decorators = decorators(a, header);
+        f.line_start = x_.line_of(header);
+        f.line_end = x_.line_of(hi > 0 ? hi - 1 : hi);
+        CXCursorKind k = C().clang_getCursorKind(c);
+        f.params = params(c, a, lo);
+        if (k != CXCursor_Constructor && k != CXCursor_Destructor) {
+            std::string ret = clang::str(C().clang_getTypeSpelling(C().clang_getCursorResultType(c)));
+            if (!ret.empty()) f.returns = ret;
+        }
+        f.docstring = leading_comment(header);
+        f.comments = body_comments(lo, hi);
+        f.is_async = body_has(lo, hi, {"co_await", "co_return", "co_yield"});
+        f.is_method = !record.empty();
+        if (!record.empty()) f.class_name = record;
+        f.is_nested = nested;
+        CX_CXXAccessSpecifier acc = C().clang_getCXXAccessSpecifier(c);
+        f.visibility = (acc == CX_CXXPrivate || acc == CX_CXXProtected) ? "private" : "public";
+        f.body_hash = ids::hash_source(x_.text.substr(lo, hi - lo));
+        x_.ff.routines.push_back(f);
+
+        if (x_.rules->entry_names.count(name) && record.empty()) {
+            facts::Entrypoint e;
+            e.id = ids::entrypoint_id(x_.rel, {qualname, "main"});
+            e.kind = facts::EntrypointKind::MAIN;
+            e.name = name;
+            e.routine_id = f.id;
+            e.module = x_.module;
+            e.evidence = name + "() at " + x_.rel + ":" + std::to_string(f.line_start);
+            x_.ff.entrypoints.push_back(e);
+        }
+
+        Def d;
+        d.usr = usr(c);
+        d.file = x_.rel;
+        d.line = f.line_start;
+        d.name = name;
+        x_.out->defs.push_back(d);
+        overrides(c, &f);
+
+        routines_.push_back(std::move(r));
+        return routines_.back().get();
+    }
+
+    // Every method this one overrides, by USR, for the dispatch rule.
+    void overrides(CXCursor c, const facts::Routine* f) {
+        if (C().clang_getCursorKind(c) != CXCursor_CXXMethod) return;
+        CXCursor* over = nullptr;
+        unsigned n = 0;
+        C().clang_getOverriddenCursors(c, &over, &n);
+        std::string me = usr(c);
+        CXCursor owner = C().clang_getCursorSemanticParent(c);
+        for (unsigned i = 0; i < n; i++) {
+            Over o;
+            o.usr = me;
+            o.overridden = usr(over[i]);
+            o.owner = usr(owner);
+            o.has_body = f != nullptr;
+            if (f) {
+                o.file = *f->file;
+                o.line = f->line_start;
+                o.name = *f->name;
+            }
+            x_.out->overs.push_back(o);
+        }
+        if (over) C().clang_disposeOverriddenCursors(over);
+    }
+
+    std::vector<facts::Param> params(CXCursor c, unsigned decl_start, unsigned body_lo) {
+        std::vector<facts::Param> out;
+        int n = C().clang_Cursor_getNumArguments(c);
+        for (int i = 0; i < n; i++) {
+            CXCursor p = C().clang_Cursor_getArgument(c, static_cast<unsigned>(i));
+            facts::Param q;
+            q.name = spelling(p);
+            std::string t = clang::str(C().clang_getTypeSpelling(C().clang_getCursorType(p)));
+            if (!t.empty()) q.type = t;
+            unsigned a, b;
+            extent(p, a, b);
+            size_t ti = x_.tok_at(a);
+            for (size_t k = ti; k < x_.toks.size() && x_.toks[k].off < b; k++) {
+                if (x_.toks[k].kind == PUNCT && x_.toks[k].text == "=") {
+                    size_t last = k + 1;
+                    while (last + 1 < x_.toks.size() && x_.toks[last + 1].off < b) last++;
+                    if (last > k) q.default_ = x_.slice(k + 1, last);
+                    break;
+                }
+            }
+            q.kind = "positional";
+            out.push_back(q);
+        }
+        // A C-style `...` is a parameter, and a signature missing one is about another routine.
+        size_t i = x_.tok_at(decl_start);
+        long open = -1;
+        for (; i < x_.toks.size() && x_.toks[i].off < body_lo; i++)
+            if (x_.toks[i].text == "(") {
+                open = static_cast<long>(i);
+                break;
+            }
+        if (open >= 0) {
+            long close = matching(x_.toks, static_cast<size_t>(open));
+            if (close > 0 && x_.toks[static_cast<size_t>(close) - 1].text == "...") {
+                facts::Param v;
+                v.name = "";
+                v.kind = "vararg";
+                out.push_back(v);
+            }
+        }
+        return out;
+    }
+
+    std::vector<facts::Comment> body_comments(unsigned lo, unsigned hi) {
+        std::vector<facts::Comment> out;
+        for (size_t i = x_.tok_at(lo); i < x_.toks.size() && x_.toks[i].off < hi; i++) {
+            const Tok& t = x_.toks[i];
+            if (t.kind != COMMENT) continue;
+            std::string s = strip_comment(t.text);
+            if (s.empty()) continue;
+            facts::Comment c;
+            c.text = s;
+            c.line = t.line;
+            size_t line_start = x_.line_starts[t.line - 1];
+            bool leading = true;
+            for (size_t p = line_start; p < t.off; p++)
+                if (!std::isspace(static_cast<unsigned char>(x_.text[p]))) leading = false;
+            c.leading = leading;
+            out.push_back(c);
+        }
+        return out;
+    }
+
+    bool body_has(unsigned lo, unsigned hi, std::initializer_list<const char*> words) {
+        for (size_t i = x_.tok_at(lo); i < x_.toks.size() && x_.toks[i].off < hi; i++)
+            for (const char* w : words)
+                if (x_.toks[i].text == w) return true;
+        return false;
+    }
+
+    // ------------------------------------------------- records and constants --- //
+
+    void record(CXCursor c, CXCursorKind k) {
+        unsigned a, b;
+        extent(c, a, b);
+        bool nested;
+        std::string outer;
+        auto parts = scope_parts(c, nested, outer);
+        std::string name = spelling(c);
+        if (name.empty() || C().clang_Cursor_isAnonymous(c)) name = "<anonymous>";
+        std::string qualname = join(parts, name);
+        int n = ++seen_records_[qualname];
+        facts::DataStructure s;
+        s.id = ids::definition_id(x_.rel, qualname, n);
+        s.name = name;
+        s.kind = k == CXCursor_EnumDecl ? facts::StructureKind::ENUM : facts::StructureKind::CLASS;
+        s.module = x_.module;
+        s.file = x_.rel;
+        unsigned header = a;
+        decorators(a, header);
+        s.line = x_.line_of(header);
+        s.docstring = leading_comment(header);
+
+        struct Walk {
+            Reader* self;
+            facts::DataStructure* s;
+            std::string usr;
+        } w{this, &s, usr(c)};
+        C().clang_visitChildren(
+            c,
+            [](CXCursor k, CXCursor, CXClientData d) {
+                auto* w = static_cast<Walk*>(d);
+                CXCursorKind kk = C().clang_getCursorKind(k);
+                if (kk == CXCursor_CXXBaseSpecifier) {
+                    CXType t = C().clang_getCursorType(k);
+                    std::string base = fold_type(clang::str(C().clang_getTypeSpelling(t)));
+                    if (!base.empty()) w->s->bases.push_back(base);
+                    CXCursor decl = C().clang_getTypeDeclaration(t);
+                    if (!C().clang_Cursor_isNull(decl))
+                        w->self->x_.out->bases.push_back({w->usr, extract::usr(decl)});
+                } else if (kk == CXCursor_FieldDecl) {
+                    facts::Field_ f;
+                    f.name = spelling(k);
+                    std::string t = clang::str(C().clang_getTypeSpelling(C().clang_getCursorType(k)));
+                    if (!t.empty()) f.type = t;
+                    f.default_ = w->self->initializer(k);
+                    w->s->fields.push_back(f);
+                }
+                return CXChildVisit_Continue;
+            },
+            &w);
+        x_.ff.structures.push_back(s);
+        if (s.kind == facts::StructureKind::CLASS) {
+            facts::ClassDef_ cd;
+            cd.name = name;
+            cd.qualname = qualname;
+            cd.module = x_.module;
+            cd.file = x_.rel;
+            cd.line = s.line;
+            cd.bases = s.bases;
+            x_.ff.classes.push_back(cd);
+        }
+        Def d;
+        d.usr = w.usr;
+        d.file = x_.rel;
+        d.line = s.line;
+        d.name = name;
+        d.is_record = true;
+        x_.out->defs.push_back(d);
+    }
+
+    // What follows a top-level `=` in a declaration, as written.
+    std::optional<std::string> initializer(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        int depth = 0;
+        for (size_t i = x_.tok_at(a); i < x_.toks.size() && x_.toks[i].off < b; i++) {
+            const Tok& t = x_.toks[i];
+            if (t.kind != PUNCT) continue;
+            if (t.text == "(" || t.text == "[" || t.text == "{" || t.text == "<") depth++;
+            else if (t.text == ")" || t.text == "]" || t.text == "}" || t.text == ">") depth--;
+            else if (t.text == "=" && depth == 0) {
+                size_t last = i + 1;
+                if (last >= x_.toks.size() || x_.toks[last].off >= b) return std::nullopt;
+                while (last + 1 < x_.toks.size() && x_.toks[last + 1].off < b) last++;
+                return x_.slice(i + 1, last);
+            }
+        }
+        return std::nullopt;
+    }
+
+    // `constexpr`/`const` at namespace, file or class scope, with a value. A local constant is
+    // the internal computation this tool exists not to report.
+    void constant(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        bool constish = false;
+        size_t i = x_.tok_at(a);
+        for (size_t k = i; k < x_.toks.size() && k < i + 3 && x_.toks[k].off < b; k++)
+            if (x_.toks[k].text == "constexpr" || x_.toks[k].text == "const" || x_.toks[k].text == "constinit")
+                constish = true;
+        if (!constish) return;
+        auto value = initializer(c);
+        if (!value) return;
+        facts::Constant k;
+        k.name = spelling(c);
+        k.value = *value;
+        k.line = x_.line_of(a);
+        std::string t = clang::str(C().clang_getTypeSpelling(C().clang_getCursorType(c)));
+        if (!t.empty()) k.type = t;
+        k.is_final = true;
+        k.private_ = !k.name->empty() && (*k.name)[0] == '_';
+        x_.ff.constants.push_back(k);
+    }
+
+    void enumerator(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        facts::Constant k;
+        k.name = spelling(c);
+        k.value = initializer(c).value_or("");
+        k.line = x_.line_of(a);
+        k.is_final = true;
+        x_.ff.constants.push_back(k);
+    }
+
+    // Ways in a rule recognises by a decorator, read off declarations as well as definitions:
+    // `UFUNCTION(BlueprintCallable) void Fire(int);` declares a way in from Blueprint, and the
+    // body is usually in another file.
+    void annotations(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        if (!annotated_.insert(a).second) return;
+        unsigned header;
+        auto decs = decorators(a, header);
+        if (decs.empty()) return;
+        bool nested;
+        std::string record;
+        std::string qualname = join(scope_parts(c, nested, record), spelling(c));
+        for (const auto& rule : x_.rules->entrypoints) {
+            bool hit = false;
+            for (const auto& d : decs) hit = hit || rule.matches(d);
+            if (!hit) continue;
+            facts::Entrypoint e;
+            e.id = ids::entrypoint_id(x_.rel, {qualname, rule.kind});
+            e.kind = rule.kind;
+            e.name = spelling(c);
+            if (C().clang_isCursorDefinition(c)) {
+                // The routine is minted after this, with the next ordinal of its name.
+                int n = seen_routines_.count(qualname) ? seen_routines_[qualname] + 1 : 1;
+                e.routine_id = ids::definition_id(x_.rel, qualname, n);
+            }
+            e.module = x_.module;
+            std::string ev = rule.evidence;
+            if (ev.empty())
+                for (size_t k = 0; k < decs.size(); k++) ev += (k ? ", " : "") + decs[k];
+            e.evidence = ev;
+            e.target_expr = qualname;
+            x_.ff.entrypoints.push_back(e);
+            break;
+        }
+    }
+
+    // ------------------------------------------------------------------ calls --- //
+
+    // A call as written, before its ordinal: everything a site needs, found either by the
+    // token scan or, for a construction written as a declaration, by the AST.
+    struct Pending {
+        unsigned off;           // where it is written: the key its resolution is found by
+        unsigned line;
+        std::string expr;
+        size_t open = 0, close = 0;
+        bool construction = false;
+        CXCursor call, ref;     // what clang made of it; null when clang made nothing
+        bool resolved = false;
+    };
+
+    // What clang made of every call it kept, by the offset the call is written at. The
+    // outermost wins, which is the one a chain folds to (`a.b(c).d(e)` is `.d`'s).
+    std::map<unsigned, std::pair<CXCursor, CXCursor>> resolved_;
+    std::set<unsigned> constructions_;  // offsets where what is written constructs a type
+    std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
+    std::map<const Routine*, std::vector<Pending>> pending_;
+
+    // In a routine's body, during the walk: note what clang made of each call.
+    void note_call(CXCursor c, CXCursor parent) {
+        unsigned a, b;
+        extent(c, a, b);
+        CXCursor ref = C().clang_getCursorReferenced(c);
+        bool ctor = !C().clang_Cursor_isNull(ref) && C().clang_getCursorKind(ref) == CXCursor_Constructor;
+        if (ctor && C().clang_getCursorKind(parent) == CXCursor_CXXNewExpr) return;  // the `new` names it
+        if (ctor) {
+            size_t i = x_.tok_at(a);
+            if (i >= x_.toks.size() || x_.toks[i].off != a) return;  // nothing written: implicit
+            CXCursor var = vars_.empty() ? parent : vars_.back();
+            if (!vars_.empty() && namey(x_.toks[i]) && spelling(var) == x_.toks[i].text && i + 1 < x_.toks.size() &&
+                (x_.toks[i + 1].text == "(" || x_.toks[i + 1].text == "{")) {
+                // `std::ifstream f(path);` — the type is the declaration's, as written. The
+                // tokens cannot say this; the declaration can.
+                long close = matching(x_.toks, i + 1);
+                std::string expr = fold_type(clang::str(C().clang_getTypeSpelling(C().clang_getCursorType(var))));
+                if (close < 0 || expr.empty()) return;
+                Pending p;
+                p.off = a;
+                p.line = x_.line_of(a);
+                p.expr = expr;
+                p.open = i + 1;
+                p.close = static_cast<size_t>(close);
+                p.construction = true;
+                p.call = c;
+                p.ref = ref;
+                p.resolved = true;
+                pending_[stack_.back()].push_back(p);
+                return;
+            }
+            constructions_.insert(a);  // `Foo(a)`, `Foo{a}`: the token scan names it
+        }
+        resolved_.emplace(a, std::make_pair(c, ref));
+    }
+
+    void note_new(CXCursor c) {
+        unsigned a, b;
+        extent(c, a, b);
+        struct F {
+            CXCursor found;
+            bool ok = false;
+        } f;
+        C().clang_visitChildren(
+            c,
+            [](CXCursor k, CXCursor, CXClientData d) {
+                CXCursor r = C().clang_getCursorReferenced(k);
+                if (!C().clang_Cursor_isNull(r) && C().clang_getCursorKind(r) == CXCursor_Constructor) {
+                    static_cast<F*>(d)->found = k;
+                    static_cast<F*>(d)->ok = true;
+                    return CXChildVisit_Break;
+                }
+                return CXChildVisit_Continue;
+            },
+            &f);
+        if (f.ok) resolved_.emplace(a, std::make_pair(f.found, C().clang_getCursorReferenced(f.found)));
+    }
+
+    std::vector<facts::CallArg> args_between(size_t open, size_t close) {
+        std::vector<facts::CallArg> out;
+        int depth = 0;
+        size_t start = open + 1;
+        int idx = 0;
+        auto flush = [&](size_t end) {  // tokens start..end-1
+            if (end > start) {
+                size_t last = end - 1;
+                bool splat = x_.toks[last].text == "...";
+                if (splat && last > start) last--;
+                if (!(splat && last == start && x_.toks[last].text == "...")) {
+                    facts::CallArg a;
+                    a.idx = idx;
+                    a.expr = x_.slice(start, last);
+                    a.splat = splat;
+                    out.push_back(a);
+                }
+            }
+            idx++;
+        };
+        for (size_t i = open + 1; i < close; i++) {
+            const Tok& t = x_.toks[i];
+            if (t.kind != PUNCT) continue;
+            if (t.text == "(" || t.text == "[" || t.text == "{") depth++;
+            else if (t.text == ")" || t.text == "]" || t.text == "}") depth--;
+            else if (t.text == "," && depth == 0) {
+                flush(i);
+                start = i + 1;
+            }
+        }
+        if (close > open + 1) flush(close);
+        return out;
+    }
+
+    // The last `(`…`)` pair opening at depth zero between `i` and `end`.
+    bool last_top_call(size_t i, size_t end, size_t& open, size_t& close) {
+        int depth = 0;
+        long opened = -1;
+        bool found = false;
+        for (size_t k = i; k < end && k < x_.toks.size(); k++) {
+            const Tok& t = x_.toks[k];
+            if (t.kind != PUNCT) continue;
+            if (t.text == "(") {
+                if (depth == 0) opened = static_cast<long>(k);
+                depth++;
+            } else if (t.text == ")") {
+                if (--depth == 0 && opened >= 0) {
+                    open = static_cast<size_t>(opened);
+                    close = k;
+                    found = true;
+                }
+            }
+        }
+        return found;
+    }
+
+    // Words followed by `(` that are not calls.
+    static const std::set<std::string>& not_calls() {
+        static const std::set<std::string> s = {
+            "if", "for", "while", "switch", "catch", "do", "else", "return", "sizeof", "alignof",
+            "alignas", "decltype", "typeid", "noexcept", "static_assert", "throw", "new", "delete",
+            "and", "or", "not", "requires", "static_cast", "dynamic_cast", "const_cast",
+            "reinterpret_cast", "case", "default", "goto", "try", "co_await", "co_return", "co_yield",
+            "operator", "template", "typename", "using", "_Static_assert", "__attribute__", "__declspec"};
+        return s;
+    }
+
+    // `_one`: the call written at token `i`, or nothing. `at` is where it is keyed (the
+    // `new` of a construction, otherwise the name).
+    bool one_call(size_t i, size_t hi, size_t at, bool construction, Pending& p, size_t& next) {
+        const auto& t = x_.toks;
+        if (i >= hi) return false;
+        if (!(t[i].kind == IDENT || t[i].text == "this")) return false;
+        size_t j;
+        std::string expr = fold_declarator(t, i, j);
+        if (expr.empty() || j >= hi || t[j].text != "(") return false;
+        long close = matching(t, j, hi);
+        if (close < 0) return false;
+        size_t open = j, cl = static_cast<size_t>(close);
+        size_t end;
+        std::string full = fold(t, i, end);
+        if (!full.empty() && end > cl + 1) {
+            size_t o2, c2;
+            if (last_top_call(i, std::min(end, hi), o2, c2)) {
+                expr = full;
+                open = o2;
+                cl = c2;
+            }
+        }
+        p.off = t[at].off;
+        p.line = t[i].line;
+        p.expr = expr;
+        p.open = open;
+        p.close = cl;
+        p.construction = construction || constructions_.count(t[i].off) > 0;
+        auto r = resolved_.find(p.off);
+        if (r != resolved_.end()) {
+            p.call = r->second.first;
+            p.ref = r->second.second;
+            p.resolved = true;
+        }
+        next = cl + 1;
+        return true;
+    }
+
+    // Is token `i` a name partway along a chain? Then the chain's root decides, and a root
+    // that could not be named (`handlers[0].run()`) names nothing at all (clause 3) — the
+    // scan must not start again at `run`. A leading `::` is the global scope, not a chain.
+    bool mid_chain(size_t i) const {
+        if (i == 0) return false;
+        const Tok& prev = x_.toks[i - 1];
+        if (!joiner(prev)) return false;
+        if (prev.text != "::" || i < 2) return true;
+        const Tok& before = x_.toks[i - 2];
+        return namey(before) || before.text == ">" || before.text == ")" || before.text == "]";
+    }
+
+    // A named cast is not identity (clause 5): `static_cast<T*>(x)->run()` is `x.run`, as
+    // `((Runnable) x).run()` is in Java. Only where what is cast is a name.
+    bool cast_call(size_t i, size_t hi, Pending& p, size_t& next) {
+        const auto& t = x_.toks;
+        size_t j = skip_template(t, i + 1);
+        if (j >= hi || j == i + 1 || t[j].text != "(") return false;
+        long close = matching(t, j, hi);
+        if (close < 0) return false;
+        size_t inner_end;
+        std::string inner = fold(t, j + 1, inner_end);
+        if (inner.empty() || inner_end != static_cast<size_t>(close)) return false;
+        size_t k = static_cast<size_t>(close) + 1;
+        if (k >= hi || !joiner(t[k])) return false;
+        Pending rest;
+        size_t after;
+        if (!one_call(k + 1, hi, k + 1, false, rest, after)) return false;
+        p = rest;
+        p.off = t[i].off;
+        p.line = t[i].line;
+        p.expr = inner + "." + rest.expr;
+        auto r = resolved_.find(t[i].off);
+        p.resolved = false;
+        // What clang made of it is keyed where the whole call starts, at the cast.
+        if (r != resolved_.end()) {
+            p.call = r->second.first;
+            p.ref = r->second.second;
+            p.resolved = true;
+        }
+        next = after;
+        return true;
+    }
+
+    // The ranges inside `r`'s body that belong to a routine nested in it.
+    std::vector<std::pair<unsigned, unsigned>> inner(const Routine* r) {
+        std::vector<std::pair<unsigned, unsigned>> out;
+        for (const auto& o : routines_)
+            if (o.get() != r && o->body_lo > r->body_lo && o->body_hi <= r->body_hi) out.push_back({o->body_lo, o->body_hi});
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
+    // Every call written in one routine's body, as the syntactic reader found them: by the
+    // tokens, so a statement clang could not make sense of still has its calls.
+    void scan_calls(Routine* owner) {
+        auto skip = inner(owner);
+        size_t lo = x_.tok_at(owner->body_lo) + 1, hi = x_.tok_at(owner->body_hi);
+        std::vector<Pending>& out = pending_[owner];
+        std::set<unsigned> have;
+        for (const auto& p : out) have.insert(p.off);
+        size_t i = lo;
+        while (i < hi) {
+            const Tok& t = x_.toks[i];
+            bool jumped = false;
+            for (const auto& [a, b] : skip)
+                if (t.off >= a && t.off < b) {
+                    i = x_.tok_at(b) + 1;
+                    jumped = true;
+                    break;
+                }
+            if (jumped) continue;
+            if (!namey(t)) {
+                i++;
+                continue;
+            }
+            if (t.text == "new") {
+                Pending p;
+                size_t next;
+                if (one_call(i + 1, hi, i, true, p, next) && have.insert(p.off).second) {
+                    out.push_back(p);
+                    i = next;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+            if (t.text == "static_cast" || t.text == "dynamic_cast" || t.text == "const_cast" ||
+                t.text == "reinterpret_cast") {
+                Pending p;
+                size_t next;
+                if (cast_call(i, hi, p, next) && have.insert(p.off).second) {
+                    out.push_back(p);
+                    i = next;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+            if (not_calls().count(t.text) || var_names_.count(t.off) || have.count(t.off) || mid_chain(i)) {
+                i++;
+                continue;
+            }
+            Pending p;
+            size_t next;
+            if (one_call(i, hi, i, false, p, next)) {
+                have.insert(p.off);
+                out.push_back(p);
+                i = next;
+                continue;
+            }
+            i++;
+        }
+        streams(owner, lo, hi, skip);
+    }
+
+    // Each routine's calls in source order, with their ordinals, their facts and their edges.
+    void emit_calls(Routine* owner) {
+        auto& ps = pending_[owner];
+        std::stable_sort(ps.begin(), ps.end(), [](const Pending& a, const Pending& b) { return a.off < b.off; });
+        for (const auto& p : ps) {
+            facts::CallSite s;
+            s.caller_id = owner->r.id;
+            s.callee_expr = p.expr;
+            s.line = p.line;
+            int& n = site_ordinals_[{*owner->r.id, p.expr}];
+            s.site_id = ids::call_site_id(*owner->r.id, p.expr, n);
+            n++;
+            if (p.close > p.open) s.args = args_between(p.open, p.close);
+            s.is_construction = p.construction;
+            x_.ff.calls.push_back(s);
+            boundaries(owner, s);
+
+            Site e;
+            e.site_id = s.site_id;
+            e.caller_id = *owner->r.id;
+            e.expr = p.expr;
+            e.construction = p.construction;
+            if (p.resolved) resolve(e, p.call, p.ref);
+            else e.untyped = true;  // written, and clang kept nothing to say what it reaches
+            x_.out->sites.push_back(std::move(e));
+        }
+    }
+
+    // What clang says this call reaches, kept for the edge pass.
+    void resolve(Site& e, CXCursor call, CXCursor ref) {
+        if (C().clang_Cursor_isNull(ref)) {
+            // A call clang named nothing for: through a function value, or under an argument
+            // it could not type.
+            e.bound = callee_is_value(call);
+            e.untyped = !e.bound;
+            return;
+        }
+        CXCursorKind rk = C().clang_getCursorKind(ref);
+        if (!is_function_kind(rk)) {
+            // A variable, a field or a parameter holding something callable.
+            e.bound = true;
+            return;
+        }
+        e.usr = usr(ref);
+        bool nested;
+        std::string rec;
+        e.qualified = join(scope_parts(ref, nested, rec), spelling(ref));
+        e.is_ctor = rk == CXCursor_Constructor;
+        e.is_method = rk == CXCursor_CXXMethod || rk == CXCursor_Destructor || rk == CXCursor_ConversionFunction;
+        if (e.is_method) {
+            e.is_virtual = C().clang_CXXMethod_isVirtual(ref) != 0;
+            e.is_dynamic = C().clang_Cursor_isDynamicCall(call) != 0;
+            e.final_ = has_final(ref) || has_final(C().clang_getCursorSemanticParent(ref));
+        }
+        if (e.is_ctor) e.construct_usr = usr(C().clang_getCursorSemanticParent(ref));
+    }
+
+    static bool callee_is_value(CXCursor call) {
+        bool value = false;
+        C().clang_visitChildren(
+            call,
+            [](CXCursor k, CXCursor, CXClientData d) {
+                CXCursor r = C().clang_getCursorReferenced(k);
+                if (!C().clang_Cursor_isNull(r)) {
+                    CXCursorKind rk = C().clang_getCursorKind(r);
+                    if (rk == CXCursor_VarDecl || rk == CXCursor_ParmDecl || rk == CXCursor_FieldDecl)
+                        *static_cast<bool*>(d) = true;
+                }
+                return CXChildVisit_Break;  // the callee is the first child
+            },
+            &value);
+        return value;
+    }
+
+    // `std::cout << x` and its siblings: a boundary with no call shape, once per statement
+    // line. Matched on shape, because nothing in the rule grammar can reach an operator.
+    void streams(Routine* owner, size_t lo, size_t hi, const std::vector<std::pair<unsigned, unsigned>>& skip) {
+        static const std::map<std::string, std::string> STREAMS = {
+            {"std.cout", "OUT"}, {"std.cerr", "OUT"}, {"std.clog", "OUT"}, {"std.wcout", "OUT"},
+            {"std.wcerr", "OUT"}, {"std.cin", "IN"}, {"std.wcin", "IN"}};
+        long seen_line = -1;
+        size_t i = lo;
+        while (i < hi) {
+            bool inside = false;
+            for (const auto& [a, b] : skip)
+                if (x_.toks[i].off >= a && x_.toks[i].off < b) inside = true;
+            size_t j;
+            std::string expr = inside ? "" : fold_declarator(x_.toks, i, j);
+            auto it = STREAMS.find(expr);
+            if (it != STREAMS.end() && j < hi && (x_.toks[j].text == "<<" || x_.toks[j].text == ">>")) {
+                unsigned line = x_.toks[i].line;
+                if (static_cast<long>(line) != seen_line) {
+                    seen_line = line;
+                    facts::BoundaryHit h;
+                    h.routine_id = owner->r.id;
+                    h.kind = facts::BoundaryKind::STDIO;
+                    h.direction = it->second;
+                    h.target = "";
+                    h.line = line;
+                    h.evidence = expr;
+                    h.salience = "low";
+                    x_.ff.boundaries.push_back(h);
+                }
+                i = j + 1;
+                continue;
+            }
+            i = expr.empty() ? i + 1 : std::max(j, i + 1);
+        }
+    }
+
+    void boundaries(Routine* owner, const facts::CallSite& s) {
+        for (const auto& rule : x_.rules->boundaries) {
+            if (!rule.matches(*s.callee_expr)) continue;
+            facts::BoundaryHit h;
+            h.routine_id = owner->r.id;
+            h.kind = rule.kind;
+            h.direction = rule.direction;
+            std::string target;
+            if (rule.target_arg && *rule.target_arg >= 0) {
+                for (const auto& arg : s.args)
+                    if (arg.idx == *rule.target_arg) target = *arg.expr;
+            }
+            h.target = target;
+            h.line = s.line;
+            h.evidence = *s.callee_expr;
+            h.salience = rule.salience;
+            x_.ff.boundaries.push_back(h);
+        }
+    }
+
+    // ---------------------------------------------------------------- control --- //
+
+    // `_statement_span`: where a statement starting at token `i` ends, and its body.
+    void statement_span(size_t i, size_t& end, size_t& body_lo, size_t& body_hi) {
+        const auto& t = x_.toks;
+        size_t n = t.size(), j = i + 1;
+        if (j < n && t[j].text == "(") {
+            long close = matching(t, j);
+            if (close < 0) {
+                end = i;
+                body_lo = body_hi = i + 1;
+                return;
+            }
+            j = static_cast<size_t>(close) + 1;
+        }
+        if (j < n && t[j].text == "{") {
+            long close = matching(t, j);
+            if (close < 0) {
+                end = n - 1;
+                body_lo = j + 1;
+                body_hi = n;
+                return;
+            }
+            end = static_cast<size_t>(close);
+            body_lo = j + 1;
+            body_hi = end;
+            return;
+        }
+        int depth = 0;
+        for (size_t k = j; k < n; k++) {
+            if (t[k].kind != PUNCT) continue;
+            const std::string& x = t[k].text;
+            if (x == "(" || x == "[" || x == "{") depth++;
+            else if (x == ")" || x == "]" || x == "}") depth--;
+            else if (x == ";" && depth == 0) {
+                end = k;
+                body_lo = j;
+                body_hi = k;
+                return;
+            }
+        }
+        end = j;
+        body_lo = body_hi = j;
+    }
+
+    std::string header_text(size_t i) {
+        if (i + 1 < x_.toks.size() && x_.toks[i + 1].text == "(") {
+            long close = matching(x_.toks, i + 1);
+            if (close > 0) return x_.slice(i, static_cast<size_t>(close));
+        }
+        return x_.toks[i].text;
+    }
+
+    std::string exits(size_t lo, size_t hi) {
+        std::vector<std::string> found;
+        for (size_t k = lo; k < hi && k < x_.toks.size(); k++)
+            if (EXITS.count(x_.toks[k].text) &&
+                std::find(found.begin(), found.end(), x_.toks[k].text) == found.end())
+                found.push_back(x_.toks[k].text);
+        std::string out;
+        for (size_t k = 0; k < found.size(); k++) out += (k ? "," : "") + found[k];
+        return out;
+    }
+
+    struct Arm {
+        std::string kind;
+        size_t lo, hi;
+        std::string header;
+    };
+
+    // Control as written, by the tokens: a statement clang dropped still has its loop, and a
+    // macro that expands to an `if` (`check(x)`) is not control anybody wrote.
+    void scan_control(Routine* owner) {
+        auto skip = inner(owner);
+        size_t lo = x_.tok_at(owner->body_lo) + 1, hi = x_.tok_at(owner->body_hi);
+        control_range(owner, lo, hi, 1, skip);
+    }
+
+    void control_range(Routine* owner, size_t lo, size_t hi, int depth,
+                       const std::vector<std::pair<unsigned, unsigned>>& skip) {
+        size_t i = lo;
+        while (i < hi && i < x_.toks.size()) {
+            const Tok& t = x_.toks[i];
+            bool jumped = false;
+            for (const auto& [a, b] : skip)
+                if (t.off >= a && t.off < b) {
+                    i = x_.tok_at(b) + 1;
+                    jumped = true;
+                    break;
+                }
+            if (jumped) continue;
+            if (t.kind != KEYWORD) {
+                i++;
+                continue;
+            }
+            const std::string& w = t.text;
+            if (w != "for" && w != "while" && w != "do" && w != "if" && w != "switch" && w != "try") {
+                i++;
+                continue;
+            }
+            i = point(owner, i, hi, depth, skip) + 1;
+        }
+    }
+
+    // One control point at token `i`; returns its last token.
+    size_t point(Routine* owner, size_t i, size_t hi, int depth,
+                 const std::vector<std::pair<unsigned, unsigned>>& skip) {
+        const std::string word = x_.toks[i].text;
+        size_t end, blo, bhi;
+        statement_span(i, end, blo, bhi);
+        std::string kind = facts::ControlKind::LOOP;
+        std::vector<Arm> arms;
+        if (word == "if") {
+            kind = facts::ControlKind::DECISION;
+            arms = if_arms(i);
+        } else if (word == "switch") {
+            kind = facts::ControlKind::DECISION;
+            arms = switch_arms(i);
+        } else if (word == "try") {
+            kind = facts::ControlKind::HANDLER;
+            arms = try_arms(i);
+        }
+        if (word == "if" && arms.size() <= 1 && guard(blo, bhi)) kind = facts::ControlKind::GUARD;
+        size_t last = end;
+        if (!arms.empty()) last = std::max(last, arms.back().hi);
+        if (word == "do") {
+            // `do { } while (c);` — the trailing `while` is this loop's, not a second one.
+            size_t w = end + 1;
+            if (w < hi && x_.toks[w].text == "while") {
+                size_t e2, l2, h2;
+                statement_span(w, e2, l2, h2);
+                last = e2;
+            }
+        }
+        last = std::min(last, hi > 0 ? hi - 1 : 0);
+
+        facts::ControlPoint p;
+        unsigned line = x_.toks[i].line;
+        size_t ordinal = x_.ff.control.size();
+        p.point_id = ids::make_id({*owner->r.id, std::to_string(line), word, std::to_string(ordinal)});
+        p.routine_id = owner->r.id;
+        p.kind = kind;
+        p.line_start = line;
+        p.line_end = x_.toks[last].line;
+        p.depth = depth;
+        p.header = header_text(i);
+        p.arms = std::max<int64_t>(1, static_cast<int64_t>(arms.size()));
+        p.exits = exits(blo, bhi);
+        p.word = word;
+        if (word == "for") once(i, p);
+        x_.ff.control.push_back(p);
+        for (size_t n = 0; n < arms.size(); n++) {
+            facts::ControlArm arm;
+            arm.point_id = p.point_id;
+            arm.routine_id = owner->r.id;
+            arm.idx = static_cast<int64_t>(n);
+            arm.kind = arms[n].kind;
+            arm.line_start = x_.toks[arms[n].lo].line;
+            arm.line_end = x_.toks[std::min(arms[n].hi, x_.toks.size() - 1)].line;
+            arm.header = arms[n].header;
+            x_.ff.control_arms.push_back(arm);
+        }
+        // What is inside, one deeper: every arm's body, not only the first.
+        if (arms.empty()) {
+            if (blo < bhi) control_range(owner, blo, std::min(bhi, hi), depth + 1, skip);
+        } else {
+            for (const auto& a : arms) {
+                size_t e, l, h;
+                size_t at = a.lo;
+                if (a.kind == facts::ArmKind::ELSE_IF) at = a.lo;  // the `if` of `else if`
+                if (a.kind == facts::ArmKind::CASE || a.kind == facts::ArmKind::DEFAULT) {
+                    size_t colon = at;
+                    while (colon < a.hi && x_.toks[colon].text != ":") colon++;
+                    control_range(owner, colon + 1, std::min(a.hi + 1, hi), depth + 1, skip);
+                    continue;
+                }
+                statement_span(at, e, l, h);
+                if (l < h) control_range(owner, l, std::min(h, hi), depth + 1, skip);
+            }
+        }
+        return last;
+    }
+
+    bool guard(size_t lo, size_t hi) {
+        if (lo >= hi) return false;
+        int statements = 0;
+        bool leaves = false;
+        for (size_t k = lo; k < hi && k < x_.toks.size(); k++) {
+            if (x_.toks[k].text == ";") statements++;
+            if (EXITS.count(x_.toks[k].text)) leaves = true;
+        }
+        return statements <= 2 && leaves;
+    }
+
+    void once(size_t i, facts::ControlPoint& p) {
+        if (i + 1 >= x_.toks.size() || x_.toks[i + 1].text != "(") return;
+        long close = matching(x_.toks, i + 1);
+        if (close < 0) return;
+        int depth = 0;
+        for (size_t k = i + 2; k < static_cast<size_t>(close); k++) {
+            const std::string& t = x_.toks[k].text;
+            if (t == "(" || t == "[" || t == "{") depth++;
+            else if (t == ")" || t == "]" || t == "}") depth--;
+            else if (t == ":" && depth == 0) {
+                p.once_start = x_.toks[k + 1].line;
+                p.once_end = x_.toks[static_cast<size_t>(close) - 1].line;
+                return;
+            }
+        }
+    }
+
+    std::vector<Arm> if_arms(size_t i) {
+        std::vector<Arm> out;
+        size_t cur = i;
+        std::string kind = facts::ArmKind::IF;
+        while (cur < x_.toks.size()) {
+            size_t end, blo, bhi;
+            statement_span(cur, end, blo, bhi);
+            out.push_back({kind, cur, end, header_text(cur)});
+            size_t nxt = end + 1;
+            while (nxt < x_.toks.size() && x_.toks[nxt].text == ";") nxt++;
+            if (nxt < x_.toks.size() && x_.toks[nxt].text == "else") {
+                size_t after = nxt + 1;
+                if (after < x_.toks.size() && x_.toks[after].text == "if") {
+                    kind = facts::ArmKind::ELSE_IF;
+                    cur = after;
+                    continue;
+                }
+                size_t e_end, e_lo, e_hi;
+                statement_span(nxt, e_end, e_lo, e_hi);
+                out.push_back({facts::ArmKind::ELSE, nxt, e_end, "else"});
+            }
+            break;
+        }
+        if (out.size() <= 1) out.clear();
+        return out;
+    }
+
+    std::vector<Arm> switch_arms(size_t i) {
+        size_t end, blo, bhi;
+        statement_span(i, end, blo, bhi);
+        std::vector<std::pair<std::string, size_t>> marks;
+        int depth = 0;
+        for (size_t j = blo; j < bhi; j++) {
+            const Tok& t = x_.toks[j];
+            if (t.kind == PUNCT) {
+                if (t.text == "{") depth++;
+                else if (t.text == "}") depth--;
+                continue;
+            }
+            if (depth != 0) continue;
+            if (t.text == "case") marks.push_back({facts::ArmKind::CASE, j});
+            else if (t.text == "default") marks.push_back({facts::ArmKind::DEFAULT, j});
+        }
+        std::vector<Arm> out;
+        for (size_t n = 0; n < marks.size(); n++) {
+            size_t start = marks[n].second;
+            size_t stop = n + 1 < marks.size() ? marks[n + 1].second - 1 : (bhi > 0 ? bhi - 1 : bhi);
+            out.push_back({marks[n].first, start, std::max(start, stop), header_text(start)});
+        }
+        return out;
+    }
+
+    std::vector<Arm> try_arms(size_t i) {
+        size_t end, blo, bhi;
+        statement_span(i, end, blo, bhi);
+        std::vector<Arm> out{{facts::ArmKind::TRY, i, end, "try"}};
+        size_t cur = end + 1;
+        while (cur < x_.toks.size() && x_.toks[cur].text == "catch") {
+            size_t c_end, c_lo, c_hi;
+            statement_span(cur, c_end, c_lo, c_hi);
+            out.push_back({facts::ArmKind::CATCH, cur, c_end, header_text(cur)});
+            cur = c_end + 1;
+        }
+        return out;
+    }
+
+    // --------------------------------------------------------------- literals --- //
+
+    // Every string of three characters or more, attributed to the innermost routine whose
+    // body holds it, and otherwise to the module scope, prepared and claimed only if used.
+    // A directive's string (`#include "x.h"`) is a fact about the file, not a literal.
+    void literals() {
+        std::vector<const Routine*> by_width;
+        for (const auto& r : routines_) by_width.push_back(r.get());
+        std::sort(by_width.begin(), by_width.end(), [](const Routine* p, const Routine* q) {
+            return (p->body_hi - p->body_lo) > (q->body_hi - q->body_lo);
+        });
+        unsigned directive_line = 0;
+        for (size_t i = 0; i < x_.toks.size(); i++) {
+            const Tok& t = x_.toks[i];
+            if (t.text == "#" && (i == 0 || x_.toks[i - 1].line != t.line)) directive_line = t.line;
+            if (t.kind != LITERAL || t.line == directive_line) continue;
+            size_t q = t.text.find('"');
+            if (q == std::string::npos) continue;  // a number or a character
+            std::string body;
+            if (q > 0 && t.text[q - 1] == 'R') {
+                size_t open = t.text.find('(', q), close = t.text.rfind(')');
+                body = (open != std::string::npos && close != std::string::npos && open < close)
+                           ? t.text.substr(open + 1, close - open - 1) : t.text;
+            } else {
+                body = t.text.substr(q);
+                if (body.size() >= 2 && body.back() == '"') body = body.substr(1, body.size() - 2);
+                else if (!body.empty() && body.front() == '"') body = body.substr(1);
+            }
+            if (body.size() < 3) {
+                x_.ff.literals_dropped++;
+                continue;
+            }
+            const facts::Routine* owner = nullptr;
+            for (const Routine* r : by_width)
+                if (r->body_lo <= t.off && t.off <= r->body_hi) owner = &r->r;
+            if (!owner) {
+                owner = &module_scope_;
+                module_scope_used_ = true;
+            }
+            facts::StringLiteral s;
+            s.routine_id = owner->id;
+            s.line = t.line;
+            s.text = body;
+            s.kind = facts::LiteralKind::PLAIN;
+            x_.ff.literals.push_back(s);
+        }
+    }
+};
+
+// --------------------------------------------------------------------- entry --- //
+
+inline std::string module_of(const std::string& rel) {
+    size_t slash = rel.find_last_of('/');
+    size_t dot = rel.rfind('.');
+    std::string stem = (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ? rel.substr(0, dot) : rel;
+    std::replace(stem.begin(), stem.end(), '/', '.');
+    return stem;
+}
+
+// Parse one file and read everything this reader reports about it.
+inline void read(CXIndex index, const std::string& abs, const std::string& rel, const std::string& text,
+                 const std::vector<std::string>& args, const rules::Rules& rules, Result& out) {
+    out.hash = ids::hash_source(text);
+    Ctx x;
+    x.rel = rel;
+    x.module = module_of(rel);
+    x.text = text;
+    x.rules = &rules;
+    x.out = &out;
+    x.line_starts.push_back(0);
+    for (unsigned i = 0; i < text.size(); i++)
+        if (text[i] == '\n') x.line_starts.push_back(i + 1);
+
+    x.ff.path = rel;
+    x.ff.lang = "cpp";
+    x.ff.module = x.module;
+    x.ff.content_hash = out.hash;
+
+    std::vector<const char*> argv;
+    for (const auto& a : args) argv.push_back(a.c_str());
+    CXUnsavedFile unsaved{abs.c_str(), text.c_str(), static_cast<unsigned long>(text.size())};
+    unsigned options = CXTranslationUnit_KeepGoing | CXTranslationUnit_DetailedPreprocessingRecord |
+                       CXTranslationUnit_RetainExcludedConditionalBlocks * 0;
+    CXErrorCode err = C().clang_parseTranslationUnit2(index, abs.c_str(), argv.data(), static_cast<int>(argv.size()),
+                                                      &unsaved, 1, options, &x.tu);
+    if (err != CXError_Success || !x.tu) {
+        out.failed = "libclang could not parse it (error " + std::to_string(static_cast<int>(err)) + ")";
+        x.ff.errors.push_back(out.failed);
+        std::string j;
+        x.ff.write_json(j);
+        out.facts_json = std::move(j);
+        return;
+    }
+
+    unsigned nd = C().clang_getNumDiagnostics(x.tu);
+    for (unsigned i = 0; i < nd; i++) {
+        CXDiagnostic d = C().clang_getDiagnostic(x.tu, i);
+        CXDiagnosticSeverity s = C().clang_getDiagnosticSeverity(d);
+        if (s == CXDiagnostic_Fatal) out.fatal++;
+        if (s >= CXDiagnostic_Error) out.errors++;
+        if (out.first_missing.empty()) {
+            std::string m = clang::str(C().clang_getDiagnosticSpelling(d));
+            if (m.find("file not found") != std::string::npos) out.first_missing = m;
+        }
+        C().clang_disposeDiagnostic(d);
+    }
+
+    // One tokenisation of the whole file, comments included.
+    CXCursor root = C().clang_getTranslationUnitCursor(x.tu);
+    CXToken* toks = nullptr;
+    unsigned nt = 0;
+    C().clang_tokenize(x.tu, C().clang_getCursorExtent(root), &toks, &nt);
+    x.toks.reserve(nt);
+    for (unsigned i = 0; i < nt; i++) {
+        Tok t;
+        t.kind = C().clang_getTokenKind(toks[i]);
+        t.text = clang::str(C().clang_getTokenSpelling(x.tu, toks[i]));
+        CXSourceRange r = C().clang_getTokenExtent(x.tu, toks[i]);
+        unsigned a = 0, b = 0;
+        offset_of(C().clang_getRangeStart(r), a);
+        offset_of(C().clang_getRangeEnd(r), b);
+        t.off = a;
+        t.end = b;
+        t.line = x.line_of(a);
+        x.toks.push_back(std::move(t));
+    }
+    if (toks) C().clang_disposeTokens(x.tu, toks, nt);
+    std::stable_sort(x.toks.begin(), x.toks.end(), [](const Tok& p, const Tok& q) { return p.off < q.off; });
+
+    CXFile main = C().clang_getFile(x.tu, abs.c_str());
+    if (main) {
+        CXSourceRangeList* sk = C().clang_getSkippedRanges(x.tu, main);
+        if (sk) {
+            for (unsigned i = 0; i < sk->count; i++) {
+                unsigned a = 0, b = 0;
+                offset_of(C().clang_getRangeStart(sk->ranges[i]), a);
+                offset_of(C().clang_getRangeEnd(sk->ranges[i]), b);
+                out.skipped_lines += static_cast<long>(x.line_of(b)) - static_cast<long>(x.line_of(a)) + 1;
+            }
+            C().clang_disposeSourceRangeList(sk);
+        }
+    }
+
+    Reader(x).run();
+    C().clang_disposeTranslationUnit(x.tu);
+
+    std::string j;
+    x.ff.write_json(j);
+    out.facts_json = std::move(j);
+}
+
+}  // namespace extract

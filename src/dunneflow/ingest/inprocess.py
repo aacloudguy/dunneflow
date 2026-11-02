@@ -34,22 +34,6 @@ def _extract_one(args: tuple[str, str]) -> FileFacts:
     return extract_file(Path(path_s), Path(root_s))
 
 
-def _extract_one_cpp(args: tuple[str, str]) -> FileFacts:
-    """Worker entry point for the C++ reader.
-
-    Its own function rather than a parameterised one, for the reason `_IN_PROCESS` is a
-    table rather than a dotted string in a manifest: what runs in this process is decided
-    by a file that is under test and in the cache key. A shared shim taking a module name
-    would move that decision into data.
-
-    The import is inside the function for the pool's sake — a worker imports what it needs
-    rather than the parent importing every reader for every run.
-    """
-    from ..extractors.cpp.extract import extract_file
-    path_s, root_s = args
-    return extract_file(Path(path_s), Path(root_s))
-
-
 def _extract_one_kotlin(args: tuple[str, str]) -> FileFacts:
     """Worker entry point for the Kotlin reader. See `_extract_one_cpp` for why each reader
     gets its own function rather than a parameterised shim."""

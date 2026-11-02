@@ -51,7 +51,7 @@ from typing import Any
 
 from ..detectors import rules_document
 from ..schema import SCHEMA_VERSION
-from .contract import PluginManifest, PluginRefused, ProtocolError
+from .contract import PluginManifest, PluginRefused, ProtocolError, ToolchainMissing
 
 # How much of the other channel to keep. Enough to carry a stack trace's tail, which is
 # the part that says what happened, and bounded because a plugin in a loop can write
@@ -288,6 +288,17 @@ class NdjsonWorker:
                 f"the {m.lang} plugin died during the handshake ({exc}). It wrote:\n"
                 f"{self.stderr_tail() or '(nothing on stderr)'}"
             ) from exc
+        if reply["t"] == "declined":
+            # The reader started and cannot read: a library its toolchain needs is not on
+            # this machine (`Toolchain.asks_reader`). The machine's state, not a defect.
+            tc = m.toolchain
+            raise ToolchainMissing(
+                f"{m.lang} needs more than `{tc.command if tc else m.lang}` answering: the "
+                f"reader started and declined, saying: {reply.get('reason') or '(no reason)'}. "
+                f"Install it" + (f" ({tc.install})" if tc and tc.install else "")
+                + f", or run again with `--without {m.lang}` and the map will say those files "
+                f"were declined."
+            )
         if reply["t"] != "ready":
             raise ProtocolError(
                 f"the {m.lang} plugin answered `hello` with {reply['t']!r}; the only "

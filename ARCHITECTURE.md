@@ -535,7 +535,14 @@ queries know a language exists.
   file from the host's text and never from the file; `Edges.java` parses every file in one
   `JavacTask`, walks each with the extractor's own walk **before** attribution so every site
   carries the facts' `site_id`, then `analyze()`s with `-XDshould-stop.ifError=FLOW` so a
-  missing class does not end attribution. Its dispatch rule is Tom's (2026-11-01, in the
+  missing class does not end attribution. **Over 2,000 files (`Edges.DEFAULT_BATCH`) that is
+  one task per batch of whole directories**, each with the rest of the tree on an in-memory
+  source path, read once and body-blanked (`SourcePath`, `MemorySourcePath`). Each batch
+  records its overriders by name (`Index`), and the dispatch rule is decided over the whole
+  index once the last batch is done. A batch whose heap after collection reaches 85 % is
+  split, and a directory that cannot be attributed is given up and said in
+  `edges_done.notes`. `DUNNEFLOW_JAVA_BATCH_FILES` and `DUNNEFLOW_JAVA_FAIL_BATCH` exist for
+  the tests. Its dispatch rule is Tom's (2026-11-01, in the
   class comment), narrowed to overrides that can answer the receiver's static type, and a
   javac pick among overloads under an argument it could not type is refused as `untyped`.
   For each `dynamic` call it sends the location of every body that may answer

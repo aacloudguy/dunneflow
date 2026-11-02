@@ -394,8 +394,39 @@ own name. Neither corpus's jars were on this machine; the behaviour is proved on
 repository with real compiled jars. A coordinate a script computes (traccar's
 `jacksonVersion`) is listed as not found, never guessed.
 
-**Ask the next reader the two Kotlin questions and one more.** Java has expression-bodied
+**A checker built for one project's compilation will not hold a big one, and the bound
+has to be on the work.** The Android SDK's 16,344 files kept javac collecting garbage for 97
+minutes and then out of a 2 GB heap, with no edges; the reader's own account of that failure
+reached only stderr until `edges_done.notes` carried it to the map. Over 2,000 files the
+tree is now attributed **in batches of whole directories**, in path order (rules 66 and 105):
+- **What crosses a batch is a name, never javac's identity.** Each compilation's elements
+  die with it, so every batch writes its overriders into an index keyed by string
+  (`binary.Owner#name(erased params)`), and the dispatch rule is decided once, over the whole
+  tree's index, after javac is gone. A batch-local index called `x.hello()` CERTAIN while
+  another batch's `C.hello` could answer it (rule 1).
+- **The rest of the tree is a source path held in memory, read once, with every body
+  blanked**: interior made spaces, line breaks kept, so every position is the file's own.
+  Two things were measured first. A real `-sourcepath` was read off the external volume one
+  file at a time in every compilation, four hours at 3 % CPU. And javac attributes a class
+  it loads off the source path as fully as one it was handed (102 of traccar's files
+  attributed 915 others). A blank starts at the brace and never at the node, or `static {`
+  loses its keyword and the class stops parsing.
+- **The stop is heap after collection, summed over the heap pools and judged against the
+  whole heap**, at 85 %. One pool judged against its own maximum is a different question,
+  and it stopped the first batched run in under a second. A batch that fills is split in
+  half; a single directory that still fills is given up, its calls are left unresolved, and
+  any call that could dispatch into it is `unfollowed` rather than CERTAIN (rule 49).
+- **javac's errors are counted in a batch's own files**, with `-Xmaxerrs` lifted: "100
+  errors" was javac's cap, not traccar's count.
+
+The batches cost no internals. `JavacTaskImpl.analyze(classes)` would attribute only what is
+named, but it is `com.sun.tools.javac`, which this reader does not use. Blanking the bodies
+is how the public `JavacTask` is made to do the same.
+
+**Ask the next reader the two Kotlin questions and two more.** Java has expression-bodied
 lambdas and a stream house style, so `.forEach(x -> …)` is a COMPREHENSION span where the
 function is written in place. The third question is Java's: **what does your checker do when
 it cannot see a type?** If the answer is *it picks*, that pick is a guess, and the map may
-not draw it.
+not draw it. The fourth is clang's as much as anyone's: **what does your checker do with a
+tree ten times your corpus?** Measure it on a scale probe before the first real tree does it
+for you, and if it must be split, decide what crosses the split by name.

@@ -223,6 +223,8 @@ class WalkStats:
 
 
 _TEST_MODULES = "test_modules:"
+# How many of a reader's `edges_done.notes` the summary prints before it says how many more.
+_EDGES_SAID_SHOWN = 12
 
 
 def _test_modules(store: Store) -> dict[str, dict[str, str]]:
@@ -1017,6 +1019,15 @@ def analyze_tree(
                 if plugin.edges_not_present:
                     stats.not_present[lang] = list(plugin.edges_not_present)
                 stats.edge_notes.extend(f"{lang}: {n}" for n in plugin.edge_notes)
+                # Beside what it said on opening, and bounded: a reader's account of its
+                # pass is evidence, and a histogram of nine thousand missing packages is
+                # not a summary (rule 91).
+                said = plugin.edges_said
+                stats.reader_notes.extend(f"{lang} {n}" for n in said[:_EDGES_SAID_SHOWN])
+                if len(said) > _EDGES_SAID_SHOWN:
+                    stats.reader_notes.append(
+                        f"{lang} … and {len(said) - _EDGES_SAID_SHOWN} more lines about "
+                        f"its edge pass")
                 named = [p for p in plugin.edges_test_only if p in hashes]
                 store.set_meta(f"{_TEST_MODULES}{lang}",
                                json.dumps({p: hashes[p] for p in named}, sort_keys=True))

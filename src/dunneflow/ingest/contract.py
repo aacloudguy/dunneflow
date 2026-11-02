@@ -343,6 +343,13 @@ class IngestPlugin(Protocol):
     # know. Relative paths, sorted; the walk leaves them out as it leaves out a test file
     # (`walk._leave_out_test_modules`). Empty for every reader that has no such idiom.
     edges_test_only: list[str]
+    # **What the reader said about its own edge pass** -- `edges_done.notes`. Why a pass
+    # supplied what it did: javac's error count and the packages it could not find, or that
+    # the checker threw and nothing was attributed. Before this field a reader could only
+    # write that to stderr, and the Android SDK's 900,135 call sites read as "the reader
+    # could not resolve" when the reader had said, to nobody, that javac had crashed
+    # (rule 38). Empty for a reader with nothing to declare.
+    edges_said: list[str]
     # What the reader said when `open` built its session — how it divided the file set
     # into compilations, how long that took, whatever else it has to declare. Empty for a
     # reader that opens nothing, and the `opened` frame carried both fields for three

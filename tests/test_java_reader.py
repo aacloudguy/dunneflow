@@ -477,6 +477,28 @@ def test_every_supplied_edge_lands_on_its_routine_s_first_line(tmp_path):
     assert (rep.by_span, rep.name_mismatch, rep.no_routine) == (0, 0, 0)
 
 
+def test_what_javac_said_about_the_edge_pass_reaches_the_summary(tmp_path):
+    """Rule 38, through the walk: javac's account of why calls are `untyped` used to go to
+    stderr only, so the Android SDK's 900,135 call sites read as "could not resolve" with
+    the reason said to nobody."""
+    if _WHY:
+        pytest.skip(_WHY)
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    src = tmp_path / "t" / "org" / "x"
+    src.mkdir(parents=True)
+    (src / "A.java").write_text(
+        "package org.x;\nimport org.nowhere.Gone;\n"
+        "class A { void f() { new Gone().go(); } }\n", encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    stats = analyze_tree(tmp_path / "t", store)
+    store.close()
+    said = [n for n in stats.reader_notes if n.startswith("java edges:")]
+    assert said and "javac reported" in said[0]
+    assert any("org.nowhere" in n for n in stats.reader_notes)
+
+
 # ------------------------------------------------- dependencies, never fetched --- #
 
 def _pom(g: str, a: str, v: str, body: str = "", parent: str = "") -> str:

@@ -147,6 +147,7 @@ public final class Main {
             .put("unresolved", found.outside + found.unknown)
             .put("outside", found.outside).put("unknown", found.unknown)
             .put("read_beyond", found.readBeyond).put("not_present", found.notPresent)
+            .put("notes", found.notes)
             .finish());
     }
 

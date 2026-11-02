@@ -59,6 +59,7 @@ VERSION = "1.0.0"
 #                          read
 #   DUNNEFLOW_OOP_STRAY    anything truthy; a frame that is neither `edge` nor `edges_done`
 #                          arrives inside the stream
+#   DUNNEFLOW_OOP_SAID     anything truthy; `edges_done` carries `notes` about the pass
 
 
 def _hit(var: str, path: str) -> bool:
@@ -172,8 +173,11 @@ def on_edges(ident: Any) -> None:
     supplied = sum(1 for e in EDGES if e.get("file"))
     if os.environ.get("DUNNEFLOW_OOP_MISCOUNT"):
         supplied += 40
-    send({"t": "edges_done", "id": ident, "supplied": supplied, "unresolved": 7,
-          "outside": 5, "unknown": 2})
+    done = {"t": "edges_done", "id": ident, "supplied": supplied, "unresolved": 7,
+            "outside": 5, "unknown": 2}
+    if os.environ.get("DUNNEFLOW_OOP_SAID"):
+        done["notes"] = ["edges: the checker failed attributing this tree: Boom"]
+    send(done)
 
 
 HANDLERS = {"hello": on_hello, "open": on_open, "extract": on_extract}

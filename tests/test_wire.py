@@ -440,6 +440,26 @@ def test_edges_arrive_as_records_and_the_two_kinds_are_kept_apart(edging, tree):
     assert (plugin.edges_outside, plugin.edges_unknown) == (5, 2)
 
 
+def test_what_a_reader_says_about_its_edge_pass_reaches_the_host(edging, tree, monkeypatch):
+    """Rule 38: the Android SDK's edge pass supplied nothing because javac threw, and the
+    reader said so on stderr, where nobody reads it. The map said "could not resolve"."""
+    plugin = OutOfProcessPlugin(edging)
+    plugin.open(tree, [])
+    try:
+        list(plugin.edges())
+        assert plugin.edges_said == []                  # nothing said, nothing invented
+        monkeypatch.setenv("DUNNEFLOW_OOP_SAID", "1")
+    finally:
+        plugin.close()
+    plugin = OutOfProcessPlugin(edging)
+    plugin.open(tree, [])
+    try:
+        list(plugin.edges())
+    finally:
+        plugin.close()
+    assert plugin.edges_said == ["edges: the checker failed attributing this tree: Boom"]
+
+
 def test_a_tally_that_disagrees_with_the_stream_is_refused(edging, tree, monkeypatch):
     """Rule 37: a count a plugin sends is a claim, and one checked against nothing is a
     guard that has watched a name appear."""

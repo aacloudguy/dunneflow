@@ -399,3 +399,30 @@ lambdas and a stream house style, so `.forEach(x -> …)` is a COMPREHENSION spa
 function is written in place. The third question is Java's: **what does your checker do when
 it cannot see a type?** If the answer is *it picks*, that pick is a guess, and the map may
 not draw it.
+
+## LOCAL_IPC, and four rule keys a reader must say it reads
+
+*Written 2026-11-02, for Society2.* A Unix-domain socket was NETWORK/TCP in every reader,
+because the dotted name cannot see what tells it apart: `net.Dial("unix", p)` and
+`net.Dial("tcp", a)` are one spelling. The kind is `LOCAL_IPC` (`schema.py`), and the
+rules file says when it applies with four new keys on a boundary rule:
+
+- **`when_arg`** decides on one argument's value -- a literal's contents, otherwise its
+  source text, so `socket.AF_UNIX` is named rather than evaluated. Yes, no, or
+  *undecided*: a variable never matches, and the rule's **`undecided`** sentence becomes
+  the blind spot in the evidence of whatever rule does (`… — blind spot: …`).
+- **`note`** is a fixed phrase after the evidence: `unix.GetsockoptUcred — peer
+  credentials`. The call's spelling always comes first, because `acts.one_act` folds chains
+  by it (`detectors.EVIDENCE_NOTE`).
+- **`target_field`** (Go) reads the target out of a composite literal:
+  `&net.UnixAddr{Name: p}` is `p`.
+- **`on_receiver`** (Python) makes `s.bind(path)` the act where `s = socket.socket(AF_UNIX)`
+  in the same routine, and drops the creation's own row once it is used (rule 40).
+
+**A reader ignores a key it does not know, so a conditioned rule handed to the wrong reader
+matches unconditionally.** Each `plugin.json` therefore lists the keys it implements in
+`rule_keys`, and `load_rules` and `rules_document` refuse a rules file that uses one its
+reader does not list (rule 49). A new reader that wants these implements them and says so.
+
+**A conditioned rule also stops a remote call being recorded**: a LOCAL_IPC hit makes no
+`net_calls` row, so a socket file has no protocol and no NO_TIMEOUT.

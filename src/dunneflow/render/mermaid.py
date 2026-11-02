@@ -26,6 +26,7 @@ _SHAPE = {
     BoundaryKind.CLOUD_SDK: ("{{", "}}"),
     BoundaryKind.LLM_API: ("{{", "}}"),
     BoundaryKind.CRYPTO: ("[[", "]]"),
+    BoundaryKind.LOCAL_IPC: ("((", "))"),
 }
 
 _CLASS = {
@@ -39,6 +40,7 @@ _CLASS = {
     BoundaryKind.CLOUD_SDK: "cloud",
     BoundaryKind.LLM_API: "llm",
     BoundaryKind.CRYPTO: "crypto",
+    BoundaryKind.LOCAL_IPC: "ipc",
 }
 
 STYLES = """    classDef entry fill:#1f4e79,stroke:#0d2b45,color:#fff,font-weight:bold
@@ -52,7 +54,8 @@ STYLES = """    classDef entry fill:#1f4e79,stroke:#0d2b45,color:#fff,font-weigh
     classDef io    fill:#eeeeee,stroke:#666,color:#333
     classDef cloud fill:#d3f2f2,stroke:#0b5e5e,color:#0b5e5e
     classDef llm   fill:#ede7f6,stroke:#4527a0,color:#4527a0
-    classDef crypto fill:#fce4ec,stroke:#880e4f,color:#880e4f"""
+    classDef crypto fill:#fce4ec,stroke:#880e4f,color:#880e4f
+    classDef ipc   fill:#e8f0fe,stroke:#3c4a8a,color:#2b3670"""
 
 
 def _san(text: str, limit: int = 34) -> str:

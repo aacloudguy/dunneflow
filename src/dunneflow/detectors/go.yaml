@@ -68,6 +68,77 @@ boundaries:
     exact: [exec.Command, exec.CommandContext, syscall.Exec, os.StartProcess, syscall.Kill]
     target_arg: 0
 
+  # -- local IPC -------------------------------------------------------------- #
+  # **A Unix-domain socket is another process on this machine, never the network.**
+  # `net.Dial` and `net.Listen` are both, decided by the network argument, so the
+  # conditioned rules come first (first match wins) and the NETWORK rules below catch the
+  # rest. A network argument that is not a literal -- `net.Dial(network, addr)` -- cannot
+  # be decided: it stays NETWORK and says so (`undecided`). The target is the address,
+  # which for a Unix socket is its path. `net.DialUnixgram` is not a Go function.
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    exact: [net.Listen, net.ListenPacket]
+    when_arg: {index: 0, in: [unix, unixgram, unixpacket]}
+    undecided: "the network argument is not a literal, so a Unix-domain socket here reads as NETWORK"
+    target_arg: 1
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [net.Dial, net.DialTimeout]
+    when_arg: {index: 0, in: [unix, unixgram, unixpacket]}
+    undecided: "the network argument is not a literal, so a Unix-domain socket here reads as NETWORK"
+    target_arg: 1
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    exact: [net.ListenUnix, net.ListenUnixgram]
+    target_arg: 1
+    target_field: Name
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [net.DialUnix]
+    target_arg: 2
+    target_field: Name
+  # `*net.UnixConn` and `*net.UnixListener`'s own methods. Each name is that type's and
+  # nobody else's in the standard library, which is what makes a bare method safe (rule 5).
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    method: [ReadMsgUnix]
+    note: can pass file descriptors (SCM_RIGHTS)
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    method: [WriteMsgUnix]
+    note: can pass file descriptors (SCM_RIGHTS)
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    method: [AcceptUnix, ReadFromUnix]
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    method: [WriteToUnix]
+  # A raw socket, only where its family is written as the Unix one.
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [syscall.Socket, unix.Socket]
+    when_arg: {index: 0, in: [syscall.AF_UNIX, unix.AF_UNIX, syscall.AF_LOCAL, unix.AF_LOCAL]}
+  # **Who is on the other end**, which only a Unix-domain socket can answer: Linux's
+  # `SO_PEERCRED`, Darwin's `LOCAL_PEERCRED`, and the peer's pid on Darwin.
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    exact: [unix.GetsockoptUcred, unix.GetsockoptXucred, unix.GetsockoptInt]
+    when_arg:
+      index: 2
+      in: [unix.SO_PEERCRED, unix.LOCAL_PEERCRED, unix.LOCAL_PEERPID, unix.LOCAL_PEEREPID,
+           syscall.SO_PEERCRED]
+    note: peer credentials
+
   # -- network ---------------------------------------------------------------- #
   - kind: NETWORK
     direction: OUT
@@ -129,6 +200,16 @@ boundaries:
 # **Named calls, never a package prefix** (rule 1). `http.` would make `http.StatusText`
 # and `http.NewServeMux` remote calls and `net.` would make `net.ParseIP` one; a key with a
 # dot is a prefix, so each is the call that actually goes somewhere.
+# **A boundary a signature names, before any body touches it** (schema 18). Read only
+# where the routine's body shows nothing of that kind, and recorded as *declared*, never
+# as a touch (`declared_boundaries`). `net.Conn` and `net.Listener` are the network's and
+# a Unix socket's alike, so they are NETWORK and say they may not be.
+signatures:
+  - {type: "*net.UnixListener", kind: LOCAL_IPC, direction: IN}
+  - {type: "*net.UnixConn",     kind: LOCAL_IPC, direction: BOTH}
+  - {type: "net.Listener",      kind: NETWORK,   direction: IN,   note: "may be a Unix-domain socket"}
+  - {type: "net.Conn",          kind: NETWORK,   direction: BOTH, note: "may be a Unix-domain socket"}
+
 network:
   libraries:
     "http.Get":             {protocol: HTTP, async: false}

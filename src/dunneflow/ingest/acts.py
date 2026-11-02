@@ -24,11 +24,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from ..detectors import EVIDENCE_NOTE
 from ..schema import BoundaryHit, FileFacts, NetworkCall
 
 
 def _extends(longer: str, shorter: str) -> bool:
     return bool(shorter) and longer.startswith(shorter + ".")
+
+
+def _spelling(evidence: str) -> str:
+    """The call's dotted spelling, without a rule's note or blind spot after it."""
+    return evidence.split(EVIDENCE_NOTE, 1)[0]
 
 
 def one_act(ff: FileFacts) -> None:
@@ -38,7 +44,7 @@ def one_act(ff: FileFacts) -> None:
         by_line[(b.routine_id, str(b.kind), b.line)].append(b)
     kept_b = [
         b for b in ff.boundaries
-        if not any(_extends(b.evidence, o.evidence)
+        if not any(_extends(_spelling(b.evidence), _spelling(o.evidence))
                    for o in by_line[(b.routine_id, str(b.kind), b.line)] if o is not b)
     ]
     if len(kept_b) != len(ff.boundaries):

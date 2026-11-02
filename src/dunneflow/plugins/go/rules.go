@@ -26,6 +26,55 @@ type BoundaryRule struct {
 	Contains  []string `json:"contains"`
 	TargetArg *int     `json:"target_arg"`
 	Target    string   `json:"target"`
+	// `detectors.ArgCondition`: the rule applies only for some values of one argument.
+	WhenArg *ArgCondition `json:"when_arg"`
+	// Said on whatever rule matches instead, when `WhenArg` could not decide.
+	Undecided string `json:"undecided"`
+	// A fixed phrase after the evidence: `c.WriteMsgUnix — can pass file descriptors`.
+	Note string `json:"note"`
+	// Where the target argument is a composite literal, the field to read the target
+	// from: `&net.UnixAddr{Name: p}` is `p`.
+	TargetField string `json:"target_field"`
+}
+
+// ArgCondition is `when_arg`. Go has no keyword arguments, so only the position is read.
+type ArgCondition struct {
+	Index *int     `json:"index"`
+	In    []string `json:"in"`
+	NotIn []string `json:"not_in"`
+}
+
+// argValue is one argument as a rule sees it: a string literal's contents, otherwise its
+// source text, and whether it was a literal at all.
+type argValue struct {
+	text    string
+	literal bool
+}
+
+// decide is `ArgCondition.decide`: yes, no, or (false, false) for undecided. An absent
+// argument decides no; a literal or a `not_in` entry decides no; anything else -- a
+// variable, a call -- is undecided, and never matches (rule 49).
+func (a *ArgCondition) decide(args []argValue) (yes bool, known bool) {
+	if a.Index == nil || *a.Index < 0 || *a.Index >= len(args) {
+		return false, true
+	}
+	v := args[*a.Index]
+	if contains(a.In, v.text) {
+		return true, true
+	}
+	if v.literal || contains(a.NotIn, v.text) {
+		return false, true
+	}
+	return false, false
+}
+
+// Signature is one entry under `signatures:`: a parameter or result type that names a
+// boundary before any body touches it.
+type Signature struct {
+	Type      string `json:"type"`
+	Kind      string `json:"kind"`
+	Direction string `json:"direction"`
+	Note      string `json:"note"`
 }
 
 type netLibrary struct {
@@ -62,6 +111,7 @@ type Rules struct {
 	// declaring a way in is data in its rules file.
 	Registrations []Registration `json:"registrations"`
 	Commands      []Command      `json:"commands"`
+	Signatures    []Signature    `json:"signatures"`
 	Network       struct {
 		Libraries map[string]netLibrary `json:"libraries"`
 		Verbs     []string              `json:"verbs"`
@@ -156,14 +206,28 @@ func (b *BoundaryRule) matchesCall(dotted string) bool {
 	return false
 }
 
-// matchCall is the first matching rule, so order in the YAML is meaningful.
-func (r *Rules) matchCall(dotted string) *BoundaryRule {
+// matchCall is the first matching rule, so order in the YAML is meaningful. A rule
+// conditioned on an argument is decided on `args`; one that cannot be decided does not
+// match, and its `undecided` sentence is returned as the blind spot of the rule that does.
+func (r *Rules) matchCall(dotted string, args []argValue) (*BoundaryRule, string) {
+	var blind []string
 	for i := range r.Boundaries {
-		if r.Boundaries[i].matchesCall(dotted) {
-			return &r.Boundaries[i]
+		b := &r.Boundaries[i]
+		if !b.matchesCall(dotted) {
+			continue
 		}
+		if b.WhenArg != nil {
+			yes, known := b.WhenArg.decide(args)
+			if !known && b.Undecided != "" {
+				blind = append(blind, b.Undecided)
+			}
+			if !yes {
+				continue
+			}
+		}
+		return b, strings.Join(blind, "; ")
 	}
-	return nil
+	return nil, strings.Join(blind, "; ")
 }
 
 // matchNetwork is `RuleSet.network_profile`, including the clause that makes a bare key

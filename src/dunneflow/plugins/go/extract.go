@@ -659,7 +659,56 @@ func (e *extractor) routine(name string, ft *ast.FuncType, body *ast.BlockStmt,
 	}
 	e.depth = saved
 	e.scope = e.scope[:len(e.scope)-1]
+	e.declared(r, ft)
 	return r
+}
+
+// declared records what a routine's signature says it touches, where its body was not
+// seen to touch anything of that kind: Society2's Stage 0 stubs return a
+// `*net.UnixListener` from a body that only panics. **Declared, never observed** -- the
+// host keeps these out of every count of touches (`declared_boundaries`, rule 32) -- and
+// only where the body says nothing of that kind, so product code is not counted twice.
+func (e *extractor) declared(r *Routine, ft *ast.FuncType) {
+	if len(e.rules.Signatures) == 0 || ft == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, b := range e.boundaries {
+		if b.RoutineId == r.Id && !b.Declared {
+			seen[string(b.Kind)] = true
+		}
+	}
+	add := func(f *ast.Field, target string) {
+		written := e.text(f.Type)
+		for _, s := range e.rules.Signatures {
+			if s.Type != written || seen[s.Kind] {
+				continue
+			}
+			evidence := written + evidenceNote + "declared by signature"
+			if s.Note != "" {
+				evidence += "; " + s.Note
+			}
+			e.boundaries = append(e.boundaries, BoundaryHit{
+				RoutineId: r.Id, Kind: BoundaryKind(s.Kind), Direction: Direction(s.Direction),
+				Target: target, Line: r.LineStart, Evidence: evidence, Salience: "high",
+				Declared: true,
+			})
+		}
+	}
+	if ft.Params != nil {
+		for _, f := range ft.Params.List {
+			name := "_"
+			if len(f.Names) > 0 {
+				name = f.Names[0].Name
+			}
+			add(f, name)
+		}
+	}
+	if ft.Results != nil {
+		for _, f := range ft.Results.List {
+			add(f, "")
+		}
+	}
 }
 
 func (e *extractor) params(ft *ast.FuncType) List[Param] {
@@ -855,20 +904,30 @@ func (e *extractor) call(c *ast.CallExpr) {
 	if expr != "" {
 		owner := e.owner()
 		line := e.line(c.Pos())
-		rule := e.rules.matchCall(expr)
+		rule, blind := e.rules.matchCall(expr, e.argValues(c))
 		e.recordCall(owner.Id, expr, line, rule != nil, e.callArgs(c))
 		site := e.calls[len(e.calls)-1]
 		e.sites[c] = &site
 		if rule != nil {
+			evidence := expr
+			if rule.Note != "" {
+				evidence += evidenceNote + rule.Note
+			}
+			if blind != "" {
+				evidence += evidenceNote + "blind spot: " + blind
+			}
 			hit := BoundaryHit{RoutineId: owner.Id, Kind: BoundaryKind(rule.Kind),
 				Direction: Direction(rule.Direction), Target: e.target(c, expr, rule),
-				Line: line, Evidence: expr}
+				Line: line, Evidence: evidence}
 			if rule.Salience != "normal" {
 				hit.Salience = rule.Salience
 			}
 			e.boundaries = append(e.boundaries, hit)
 		}
-		e.maybeNetwork(c, expr, line)
+		// A Unix-domain socket is not a remote call: no protocol, no timeout to miss.
+		if rule == nil || rule.Kind != "LOCAL_IPC" {
+			e.maybeNetwork(c, expr, line)
+		}
 	}
 	claimed := e.registration(c, expr)
 	// The callee is walked too: `a.b(x).c()` holds the call `a.b`, and `func(){...}()`
@@ -906,6 +965,24 @@ func (e *extractor) callArgs(c *ast.CallExpr) List[CallArg] {
 	return out
 }
 
+// evidenceNote is `detectors.EVIDENCE_NOTE`: the call's spelling comes first, always.
+const evidenceNote = " — "
+
+// argValues is each argument as `when_arg` reads it.
+func (e *extractor) argValues(c *ast.CallExpr) []argValue {
+	out := make([]argValue, 0, len(c.Args))
+	for _, a := range c.Args {
+		if s, ok := stringValue(a); ok {
+			out = append(out, argValue{text: s, literal: true})
+		} else if _, ok := a.(*ast.BasicLit); ok {
+			out = append(out, argValue{text: e.text(a), literal: true})
+		} else {
+			out = append(out, argValue{text: e.text(a), literal: false})
+		}
+	}
+	return out
+}
+
 func stringValue(x ast.Expr) (string, bool) {
 	lit, ok := x.(*ast.BasicLit)
 	if !ok || lit.Kind != token.STRING {
@@ -934,10 +1011,35 @@ func (e *extractor) target(c *ast.CallExpr, expr string, rule *BoundaryRule) str
 	if idx < 0 || idx >= len(c.Args) {
 		return ""
 	}
-	if s, ok := stringValue(c.Args[idx]); ok {
+	arg := c.Args[idx]
+	if rule.TargetField != "" {
+		if f := compositeField(arg, rule.TargetField); f != nil {
+			arg = f
+		}
+	}
+	if s, ok := stringValue(arg); ok {
 		return s
 	}
-	return e.text(c.Args[idx])
+	return e.text(arg)
+}
+
+// compositeField is the value of field `name` in `T{name: v}` or `&T{name: v}`, or nil.
+func compositeField(x ast.Expr, name string) ast.Expr {
+	if u, ok := x.(*ast.UnaryExpr); ok && u.Op == token.AND {
+		x = u.X
+	}
+	lit, ok := x.(*ast.CompositeLit)
+	if !ok {
+		return nil
+	}
+	for _, el := range lit.Elts {
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			if id, ok := kv.Key.(*ast.Ident); ok && id.Name == name {
+				return kv.Value
+			}
+		}
+	}
+	return nil
 }
 
 func (e *extractor) maybeNetwork(c *ast.CallExpr, expr string, line int) {

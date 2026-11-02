@@ -1615,6 +1615,7 @@ fn boundary_kind(s: &str) -> BoundaryKind {
         "CLOUD_SDK" => BoundaryKind::CloudSdk,
         "LLM_API" => BoundaryKind::LlmApi,
         "CRYPTO" => BoundaryKind::Crypto,
+        "LOCAL_IPC" => BoundaryKind::LocalIpc,
         // The host validated the rules file; an unknown kind cannot arrive.
         other => panic!("detectors/rust.yaml names a boundary kind this reader does not know: {other}"),
     }

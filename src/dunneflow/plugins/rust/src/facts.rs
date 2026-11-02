@@ -17,7 +17,7 @@ use crate::json::{write_str, ToJson};
 use std::collections::BTreeMap;
 
 /// `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-pub const SCHEMA_VERSION: i64 = 17;
+pub const SCHEMA_VERSION: i64 = 18;
 
 /// `schema.ArmKind`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -79,6 +79,7 @@ pub enum BoundaryKind {
     CloudSdk,
     LlmApi,
     Crypto,
+    LocalIpc,
 }
 
 impl BoundaryKind {
@@ -95,6 +96,7 @@ impl BoundaryKind {
             BoundaryKind::CloudSdk => "CLOUD_SDK",
             BoundaryKind::LlmApi => "LLM_API",
             BoundaryKind::Crypto => "CRYPTO",
+            BoundaryKind::LocalIpc => "LOCAL_IPC",
         }
     }
 }
@@ -551,6 +553,7 @@ pub struct BoundaryHit {
     pub line: i64,
     pub evidence: String,
     pub salience: String,
+    pub declared: bool,
 }
 
 impl ToJson for BoundaryHit {
@@ -568,6 +571,9 @@ impl ToJson for BoundaryHit {
         }
         if self.salience != zero.salience {
             crate::json::field(out, &mut first, "salience", &self.salience);
+        }
+        if self.declared != zero.declared {
+            crate::json::field(out, &mut first, "declared", &self.declared);
         }
         out.push('}');
     }

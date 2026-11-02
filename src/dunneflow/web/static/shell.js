@@ -4770,6 +4770,7 @@ function renderFilters() {
 const BKIND_GLYPH = {
   DATABASE: "▤", FILE: "▣", STDIO: "▷", CRYPTO: "✦", ENV: "◈",
   PROCESS: "▶", LLM_API: "✧", NETWORK: "◆", QUEUE: "◇", CLOUD_SDK: "☁",
+  LOCAL_IPC: "◎",
 };
 
 /* **"Where to start" fits its names**, and it is the field on this page where losing a tail

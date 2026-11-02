@@ -22,11 +22,11 @@
  */
 
 /** `schema.SCHEMA_VERSION`. A plugin declaring another number is refused by name. */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export type ArmKind = "if" | "elif" | "else" | "else if" | "case" | "default" | "try" | "except" | "catch" | "finally" | "for" | "while" | "do";
 
-export type BoundaryKind = "ENV" | "FILE" | "PROCESS" | "NETWORK" | "DATABASE" | "QUEUE" | "STDIO" | "CLOUD_SDK" | "LLM_API" | "CRYPTO";
+export type BoundaryKind = "ENV" | "FILE" | "PROCESS" | "NETWORK" | "DATABASE" | "QUEUE" | "STDIO" | "CLOUD_SDK" | "LLM_API" | "CRYPTO" | "LOCAL_IPC";
 
 export type Confidence = "CERTAIN" | "INFERRED";
 
@@ -114,6 +114,7 @@ export interface BoundaryHit {
   line: number;
   evidence?: string;
   salience?: string;
+  declared?: boolean;
 }
 
 export interface DataStructure {

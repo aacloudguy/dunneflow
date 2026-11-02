@@ -427,6 +427,14 @@ queries know a language exists.
   to read its own writes back out of it: 734 MB and 0.1% CPU on a tree of 84,159 files.
   `WAL_CAP_BYTES` carries the measurement and sits beside the `cache_size` it is derived
   from. What it buys beyond speed is that a killed run **keeps what it committed**.
+
+  **A boundary a signature names lives in `declared_boundaries`, never in `boundaries`**
+  (schema 18). Go's reader reads `go.yaml`'s `signatures:` -- a parameter or result typed
+  `*net.UnixListener` -- for a routine whose body shows nothing of that kind, which is what
+  a stub that only panics looks like. Same columns, its own table, because 45 queries count
+  or detect `boundaries` and a filter each of them has to remember is rule 51 at 45 call
+  sites. `counts()` and the analysis summary say them separately; the dashboard does not
+  show them yet (BACKLOG 48).
 - `walk.py` — discovery, and **the size guard**. `parts_under` cuts a tree into parts no
   larger than `TOO_BIG`, descending only into what is oversized, and `Breakdown.uncovered`
   states the one thing a cut of directories cannot cover: a directory that had to be split

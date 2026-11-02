@@ -249,6 +249,22 @@ CREATE TABLE IF NOT EXISTS boundaries (
     salience   TEXT NOT NULL DEFAULT 'normal'
 );
 
+-- **A boundary a signature names and no body was seen to touch** (schema 18): a stub that
+-- returns a `*net.UnixListener` from a body that only panics. Its own table,
+-- with `boundaries`' columns, so that every query that counts or detects touches -- 45 of
+-- them when this was written -- cannot count a claim about intent by forgetting a filter
+-- (rule 51). A reader asks for these by name.
+CREATE TABLE IF NOT EXISTS declared_boundaries (
+    file       TEXT NOT NULL,
+    routine_id TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    direction  TEXT NOT NULL,
+    target     TEXT NOT NULL,
+    line       INTEGER NOT NULL,
+    evidence   TEXT NOT NULL DEFAULT '',
+    salience   TEXT NOT NULL DEFAULT 'normal'
+);
+
 CREATE TABLE IF NOT EXISTS control (
     point_id   TEXT NOT NULL,
     file       TEXT NOT NULL,
@@ -496,6 +512,8 @@ CREATE INDEX IF NOT EXISTS ix_bound_routine    ON boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
 CREATE INDEX IF NOT EXISTS ix_bound_file       ON boundaries(file);
+CREATE INDEX IF NOT EXISTS ix_dbound_file      ON declared_boundaries(file);
+CREATE INDEX IF NOT EXISTS ix_dbound_routine   ON declared_boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_control_routine  ON control(routine_id, line_start, line_end);
 CREATE INDEX IF NOT EXISTS ix_control_point    ON control(point_id);
 CREATE INDEX IF NOT EXISTS ix_arms_point       ON control_arms(point_id);
@@ -1158,7 +1176,8 @@ class Store:
             " (SELECT point_id FROM control WHERE file = ?)",
             (path,),
         )
-        for table in ("routines", "structures", "calls", "boundaries", "imports",
+        for table in ("routines", "structures", "calls", "boundaries",
+                      "declared_boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
                       "artefacts", "constants", "control", "ipc_registrations"):
@@ -1278,7 +1297,14 @@ class Store:
             "INSERT INTO boundaries(file,routine_id,kind,direction,target,line,evidence,salience)"
             " VALUES(?,?,?,?,?,?,?,?)",
             [(ff.path, b.routine_id, b.kind.value, b.direction.value, b.target, b.line,
-              b.evidence, b.salience) for b in ff.boundaries],
+              b.evidence, b.salience) for b in ff.boundaries if not b.declared],
+        )
+        c.executemany(
+            "INSERT INTO declared_boundaries"
+            "(file,routine_id,kind,direction,target,line,evidence,salience)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            [(ff.path, b.routine_id, b.kind.value, b.direction.value, b.target, b.line,
+              b.evidence, b.salience) for b in ff.boundaries if b.declared],
         )
         c.executemany(
             "INSERT INTO control"
@@ -1427,9 +1453,9 @@ class Store:
             if stored:
                 return {str(k): int(v) for k, v in json.loads(stored).items()}
         out: dict[str, int] = {}
-        for t in ("files", "routines", "calls", "boundaries", "structures", "entrypoints",
-                  "annotations", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
-                  "db_indexes", "net_calls", "control", "control_arms"):
+        for t in ("files", "routines", "calls", "boundaries", "declared_boundaries",
+                  "structures", "entrypoints", "annotations", "cli_apps", "cli_mounts",
+                  "sql_ops", "db_tables", "db_indexes", "net_calls", "control", "control_arms"):
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"

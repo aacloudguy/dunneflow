@@ -812,8 +812,9 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
 # What "reaches out of the program" means for a loop. Database, queue and network -- the
 # things whose cost is per call rather than per instruction. `FILE`, `STDIO`, `ENV` and
 # `PROCESS` are deliberately out: a loop that writes a line per row is what writing a file
-# *is*, and reporting it would put most of the program on a worklist.
-_REACHES_OUT = ("DATABASE", "QUEUE", "NETWORK")
+# *is*, and reporting it would put most of the program on a worklist. `LOCAL_IPC` is in:
+# a round trip to another process per item is a rate whether or not it leaves the host.
+_REACHES_OUT = ("DATABASE", "QUEUE", "NETWORK", "LOCAL_IPC")
 
 # Every loop that reaches one of those on **every pass**, with what its bound looks like.
 #
@@ -835,7 +836,8 @@ _REACHES_OUT = ("DATABASE", "QUEUE", "NETWORK")
 _LOOPED_OUT = """
 WITH reaches AS (
     SELECT routine_id, line FROM boundaries
-     WHERE kind IN (?, ?, ?) AND routine_id IS NOT NULL AND line IS NOT NULL
+     WHERE kind IN (""" + ", ".join("?" * len(_REACHES_OUT)) + """)
+       AND routine_id IS NOT NULL AND line IS NOT NULL
     UNION
     SELECT routine_id, line FROM sql_ops
      WHERE routine_id IS NOT NULL AND line IS NOT NULL

@@ -51,7 +51,10 @@ from typing import Literal
 # 17: `FileFacts.tests_dropped` -- test code a reader leaves out *inside* a file, for Rust's
 #     `#[cfg(test)] mod tests`; and, with the Tauri edge, a way in a client in the same
 #     application calls by name, and the link that names it.
-SCHEMA_VERSION = 17
+# 18: `BoundaryKind.LOCAL_IPC` and `BoundaryHit.declared` -- a Unix-domain socket is not a
+#     network connection, and a boundary a signature names is not one a body was seen to
+#     touch (Society2's Stage 0 stubs, whose bodies only panic).
+SCHEMA_VERSION = 18
 
 
 # --------------------------------------------------------------------------- #
@@ -72,6 +75,14 @@ class BoundaryKind(StrEnum):
     CLOUD_SDK = "CLOUD_SDK"
     LLM_API = "LLM_API"
     CRYPTO = "CRYPTO"
+    # **Another process on this machine, through the kernel and never through the
+    # network**: a Unix-domain socket (Go's `net.Dial("unix", p)`, Python's `AF_UNIX`), and
+    # the peer-credential reads that only such a socket answers. Distinct from NETWORK
+    # because it is a different promise -- nothing leaves the host, the far end is a path
+    # with an owner and a mode, and a timeout means something else -- and because a map
+    # that called it TCP said the program talks to the network when it does not. The
+    # target is the socket's path where the source writes one.
+    LOCAL_IPC = "LOCAL_IPC"
 
 
 class Direction(StrEnum):
@@ -645,6 +656,12 @@ class BoundaryHit:
     line: int
     evidence: str = ""
     salience: str = "normal"  # high | normal | low -- lets noise be filtered, not lost
+    # **Named by a signature, not seen in a body** (schema 18). A routine whose parameter
+    # or result is a `*net.UnixListener` says what it will touch before any body does --
+    # Society2's Stage 0 stubs only panic -- and that is worth a row, but it is a claim
+    # about intent and never a count of touches (rule 32). Every surface that counts or
+    # lists boundaries keeps the two apart.
+    declared: bool = False
 
 
 @dataclass(slots=True)

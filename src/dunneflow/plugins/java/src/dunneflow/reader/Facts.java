@@ -25,7 +25,7 @@ public final class Facts {
     private Facts() {}
 
     /** `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name. */
-    public static final long SCHEMA_VERSION = 17;
+    public static final long SCHEMA_VERSION = 18;
 
     /** `schema.ArmKind`. */
     public enum ArmKind implements Json.Writable {
@@ -67,7 +67,8 @@ public final class Facts {
         STDIO("STDIO"),
         CLOUD_SDK("CLOUD_SDK"),
         LLM_API("LLM_API"),
-        CRYPTO("CRYPTO");
+        CRYPTO("CRYPTO"),
+        LOCAL_IPC("LOCAL_IPC");
 
         /** The schema's own spelling, which is the wire's. */
         public final String wire;
@@ -485,6 +486,7 @@ public final class Facts {
         public long line;
         public String evidence = "";
         public String salience = "normal";
+        public boolean declared = false;
 
         @Override
         public void writeJson(StringBuilder out) {
@@ -512,6 +514,9 @@ public final class Facts {
             }
             if (!Objects.equals(salience, "normal")) {
                 Json.field(out, first, "salience", salience);
+            }
+            if (declared != false) {
+                Json.field(out, first, "declared", declared);
             }
             out.append('}');
         }

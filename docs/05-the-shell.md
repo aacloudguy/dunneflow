@@ -84,7 +84,7 @@ Twelve groups, each counting the program rather than reciting a fixed list.
 | **Code** | Every file, and a text search over the source. |
 | **Explore** | *Worth a look* Measured extrema, each with its middle stated and *Kept*, your shelf. |
 | **Packages** | The largest packages, by what they hold. |
-| **Boundaries** | Everything that leaves the program: DATABASE, FILE, STDIO, NETWORK, PROCESS, CRYPTO, ENV… |
+| **Boundaries** | Everything that leaves the program: DATABASE, FILE, STDIO, NETWORK, LOCAL_IPC, PROCESS, CRYPTO, ENV… LOCAL_IPC is a Unix-domain socket: another process on the same machine, never the network. |
 | **Database** | Every table the code names, and who reads and writes it. |
 | **Structures** | Classes, dataclasses, enums, type aliases. |
 | **Vocabulary** | The glossary, the derived naming standard, the stated naming rules, and which of those rules could be checked. |

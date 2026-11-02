@@ -155,6 +155,13 @@ supplies none). anki-android is all Kotlin and no corpus here mixes them. *Settl
 mixed tree to measure, then deciding whether the Kotlin reader's declarations are handed to
 javac as a classpath stub.
 
+**48. A declared boundary is in the graph and nowhere on the dashboard.** Go's reader
+records what a stub's signature names (`*net.UnixListener`) in `declared_boundaries`, and
+the CLI summary and `dunneflow query` show them; no pane does. Kept out of `boundaries` on
+purpose (`ARCHITECTURE.md`, `store.py`). *Settled by* an inspector section for a routine's
+declared boundaries, drawn by shape rather than colour (design rule 5), and never in a
+count of touches. From Society2's Stage 0 stubs, 2026-11-02.
+
 ## Stated residues — known, bounded, and not defects
 
 These are not tasks. They are places where the honest answer is a limitation, recorded so
@@ -189,4 +196,7 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A Go call through a renamed standard-library import is not a boundary** | `import stdos "os"` then `stdos.Getenv` is not matched, because rules match the spelling written and a reader never expands an alias (rule 4). Rare, since `goimports` never renames. Stated in `detectors/go.yaml`. |
 | **`f[MyType]()` records no call name in Go** | `x[y]` is a type argument or a subscript and only the checker can always tell; the reader answers *type* only where the index cannot be a value, so a call instantiated with a named type is left unnamed for rule matching. Its edge still comes from the checker. Stated in `extract.go:looksLikeType`. |
 | **`plugin.json`'s `workers` is read and used by nothing** | Every manifest declares it and no reader is started more than once. Found writing the Go manifest; harmless, and a field nothing reads is rule 35's shape, so it is stated here rather than relied on. |
+| **LOCAL_IPC is decided by an argument the source must write** | `net.Dial(network, a)` and `socket.socket(fam)` cannot be told from the network and stay NETWORK, with `blind spot:` in their evidence. So does `socket.socket(fileno=0)`, which takes its family from a descriptor (Society2's `s01sock.py speak`). A Go constant naming `"unix"` is a variable to a syntactic reader for the same reason. 2026-11-02. |
+| **A signature names a type, not an act** | `net.Conn` and `net.Listener` are a Unix socket's as often as the network's, so a declared one is NETWORK and says *may be a Unix-domain socket*. A stub returning a type of its own (`ipc.Dial` returns `*Client`) declares nothing a rule can read, and a stub named for peer credentials (`PeerUID(*net.UnixConn)`) is LOCAL_IPC, not *peer credentials*, until a body calls `GetsockoptUcred`. 2026-11-02. |
+| **Python's `bind`/`connect` are read only on a name bound in the same routine** | `on_receiver` follows `s = socket.socket(AF_UNIX)` and `with … as s` to `s.bind` within one routine. A socket held on `self` and used in another method, or returned and used by the caller, is the creation row alone, with no path. 2026-11-02. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

@@ -63,6 +63,9 @@ RESOLVERS: dict[str, Resolver] = {
     # names exactly one definition, as rustc's own path resolution does, and sends no
     # edge for anything that would need a type (`plugins/rust/src/edges.rs`).
     "rust": supplied.resolve,
+    # javac, attributing the whole tree in one compilation: a checker, as TypeScript's and
+    # Go's are, and the dispatch rule it answers by is the reader's (`Edges.java`).
+    "java": supplied.resolve,
 }
 
 

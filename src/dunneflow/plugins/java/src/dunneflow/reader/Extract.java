@@ -216,8 +216,46 @@ public final class Extract {
             ff.errors.addAll(parsed.errors);
             return ff;
         }
-        new Ex(rel, ff.module, source, parsed, rules, ff).run();
+        new Ex(rel, ff.module, source, parsed.unit, parsed.task, rules, ff, null).run();
         return ff;
+    }
+
+    /** What the edge pass needs to know about one call, told by the same walk that minted
+     *  its {@code site_id}, so the two passes cannot disagree about which call is which. */
+    interface SiteSink {
+        void site(Tree node, String siteId, String callerId, String dotted, boolean atBoundary,
+                  boolean construction);
+    }
+
+    /** One file's facts out of a tree some other task parsed: the edge pass's entry, which
+     *  walks every file of a compilation <i>before</i> javac attributes it, so a member
+     *  javac adds (a default constructor, a record's accessors) can never move an ordinal. */
+    static Facts.FileFacts walk(String rel, String source, CompilationUnitTree unit,
+                                JavacTask task, Rules rules, SiteSink sink) {
+        Facts.FileFacts ff = new Facts.FileFacts();
+        ff.path = rel;
+        ff.lang = Main.LANG;
+        ff.module = moduleName(rel);
+        ff.content_hash = Ids.hashSource(source);
+        new Ex(rel, ff.module, source, unit, task, rules, ff, sink).run();
+        return ff;
+    }
+
+    /** Where a declaration starts once its annotations are behind it: a routine's first
+     *  line is its modifiers or its type, never an {@code @Override} two lines up. The one
+     *  function both passes use, so a target's line is the line its routine was stored at. */
+    static long declStart(SourcePositions pos, CompilationUnitTree unit, String src, Tree decl,
+                          ModifiersTree mods) {
+        long s = pos.getStartPosition(unit, decl);
+        if (mods != null) {
+            for (AnnotationTree a : mods.getAnnotations()) {
+                s = Math.max(s, pos.getEndPosition(unit, a));
+            }
+        }
+        while (s >= 0 && s < src.length() && Character.isWhitespace(src.charAt((int) s))) {
+            s++;
+        }
+        return s;
     }
 
     // =================================================================== walk === //
@@ -234,6 +272,7 @@ public final class Extract {
         final LineMap lines;
         final String pkg;
         final Comments.Scan scanned;
+        final SiteSink sink;
 
         final List<Facts.Routine> routines = new ArrayList<>();
         /** Indices into {@code routines}, innermost last. */
@@ -254,15 +293,16 @@ public final class Extract {
         /** The enum constant whose body is the next class visited. */
         String enumBody;
 
-        Ex(String rel, String module, String src, Parsed parsed, Rules rules,
-           Facts.FileFacts ff) {
+        Ex(String rel, String module, String src, CompilationUnitTree unit, JavacTask task,
+           Rules rules, Facts.FileFacts ff, SiteSink sink) {
             this.path = rel;
             this.module = module;
             this.src = src;
             this.rules = rules;
             this.ff = ff;
-            this.unit = parsed.unit;
-            this.pos = Trees.instance(parsed.task).getSourcePositions();
+            this.sink = sink;
+            this.unit = unit;
+            this.pos = Trees.instance(task).getSourcePositions();
             this.lines = unit.getLineMap();
             this.pkg = unit.getPackageName() == null ? "" : text(unit.getPackageName());
             this.scanned = Comments.scan(src);
@@ -322,19 +362,8 @@ public final class Extract {
             return src.substring((int) a, (int) b);
         }
 
-        /** Where a declaration starts once its annotations are behind it: a routine's first
-         *  line is its modifiers or its type, never an {@code @Override} two lines up. */
         long declStart(Tree decl, ModifiersTree mods) {
-            long s = start(decl);
-            if (mods != null) {
-                for (AnnotationTree a : mods.getAnnotations()) {
-                    s = Math.max(s, end(a));
-                }
-            }
-            while (s < src.length() && Character.isWhitespace(src.charAt((int) s))) {
-                s++;
-            }
-            return s;
+            return Extract.declStart(pos, unit, src, decl, mods);
         }
 
         /** The Javadoc that ends just before a declaration, with only blank text between. */
@@ -816,6 +845,9 @@ public final class Extract {
                 cs.args.add(a);
             }
             ff.calls.add(cs);
+            if (sink != null) {
+                sink.site(site, cs.site_id, caller, dotted, rule != null, construction);
+            }
             if (rule != null) {
                 Facts.BoundaryHit hit = new Facts.BoundaryHit();
                 hit.routine_id = caller;

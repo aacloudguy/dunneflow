@@ -362,3 +362,115 @@ def test_control_where_something_can_move(owner):
     assert ("LOOP", "for", "String n : names", "") in spans
     assert ("GUARD", "if", "n.isEmpty()", "continue") in spans
     assert ("COMPREHENSION", "forEach", "names.forEach", "") in spans
+
+
+# ------------------------------------------------------------- edges ------------ #
+
+EDGES = ROOT / "tests" / "fixtures" / "java_edges"
+
+
+@pytest.fixture(scope="module")
+def answers():
+    """Each call in the edge fixture, by `file:line callee`, with what the reader said."""
+    if _WHY:
+        pytest.skip(_WHY)
+    assert PLUGIN is not None
+    files = sorted(EDGES.rglob("*.java"))
+    PLUGIN.probe()
+    PLUGIN.open(EDGES, files)
+    try:
+        facts = list(PLUGIN.extract(files, EDGES))
+        edges = list(PLUGIN.edges())
+        tally = (PLUGIN.edges_outside, PLUGIN.edges_unknown)
+    finally:
+        PLUGIN.close()
+    sites = {c.site_id: f"{Path(ff.path).name}:{c.line} {c.callee_expr}"
+             for ff in facts for c in ff.calls}
+    out = {sites[e.site_id]: e for e in edges}
+    assert len(out) == len(edges), "two edges for one site"
+    return out, tally
+
+
+def _to(e) -> str:
+    return f"{Path(e.file).name}:{e.line} {e.name}"
+
+
+def test_a_call_javac_resolved_to_one_body_is_an_edge_to_that_body(answers):
+    a, _ = answers
+    assert _to(a["Main.java:27 fact"]) == "Main.java:26 fact", "recursion is an edge to itself"
+    assert _to(a["Main.java:36 Square.unit"]) == "Square.java:19 unit"
+    assert _to(a["Main.java:39 Helper.help"]) == "Helper.java:4 help", "across files"
+    assert _to(a["Main.java:54 tick"]) == "Base.java:10 tick", "across build modules"
+    assert a["Main.java:36 Square.unit"].how == "non-virtual"
+    assert a["Main.java:38 sq.area"].how == "unoverridden"
+
+
+def test_each_overload_is_its_own_target(answers):
+    a, _ = answers
+    assert _to(a["Main.java:40 fmt"]) == "Main.java:30 fmt"
+    assert _to(a["Main.java:41 fmt"]) == "Main.java:32 fmt"
+
+
+def test_super_names_a_body_and_final_admits_no_other(answers):
+    a, _ = answers
+    assert _to(a["Main.java:23 super.greet"]) == "Base.java:6 greet"
+    assert a["Main.java:23 super.greet"].how == "non-virtual"
+    assert _to(a["Main.java:37 sq.label"]) == "Square.java:15 label"
+
+
+def test_dispatch_over_several_bodies_is_dynamic_and_never_guessed(answers):
+    """Tom's rule (2026-11-01): an interface or abstract method, or one the tree overrides,
+    is `dynamic` with the bodies that can answer it counted (rule 1)."""
+    a, _ = answers
+    area = a["Main.java:35 s.area"]
+    assert (area.file, area.reason, area.candidates) == ("", "dynamic", 2)
+    assert area.frontier == "org.lib.Shape.area"
+    step = a["Base.java:11 step"]
+    assert (step.file, step.reason, step.candidates) == ("", "dynamic", 1)
+    run = a["Main.java:51 r.run"]
+    assert (run.reason, run.candidates, run.frontier) == ("dynamic", 1, "java.lang.Runnable.run"), (
+        "a JDK interface the tree implements reaches the tree's anonymous class")
+
+
+def test_the_frontier_says_where_a_call_stops_and_why(answers):
+    a, (outside, unknown) = answers
+    add = a["Main.java:43 xs.add"]
+    assert (add.reason, add.frontier, add.how) == ("outside", "java.util.List.add", "symbol")
+    go = a["Main.java:52 m.go"]
+    assert (go.reason, go.frontier) == ("untyped", "m.go"), "a missing class is said, not guessed"
+    find = a["Main.java:53 repo.find"]
+    assert (find.reason, find.how) == ("outside", "unimplemented")
+    assert outside == sum(1 for e in a.values() if e.reason == "outside")
+    assert unknown == sum(1 for e in a.values() if not e.file and e.reason != "outside")
+
+
+def test_a_constructor_nobody_wrote_points_at_the_class_it_builds(answers):
+    a, _ = answers
+    helper = a["Main.java:39 Helper"]
+    assert helper.constructs == "org.app.Helper" and _to(helper) == "Helper.java:3 Helper"
+    assert _to(a["Main.java:58 Main"]) == "Main.java:14 Main", "a written one is a routine"
+
+
+def test_a_call_at_a_boundary_is_never_also_an_edge(answers):
+    """Rule 2: `System.out.println` in `Base.greet` is a touch, and sends no edge."""
+    a, _ = answers
+    assert not any("println" in k for k in a)
+
+
+def test_every_supplied_edge_lands_on_its_routine_s_first_line(tmp_path):
+    """Through the host: the line the reader names is the line the routine was stored at,
+    so nothing falls back to a span and nothing lands on a routine of another name."""
+    if _WHY:
+        pytest.skip(_WHY)
+    from dunneflow.resolve import supplied
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    store = Store(tmp_path / "g.db")
+    analyze_tree(EDGES, store)
+    resolve_calls(store)
+    rep = supplied.REPORTS["java"]
+    store.close()
+    assert rep.supplied == rep.exact > 0 and rep.constructions == 1
+    assert (rep.by_span, rep.name_mismatch, rep.no_routine) == (0, 0, 0)

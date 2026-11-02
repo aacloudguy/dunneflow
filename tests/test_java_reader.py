@@ -499,6 +499,72 @@ def test_what_javac_said_about_the_edge_pass_reaches_the_summary(tmp_path):
     assert any("org.nowhere" in n for n in stats.reader_notes)
 
 
+def _batched(tmp_path, monkeypatch, **env):
+    """Each call in a three-directory tree, by `file:line callee`, read one directory per
+    compilation: `a/` calls `hello()` on a `B`, and `c/` overrides it, so the compilation
+    that holds the call never loads the override."""
+    if _WHY:
+        pytest.skip(_WHY)
+    assert PLUGIN is not None
+    root = tmp_path / "t"
+    for rel, text in {
+        "a/B.java": "package a;\npublic class B {\n  public void hello() {}\n"
+                    "  public static void once() {}\n}\n",
+        "a/Use.java": "package a;\nclass Use {\n  void go(B x) {\n    x.hello();\n"
+                      "    B.once();\n    k.K.k();\n  }\n}\n",
+        # A static initializer starts at `static`, not at its brace, and the other
+        # compilations see this file with its bodies blanked.
+        "k/K.java": "package k;\npublic class K {\n  static { int x = 1; }\n"
+                    "  public static int k() { return 1; }\n}\n",
+        "c/C.java": "package c;\npublic class C extends a.B {\n"
+                    "  @Override public void hello() {}\n}\n",
+    }.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    monkeypatch.setenv("DUNNEFLOW_JAVA_BATCH_FILES", "1")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    files = sorted(root.rglob("*.java"))
+    PLUGIN.probe()
+    PLUGIN.open(root, files)
+    try:
+        facts = list(PLUGIN.extract(files, root))
+        edges = list(PLUGIN.edges())
+        said = list(PLUGIN.edges_said)
+    finally:
+        PLUGIN.close()
+    sites = {c.site_id: f"{Path(ff.path).name}:{c.line} {c.callee_expr}"
+             for ff in facts for c in ff.calls}
+    return {sites[e.site_id]: e for e in edges}, said
+
+
+def test_an_override_in_a_batch_that_never_loads_it_still_counts(tmp_path, monkeypatch):
+    """Rule 1 across compilations: the batch holding `x.hello()` never loads `C`, and an
+    index built per batch called the call CERTAIN `unoverridden`."""
+    got, said = _batched(tmp_path, monkeypatch)
+    hello = got["Use.java:4 x.hello"]
+    assert (hello.reason, hello.candidates) == ("dynamic", 2)
+    assert sorted(f"{a.file}:{a.line}" for a in hello.answers) == ["a/B.java:3", "c/C.java:3"]
+    once = got["Use.java:5 B.once"]
+    assert (once.file, once.line, once.how) == ("a/B.java", 4, "non-virtual")
+    k = got["Use.java:6 k.K.k"]
+    assert (k.file, k.line, k.how) == ("k/K.java", 4, "non-virtual")
+    assert any("compilations" in n for n in said)
+
+
+def test_a_directory_given_up_leaves_no_certain_edge_it_could_have_overridden(
+        tmp_path, monkeypatch):
+    """Rule 49: with `c/` given up the index is not the whole tree's, so a virtual call is
+    `unfollowed` rather than CERTAIN; a static one, which nothing can override, keeps its
+    edge, and the summary names the directory."""
+    got, said = _batched(tmp_path, monkeypatch, DUNNEFLOW_JAVA_FAIL_BATCH="/c/")
+    hello = got["Use.java:4 x.hello"]
+    assert hello.file == "" and hello.reason == "unfollowed"
+    once = got["Use.java:5 B.once"]
+    assert once.file == "a/B.java" and once.how == "non-virtual"
+    assert any("given up" in n and "c" in n for n in said)
+
+
 # ------------------------------------------------- dependencies, never fetched --- #
 
 def _pom(g: str, a: str, v: str, body: str = "", parent: str = "") -> str:

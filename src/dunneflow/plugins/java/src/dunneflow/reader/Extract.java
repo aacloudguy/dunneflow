@@ -138,7 +138,7 @@ public final class Extract {
             this.text = text;
         }
 
-        private static URI uri(String rel) {
+        static URI uri(String rel) {
             try {
                 return new URI("mem", null, "/" + rel, null);
             } catch (URISyntaxException e) {

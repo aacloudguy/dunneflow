@@ -35,10 +35,15 @@ import javax.tools.JavaFileObject;
 /**
  * Every call's far end, by javac.
  *
- * <p><b>One compilation, every file in it.</b> The tree is parsed in one {@link JavacTask},
- * every unit is walked by the extractor's own walk <i>before</i> attribution (so each site
- * carries the {@code site_id} the facts carry, and a member javac adds later cannot move an
- * ordinal), and then {@code analyze()} attributes the lot. A call's target is
+ * <p><b>One compilation, every file in it, up to {@link #DEFAULT_BATCH} files.</b> The tree
+ * is parsed in one {@link JavacTask}, every unit is walked by the extractor's own walk
+ * <i>before</i> attribution (so each site carries the {@code site_id} the facts carry, and a
+ * member javac adds later cannot move an ordinal), and then {@code analyze()} attributes the
+ * lot. <b>A bigger tree is attributed in batches</b> ({@link #plan}): the Android SDK's
+ * 16,344 files ran a 2 GB heap out after 97 minutes in one. Each batch has the rest of the
+ * tree on its source path, so its calls into other batches type, and what each batch learns
+ * is written down by name ({@link Index}) so the dispatch rule below is decided over the
+ * whole tree once javac is gone. A tree under the cap gives the edges it always did. A call's target is
  * {@code Trees.getElement} of the site, and its declaration, where the tree holds one, is
  * named to the host as a <b>file, a line and a name</b>, never an id (PLAN-v2 §1g). The
  * line is {@link Extract#declStart}'s, which is the line the routine was stored at.
@@ -84,40 +89,415 @@ public final class Edges {
     private record Site(CompilationUnitTree unit, Tree node, String siteId, String caller,
                         String dotted, boolean construction) {}
 
+    /** A method in the tree that overrides another, as the decision needs it once javac is
+     *  gone: its key, its class, whether it has a body, and where that body is. */
+    private record Over(String key, String ownerKey, boolean hasBody, String file, long line,
+                        String name) {}
+
+    /**
+     * <b>What every batch learnt about the tree's methods, by name and never by javac's
+     * identity</b>, because each batch is its own compilation and its elements die with it.
+     * The overrider index is the whole tree's or it is wrong: a batch that never mentions
+     * {@code C extends B} never loads it, and a batch-local index called {@code x.hello()}
+     * CERTAIN while {@code C.hello} could answer it (probed 2026-11-02, rule 1).
+     */
+    private static final class Index {
+        /** Overridden method's key → the tree's methods that override it, in walk order. */
+        final Map<String, List<Over>> overriddenBy = new HashMap<>();
+        /** A class's key → the keys of every type it is a subtype of, itself included. */
+        final Map<String, Set<String>> closure = new HashMap<>();
+        /** One overrider recorded once, however many batches load its class. */
+        final Set<String> seen = new java.util.HashSet<>();
+    }
+
+    /** A site's question, asked of javac in its batch. A final one is already its answer;
+     *  a pending one needs the whole tree's overrider index, which only exists afterwards. */
+    private static final class Question {
+        final Facts.SuppliedEdge e = new Facts.SuppliedEdge();
+        boolean pending;
+        String targetKey;
+        String receiverKey;
+        String frontier;
+        boolean home;
+        boolean nonVirtual;
+        boolean hasBody;
+        String file;
+        long line;
+        String name;
+    }
+
+    /** Raised from a task listener to abandon a batch whose heap is nearly full. */
+    private static final class HeapFull extends RuntimeException {
+        HeapFull(String why) {
+            super(why, null, false, false);
+        }
+    }
+
+    /** Files per compilation. A tree this size or smaller is one compilation, exactly as
+     *  it always was; the env var exists so a test can make a small tree several. */
+    static int batchCap() {
+        String v = System.getenv("DUNNEFLOW_JAVA_BATCH_FILES");
+        try {
+            return v == null || v.isBlank() ? DEFAULT_BATCH : Math.max(1, Integer.parseInt(v.strip()));
+        } catch (NumberFormatException e) {
+            return DEFAULT_BATCH;
+        }
+    }
+
+    static final int DEFAULT_BATCH = 2000;
+    /** After a collection, a heap this full abandons the batch rather than thrash (rule 55). */
+    static final double HEAP_CEILING = 0.85;
+
+    /**
+     * <b>The bound is on the work, not on the answer (rule 55).</b> The Android SDK held
+     * javac in garbage collection for 97 minutes before it ran out of heap. Usage after the
+     * last collection, read at every task event, stops a batch while there is still room to
+     * drop it; the batch is then split and tried again.
+     */
+    static boolean heapNearlyFull() {
+        return heapAfterCollection() >= (long) (Runtime.getRuntime().maxMemory() * HEAP_CEILING);
+    }
+
+    /** What the heap held after its last collection, summed over its pools and judged
+     *  against the whole heap: a pool judged against its own maximum is a different
+     *  question, and the first batched Android run answered it in under a second. */
+    static long heapAfterCollection() {
+        long used = 0;
+        for (java.lang.management.MemoryPoolMXBean p
+                : java.lang.management.ManagementFactory.getMemoryPoolMXBeans()) {
+            if (p.getType() != java.lang.management.MemoryType.HEAP) {
+                continue;
+            }
+            java.lang.management.MemoryUsage u = p.getCollectionUsage();
+            if (u != null) {
+                used += u.getUsed();
+            }
+        }
+        return used;
+    }
+
+    /** Classes the last compilation attributed: its own, and others off the source path. */
+    static final long[] attributed = new long[2];
+
+    static long heapMaxMb() {
+        return Runtime.getRuntime().maxMemory() / (1024 * 1024);
+    }
+
+    /**
+     * The tree in compilations of at most {@link #batchCap} files. Under the cap the files
+     * are one compilation in the order they came, which is what every tree before the
+     * Android SDK was. Over it they are grouped by directory, which is as near to a package
+     * as a path is, in path order so the batches never depend on the order rows arrive in
+     * (rules 66 and 105). A directory bigger than the cap is a batch of its own.
+     */
+    static List<List<List<Path>>> plan(List<Path> files, int cap) {
+        List<List<List<Path>>> out = new ArrayList<>();
+        if (files.size() <= cap) {
+            out.add(List.of(files));
+            return out;
+        }
+        Map<String, List<Path>> byDir = new TreeMap<>();
+        for (Path f : files) {
+            Path d = f.toAbsolutePath().normalize().getParent();
+            byDir.computeIfAbsent(d == null ? "" : d.toString(), k -> new ArrayList<>()).add(f);
+        }
+        List<List<Path>> cur = new ArrayList<>();
+        int n = 0;
+        for (List<Path> dir : byDir.values()) {
+            if (n > 0 && n + dir.size() > cap) {
+                out.add(cur);
+                cur = new ArrayList<>();
+                n = 0;
+            }
+            cur.add(dir);
+            n += dir.size();
+        }
+        if (!cur.isEmpty()) {
+            out.add(cur);
+        }
+        return out;
+    }
+
+    /**
+     * <b>The rest of the tree, for a batch's calls into it: read once, and without its
+     * bodies.</b> Two measured costs shaped it. The first batched Android run put the tree's
+     * directories on javac's {@code -sourcepath}, and javac listed and read them one file at
+     * a time in every compilation, off the external volume: four hours at 3% CPU. And javac
+     * attributes a class it loads off the source path as fully as one it was handed --
+     * traccar's second compilation of 102 files attributed 915 others -- so every batch was
+     * attributing most of the tree again. So every file is read once, here, and held with
+     * every method, constructor and initializer body blanked: its interior turned to spaces
+     * with each line break kept, so every position and every line number is the file's own.
+     * What a batch needs of another file is its signatures, its fields and its constants,
+     * and those are untouched.
+     */
+    static final class SourcePath {
+        final Map<String, List<TreeSource>> byPackage = new HashMap<>();
+        final Map<java.net.URI, TreeSource> byUri = new HashMap<>();
+        final Map<String, TreeSource> byRel = new HashMap<>();
+        long chars;
+        long blanked;
+
+        static final int PARSE_CHUNK = 500;
+
+        static SourcePath read(List<Path> files, Function<Path, String> rel, List<String> notes) {
+            SourcePath sp = new SourcePath();
+            for (int i = 0; i < files.size(); i += PARSE_CHUNK) {
+                List<Extract.Source> chunk = new ArrayList<>();
+                for (Path f : files.subList(i, Math.min(files.size(), i + PARSE_CHUNK))) {
+                    try {
+                        chunk.add(new Extract.Source(rel.apply(f), Text.readSource(f)));
+                    } catch (IOException e) {
+                        notes.add("edges: " + f + " could not be read: " + e);
+                    }
+                }
+                sp.add(chunk);
+            }
+            return sp;
+        }
+
+        /** One parse per chunk, to find the bodies; the trees are dropped with the task. */
+        private void add(List<Extract.Source> chunk) {
+            JavacTask task = (JavacTask) Extract.compiler().getTask(
+                null, null, d -> { }, List.of("-proc:none"), null, chunk);
+            SourcePositions pos = Trees.instance(task).getSourcePositions();
+            Iterable<? extends CompilationUnitTree> units;
+            try {
+                units = task.parse();
+            } catch (IOException e) {
+                units = List.of();
+            }
+            Map<java.net.URI, CompilationUnitTree> parsed = new HashMap<>();
+            for (CompilationUnitTree u : units) {
+                parsed.put(u.getSourceFile().toUri(), u);
+            }
+            for (Extract.Source src : chunk) {
+                String text = src.getCharContent(true).toString();
+                CompilationUnitTree unit = parsed.get(src.toUri());
+                String held = unit == null ? text : blank(text, unit, pos);
+                String pkg = unit == null || unit.getPackageName() == null ? packageOf(text)
+                    : unit.getPackageName().toString();
+                String name = src.rel.substring(src.rel.lastIndexOf('/') + 1)
+                    .replaceFirst("\\.java$", "");
+                TreeSource ts = new TreeSource(src.rel, pkg.isEmpty() ? name : pkg + "." + name,
+                    held);
+                byPackage.computeIfAbsent(pkg, k -> new ArrayList<>()).add(ts);
+                byUri.put(ts.toUri(), ts);
+                byRel.put(src.rel, ts);
+                chars += text.length();
+            }
+        }
+
+        /** The text with every body's interior made spaces, line breaks kept. */
+        private String blank(String text, CompilationUnitTree unit, SourcePositions pos) {
+            char[] out = text.toCharArray();
+            new com.sun.source.util.TreeScanner<Void, Void>() {
+                void clear(Tree block) {
+                    long s = pos.getStartPosition(unit, block);
+                    long e = pos.getEndPosition(unit, block);
+                    if (s < 0 || e <= s + 1 || e > out.length) {
+                        return;
+                    }
+                    // From the brace, never the start: `static { … }` starts at `static`,
+                    // and blanking from there made traccar's `Permission` unparseable and
+                    // 105 calls into it `untyped`.
+                    while (s < e && out[(int) s] != '{') {
+                        s++;
+                    }
+                    if (e <= s + 1 || out[(int) e - 1] != '}') {
+                        return;
+                    }
+                    for (int k = (int) s + 1; k < e - 1; k++) {
+                        if (out[k] != '\n' && out[k] != '\r') {
+                            out[k] = ' ';
+                        }
+                    }
+                    blanked += e - s - 2;
+                }
+
+                @Override
+                public Void visitMethod(MethodTree m, Void v) {
+                    if (m.getBody() != null) {
+                        clear(m.getBody());
+                    }
+                    return null; // nothing inside a blanked body is read
+                }
+
+                @Override
+                public Void visitClass(ClassTree c, Void v) {
+                    for (Tree member : c.getMembers()) {
+                        if (member instanceof com.sun.source.tree.BlockTree init) {
+                            clear(init);
+                        } else {
+                            member.accept(this, null);
+                        }
+                    }
+                    return null;
+                }
+            }.scan(unit, null);
+            return new String(out);
+        }
+    }
+
+    /** One of the tree's files as javac's source path holds it: blanked, so attributing it
+     *  is the cost of its signatures and never of its bodies. */
+    static final class TreeSource extends javax.tools.SimpleJavaFileObject {
+        final String rel;
+        final String binaryName;
+        final String text;
+
+        TreeSource(String rel, String binaryName, String text) {
+            super(Extract.Source.uri(rel), Kind.SOURCE);
+            this.rel = rel;
+            this.binaryName = binaryName;
+            this.text = text;
+        }
+
+        @Override
+        public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+            return text;
+        }
+    }
+
+    /** javac's file manager with {@link SourcePath} as its source path. */
+    static final class MemorySourcePath extends javax.tools.ForwardingJavaFileManager<
+            javax.tools.StandardJavaFileManager> {
+        final SourcePath sp;
+
+        MemorySourcePath(javax.tools.StandardJavaFileManager fm, SourcePath sp) {
+            super(fm);
+            this.sp = sp;
+        }
+
+        @Override
+        public boolean hasLocation(Location location) {
+            return location == javax.tools.StandardLocation.SOURCE_PATH
+                || super.hasLocation(location);
+        }
+
+        @Override
+        public Iterable<JavaFileObject> list(Location location, String pkg,
+                                             Set<JavaFileObject.Kind> kinds, boolean recurse)
+                throws IOException {
+            if (location != javax.tools.StandardLocation.SOURCE_PATH) {
+                return super.list(location, pkg, kinds, recurse);
+            }
+            List<JavaFileObject> out = new ArrayList<>();
+            if (!kinds.contains(JavaFileObject.Kind.SOURCE)) {
+                return out;
+            }
+            out.addAll(sp.byPackage.getOrDefault(pkg, List.of()));
+            if (recurse) {
+                String below = pkg.isEmpty() ? "" : pkg + ".";
+                sp.byPackage.forEach((p, fs) -> {
+                    if (!p.equals(pkg) && p.startsWith(below)) {
+                        out.addAll(fs);
+                    }
+                });
+            }
+            return out;
+        }
+
+        @Override
+        public String inferBinaryName(Location location, JavaFileObject file) {
+            TreeSource ts = sp.byUri.get(file.toUri());
+            return ts != null ? ts.binaryName : super.inferBinaryName(location, file);
+        }
+
+        @Override
+        public boolean isSameFile(javax.tools.FileObject a, javax.tools.FileObject b) {
+            if (sp.byUri.containsKey(a.toUri()) || sp.byUri.containsKey(b.toUri())
+                || "mem".equals(a.toUri().getScheme()) || "mem".equals(b.toUri().getScheme())) {
+                return a.toUri().equals(b.toUri());
+            }
+            return super.isSameFile(a, b);
+        }
+    }
+
+    /** The package a compilation unit declares, read off its first tokens: whitespace and
+     *  comments, then {@code package a.b;} or not. Empty for the unnamed package, and for
+     *  anything this does not recognise, which then contributes its own directory. */
+    static String packageOf(String text) {
+        int i = skip(text, 0);
+        if (!text.startsWith("package", i) || i + 7 >= text.length()
+            || Character.isJavaIdentifierPart(text.charAt(i + 7))) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        i += 7;
+        while (true) {
+            i = skip(text, i);
+            if (i >= text.length() || text.charAt(i) == ';') {
+                return b.toString();
+            }
+            char c = text.charAt(i);
+            if (c == '.' || Character.isJavaIdentifierPart(c)) {
+                b.append(c);
+                i++;
+            } else {
+                return "";
+            }
+        }
+    }
+
+    private static int skip(String t, int i) {
+        while (i < t.length()) {
+            char c = t.charAt(i);
+            if (Character.isWhitespace(c) || c == '﻿') {
+                i++;
+            } else if (t.startsWith("//", i)) {
+                int nl = t.indexOf('\n', i);
+                i = nl < 0 ? t.length() : nl + 1;
+            } else if (t.startsWith("/*", i)) {
+                int end = t.indexOf("*/", i + 2);
+                i = end < 0 ? t.length() : end + 2;
+            } else {
+                break;
+            }
+        }
+        return i;
+    }
+
+    /** The test hook: a batch holding a file under this directory fills the heap. */
+    private static boolean failsOnPurpose(List<List<Path>> batch) {
+        String v = System.getenv("DUNNEFLOW_JAVA_FAIL_BATCH");
+        if (v == null || v.isBlank()) {
+            return false;
+        }
+        for (List<Path> dir : batch) {
+            for (Path f : dir) {
+                if (f.toString().replace('\\', '/').contains(v)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean ranOut(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof HeapFull || t instanceof OutOfMemoryError) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int count(List<List<Path>> batch) {
+        return batch.stream().mapToInt(List::size).sum();
+    }
+
+    /**
+     * Every call's far end, in two phases. <b>Phase A</b> is javac, one compilation per
+     * batch, each dropped before the next: what each site asks and everything the tree
+     * declares, written down as strings. <b>Phase B</b> is no compiler at all: the whole
+     * tree's overrider index, then Tom's dispatch rule over every question in order.
+     */
     static Found collect(Path root, List<Path> files, Rules rules, Function<Path, String> rel) {
         Found found = new Found();
         if (files.isEmpty()) {
             return found;
         }
-        List<Extract.Source> sources = new ArrayList<>();
-        Map<String, String> texts = new HashMap<>();
-        // javac wraps every file object it is handed, so a unit is ours by its URI and never
-        // by its class: a cast was a ClassCastException on the first tree it met.
-        Map<java.net.URI, Extract.Source> byUri = new HashMap<>();
-        for (Path f : files) {
-            try {
-                String r = rel.apply(f);
-                String text = Text.readSource(f);
-                Extract.Source src = new Extract.Source(r, text);
-                sources.add(src);
-                byUri.put(src.toUri(), src);
-                texts.put(r, text);
-            } catch (IOException e) {
-                found.notes.add("edges: " + f + " could not be read: " + e);
-            }
-        }
-        long[] errors = {0};
-        Map<String, Integer> missing = new TreeMap<>();
-        DiagnosticListener<JavaFileObject> listen = d -> {
-            if (d.getKind() == Diagnostic.Kind.ERROR) {
-                errors[0]++;
-                if ("compiler.err.cant.resolve.location".equals(d.getCode())
-                    || "compiler.err.doesnt.exist".equals(d.getCode())) {
-                    String m = d.getMessage(java.util.Locale.ROOT).lines().findFirst().orElse("");
-                    missing.merge(m, 1, Integer::sum);
-                }
-            }
-        };
         // The jars the build files name, where this machine holds them (`Deps`): never
         // fetched. Put on a file manager of the edge pass's own, so a file's facts never
         // depend on what happens to be in somebody's cache (rule 95).
@@ -125,18 +505,189 @@ public final class Edges {
         found.readBeyond.addAll(deps.read);
         found.notPresent.addAll(deps.absent);
         found.notes.addAll(deps.notes);
+
+        Map<Path, String> tree = new HashMap<>();
+        for (Path f : files) {
+            tree.put(f.toAbsolutePath().normalize(), rel.apply(f));
+        }
+        int cap = batchCap();
+        List<List<List<Path>>> planned = plan(files, cap);
+        boolean batched = planned.size() > 1;
+        long t0 = System.nanoTime();
+        SourcePath sp = batched ? SourcePath.read(files, rel, found.notes) : null;
+        if (sp != null) {
+            Main.note(String.format(
+                "edges: read %d files (%.1f M characters) once and blanked %.0f%% of them "
+                + "as bodies, in %.1f s", sp.byRel.size(), sp.chars / 1e6,
+                100.0 * sp.blanked / Math.max(1, sp.chars), (System.nanoTime() - t0) / 1e9));
+        }
+        java.util.ArrayDeque<List<List<Path>>> queue = new java.util.ArrayDeque<>(planned);
+
+        Index index = new Index();
+        List<Question> questions = new ArrayList<>();
+        long[] errors = {0};
+        int[] units = {0};
+        Map<String, Integer> missing = new TreeMap<>();
+        List<String> givenUp = new ArrayList<>();
+        int compilations = 0;
+        int splits = 0;
+        while (!queue.isEmpty()) {
+            List<List<Path>> batch = queue.pollFirst();
+            if (batched) {
+                System.gc(); // the last batch's compilation is garbage; measure without it
+            }
+            long tb = System.nanoTime();
+            long startHeap = heapAfterCollection();
+            attributed[0] = 0;
+            attributed[1] = 0;
+            String failed = attribute(batch, root, rules, rel, tree, sp, deps.jars, index,
+                questions, errors, units, missing, found);
+            compilations++;
+            if (batched) {
+                // Progress, on the evidence channel: a pass this long says where it is.
+                Main.note(String.format(
+                    "edges: compilation %d, %d files, %.1f s%s; %d queued; heap after "
+                    + "collection %d of %d MB at its start; attributed %d of its own "
+                    + "classes and %d off the source path",
+                    compilations, count(batch), (System.nanoTime() - tb) / 1e9,
+                    failed == null ? "" : " (" + failed + ")", queue.size(),
+                    startHeap / (1024 * 1024), heapMaxMb(), attributed[0], attributed[1]));
+            }
+            if (failed == null) {
+                continue;
+            }
+            if (!failed.startsWith("heap")) {
+                // javac crashed on this batch. Nothing is guessed: its calls are left to
+                // the host as unresolved, and the reason is said.
+                found.notes.add("edges: javac failed attributing "
+                    + (batched ? "a compilation of " + count(batch) + " files" : "this tree")
+                    + ": " + failed);
+                if (!batched) {
+                    return found;
+                }
+                batch.forEach(d -> givenUp.add(dirOf(d, rel)));
+                continue;
+            }
+            if (batch.size() > 1) {
+                splits++;
+                int mid = batch.size() / 2;
+                queue.addFirst(new ArrayList<>(batch.subList(mid, batch.size())));
+                queue.addFirst(new ArrayList<>(batch.subList(0, mid)));
+                if (!batched) {
+                    batched = true;
+                    sp = SourcePath.read(files, rel, found.notes);
+                }
+            } else {
+                givenUp.add(dirOf(batch.get(0), rel));
+            }
+        }
+        if (errors[0] > 0) {
+            found.notes.add("edges: javac reported " + errors[0] + " errors attributing "
+                + units[0] + " files; calls whose receiver it could not type are "
+                + "`untyped`, never guessed");
+            missing.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(8)
+                .forEach(e -> found.notes.add("  " + e.getValue() + "x " + e.getKey()));
+        }
+        if (batched) {
+            found.notes.add("edges: the tree's " + files.size() + " files were attributed in "
+                + compilations + " compilations of at most " + cap + ", each with the rest of "
+                + "the tree on its source path"
+                + (splits == 0 ? "" : "; " + splits + " filled " + Math.round(HEAP_CEILING * 100)
+                    + "% of the " + heapMaxMb() + " MB heap and were split in two"));
+        }
+        if (!givenUp.isEmpty()) {
+            found.notes.add("edges: " + givenUp.size() + " directories could not be attributed "
+                + "and were given up, so their calls are unresolved, and any call that could "
+                + "dispatch into them is `unfollowed` rather than drawn: "
+                + String.join(", ", givenUp.subList(0, Math.min(8, givenUp.size())))
+                + (givenUp.size() > 8 ? " and " + (givenUp.size() - 8) + " more" : ""));
+        }
+        decide(questions, index, !givenUp.isEmpty(), found);
+        return found;
+    }
+
+    private static String dirOf(List<Path> dir, Function<Path, String> rel) {
+        String r = rel.apply(dir.get(0));
+        int slash = r.lastIndexOf('/');
+        return slash < 0 ? "." : r.substring(0, slash);
+    }
+
+    /** Phase A for one batch. Null when it was attributed and recorded; otherwise why not,
+     *  beginning {@code heap} when it ran out of room and may be split. */
+    private static String attribute(List<List<Path>> batch, Path root, Rules rules,
+                                    Function<Path, String> rel, Map<Path, String> tree,
+                                    SourcePath sp, List<Path> jars, Index index,
+                                    List<Question> questions, long[] errors, int[] nUnits,
+                                    Map<String, Integer> missing, Found found) {
+        if (failsOnPurpose(batch)) {
+            return "heap (DUNNEFLOW_JAVA_FAIL_BATCH)";
+        }
+        List<Extract.Source> sources = new ArrayList<>();
+        Map<String, String> texts = new HashMap<>();
+        // javac wraps every file object it is handed, so a unit is ours by its URI and never
+        // by its class: a cast was a ClassCastException on the first tree it met.
+        Map<java.net.URI, Extract.Source> byUri = new HashMap<>();
+        for (List<Path> dir : batch) {
+            for (Path f : dir) {
+                try {
+                    String r = rel.apply(f);
+                    String text = Text.readSource(f);
+                    Extract.Source src = new Extract.Source(r, text);
+                    sources.add(src);
+                    byUri.put(src.toUri(), src);
+                    texts.put(r, text);
+                } catch (IOException e) {
+                    found.notes.add("edges: " + f + " could not be read: " + e);
+                }
+            }
+        }
+        long[] batchErrors = {0};
+        Map<String, Integer> batchMissing = new TreeMap<>();
+        DiagnosticListener<JavaFileObject> listen = d -> {
+            // **This batch's own files only.** A class off the source path is blanked, so
+            // it reports errors nobody wrote, and it is loaded by every batch that names
+            // it: counted there, one error would be counted once per batch (rule 32).
+            if (d.getKind() == Diagnostic.Kind.ERROR
+                && (d.getSource() == null || byUri.containsKey(d.getSource().toUri()))) {
+                batchErrors[0]++;
+                if ("compiler.err.cant.resolve.location".equals(d.getCode())
+                    || "compiler.err.doesnt.exist".equals(d.getCode())) {
+                    String m = d.getMessage(java.util.Locale.ROOT).lines().findFirst().orElse("");
+                    batchMissing.merge(m, 1, Integer::sum);
+                }
+            }
+        };
         javax.tools.StandardJavaFileManager fm = Extract.compiler().getStandardFileManager(
             null, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8);
         try {
-            fm.setLocationFromPaths(javax.tools.StandardLocation.CLASS_PATH, deps.jars);
+            fm.setLocationFromPaths(javax.tools.StandardLocation.CLASS_PATH, jars);
         } catch (IOException e) {
             found.notes.add("edges: the dependency jars could not be put on the classpath: " + e);
         }
+        javax.tools.JavaFileManager files = sp == null ? fm : new MemorySourcePath(fm, sp);
         JavacTask task = (JavacTask) Extract.compiler().getTask(
-            null, fm, listen,
+            null, files, listen,
+            // `-Xmaxerrs`: javac stops *reporting* at 100 by default, and the note below
+            // said "100 errors" of traccar's 400 (rule 32: a count says what it counts).
             List.of("-proc:none", "-Xlint:none", "-nowarn", "-implicit:none",
+                "-Xmaxerrs", String.valueOf(Integer.MAX_VALUE),
                 "-XDshould-stop.ifError=FLOW", "-XDshould-stop.ifNoError=FLOW"),
             null, sources);
+        task.addTaskListener(new com.sun.source.util.TaskListener() {
+            @Override
+            public void started(com.sun.source.util.TaskEvent ev) {
+                if (ev.getKind() == com.sun.source.util.TaskEvent.Kind.ANALYZE) {
+                    // Whose class javac is attributing: this batch's, or one it loaded off
+                    // the source path. Said in the progress note; the second is pure cost.
+                    boolean own = ev.getSourceFile() != null
+                        && byUri.containsKey(ev.getSourceFile().toUri());
+                    attributed[own ? 0 : 1]++;
+                }
+                if (heapNearlyFull()) {
+                    throw new HeapFull("heap");
+                }
+            }
+        });
         List<Site> sites = new ArrayList<>();
         List<CompilationUnitTree> units = new ArrayList<>();
         try {
@@ -152,24 +703,159 @@ public final class Edges {
                     });
             }
             task.analyze();
+            Resolver r = new Resolver(task, units, texts, byUri, tree, sp, index);
+            List<Question> mine = new ArrayList<>(sites.size());
+            for (Site s : sites) {
+                mine.add(r.ask(s));
+            }
+            // Only a batch that finished is counted, so a split batch's errors are not
+            // said twice.
+            questions.addAll(mine);
+            errors[0] += batchErrors[0];
+            nUnits[0] += units.size();
+            batchMissing.forEach((k, v) -> missing.merge(k, v, Integer::sum));
+            return null;
         } catch (IOException e) {
-            found.notes.add("edges: javac could not read the text it was handed: " + e);
-            return found;
-        } catch (RuntimeException e) {
-            // javac crashed on this tree. Nothing is guessed: every call is left external,
-            // and the host counts them as unresolved.
-            found.notes.add("edges: javac failed attributing this tree: " + Main.describe(e));
-            return found;
+            return "javac could not read the text it was handed: " + e;
+        } catch (RuntimeException | OutOfMemoryError e) {
+            if (ranOut(e)) {
+                return "heap";
+            }
+            return Main.describe(e);
+        } finally {
+            try {
+                fm.close();
+            } catch (IOException e) {
+                // nothing held that matters once the batch is dropped
+            }
         }
-        if (errors[0] > 0) {
-            found.notes.add("edges: javac reported " + errors[0] + " errors attributing "
-                + units.size() + " files; calls whose receiver it could not type are "
-                + "`untyped`, never guessed");
-            missing.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(8)
-                .forEach(e -> found.notes.add("  " + e.getValue() + "x " + e.getKey()));
+    }
+
+    /**
+     * Phase B: Tom's dispatch rule over the whole tree's index, in the order the sites
+     * were walked. With a directory given up, the index is not the whole tree's, so
+     * nothing that depends on <i>no other body</i> may be drawn: only a call no override
+     * can reach keeps its edge, and the rest are {@code unfollowed} (rules 1 and 49).
+     */
+    private static void decide(List<Question> questions, Index index, boolean incomplete,
+                               Found found) {
+        for (Question q : questions) {
+            Facts.SuppliedEdge e = q.e;
+            if (q.pending) {
+                decide(q, index, incomplete);
+            }
+            if (e.file.isEmpty()) {
+                if ("outside".equals(e.reason)) {
+                    found.outside++;
+                } else {
+                    found.unknown++;
+                }
+            }
+            found.edges.add(e);
         }
-        new Resolver(task, units, texts, byUri, found).resolve(sites);
-        return found;
+    }
+
+    private static void decide(Question q, Index index, boolean incomplete) {
+        Facts.SuppliedEdge e = q.e;
+        if (incomplete && !q.nonVirtual) {
+            e.reason = "unfollowed";
+            e.frontier = q.frontier + " (whether the tree overrides it is not known: a "
+                + "directory could not be attributed)";
+            return;
+        }
+        List<Over> over = overridersOf(index, q.targetKey, q.receiverKey);
+        if (!q.home) {
+            if (!q.nonVirtual && !over.isEmpty()) {
+                e.reason = "dynamic";
+                e.candidates = over.size();
+                e.frontier = q.frontier;
+                answers(over, e);
+                return;
+            }
+            e.reason = "outside";
+            e.how = "symbol";
+            e.frontier = q.frontier;
+            return;
+        }
+        if (q.nonVirtual && q.hasBody) {
+            point(q, e);
+            e.how = "non-virtual";
+            return;
+        }
+        if (incomplete) {
+            e.reason = "unfollowed";
+            e.frontier = q.frontier + " (whether the tree overrides it is not known: a "
+                + "directory could not be attributed)";
+            return;
+        }
+        if (over.isEmpty() && q.hasBody) {
+            point(q, e);
+            e.how = "unoverridden";
+            return;
+        }
+        int answering = (q.hasBody ? 1 : 0) + (int) over.stream().filter(Over::hasBody).count();
+        if (answering == 0) {
+            // An interface no class in the tree implements: Spring Data writes the
+            // repository at run time, and a library's caller writes the rest.
+            e.reason = "outside";
+            e.how = "unimplemented";
+            e.frontier = q.frontier;
+            return;
+        }
+        e.reason = "dynamic";
+        e.candidates = answering;
+        e.frontier = q.frontier;
+        if (q.hasBody) {
+            Facts.Answer a = new Facts.Answer();
+            a.file = q.file;
+            a.line = q.line;
+            a.name = q.name;
+            e.answers.add(a);
+        }
+        answers(over, e);
+    }
+
+    private static void point(Question q, Facts.SuppliedEdge e) {
+        e.file = q.file;
+        e.line = q.line;
+        e.name = q.name;
+    }
+
+    /** Where each body that may answer a dispatched call is, by the same line rule an
+     *  edge's target is named by (`schema.Answer`). Only bodies: a declaration with none
+     *  is not a routine, and could not be linked to one. */
+    private static void answers(List<Over> over, Facts.SuppliedEdge e) {
+        for (Over o : over) {
+            if (!o.hasBody()) {
+                continue;
+            }
+            Facts.Answer a = new Facts.Answer();
+            a.file = o.file();
+            a.line = o.line();
+            a.name = o.name();
+            e.answers.add(a);
+        }
+    }
+
+    /** The methods in the tree that can answer this call instead of its target: the ones
+     *  that override it <b>in a subtype of the receiver's static type</b>. A sibling
+     *  class's override can never answer a call on this receiver: {@code Event}'s
+     *  {@code setDeviceId()} is {@code Message}'s, whatever {@code Command}, another
+     *  subclass of {@code Message}, does with its own (traccar, 2026-11-01). A null
+     *  receiver could not be said, and counts every override rather than guessing which. */
+    private static List<Over> overridersOf(Index index, String target, String receiver) {
+        List<Over> all = index.overriddenBy.getOrDefault(target, List.of());
+        if (receiver == null || all.isEmpty()) {
+            return all;
+        }
+        List<Over> out = new ArrayList<>();
+        for (Over o : all) {
+            Set<String> up = index.closure.get(o.ownerKey());
+            if (up == null || up.contains(receiver)) {
+                out.add(o);
+            }
+        }
+        return out;
     }
 
     /** Attribution's answers, turned into the host's terms. */
@@ -180,33 +866,32 @@ public final class Edges {
         final SourcePositions pos;
         final Map<String, String> texts;
         final Map<java.net.URI, Extract.Source> byUri;
-        final Found found;
-        /** Every method the tree declares, by simple name: who can override whom. */
-        final Map<String, List<ExecutableElement>> byName = new HashMap<>();
-        /** Which of those has a body, and so is a routine. */
-        final Set<ExecutableElement> bodies = java.util.Collections.newSetFromMap(
-            new IdentityHashMap<>());
-        final Map<Element, List<ExecutableElement>> overriders = new IdentityHashMap<>();
+        final Map<Path, String> tree;
+        /** The tree held in memory as javac's source path, or null for one compilation. */
+        final SourcePath sp;
+        final Index index;
+        /** A supertype's methods by name, asked once per type in this batch. */
+        final Map<TypeElement, Map<String, List<ExecutableElement>>> declared =
+            new IdentityHashMap<>();
 
         Resolver(JavacTask task, List<CompilationUnitTree> units, Map<String, String> texts,
-                 Map<java.net.URI, Extract.Source> byUri, Found found) {
+                 Map<java.net.URI, Extract.Source> byUri, Map<Path, String> tree,
+                 SourcePath sp, Index index) {
             this.trees = Trees.instance(task);
             this.elements = task.getElements();
             this.types = task.getTypes();
             this.pos = trees.getSourcePositions();
             this.texts = texts;
             this.byUri = byUri;
-            this.found = found;
+            this.tree = tree;
+            this.sp = sp;
+            this.index = index;
             for (CompilationUnitTree unit : units) {
                 new TreePathScanner<Void, Void>() {
                     @Override
                     public Void visitMethod(MethodTree m, Void v) {
                         if (trees.getElement(getCurrentPath()) instanceof ExecutableElement e) {
-                            byName.computeIfAbsent(e.getSimpleName().toString(),
-                                k -> new ArrayList<>()).add(e);
-                            if (m.getBody() != null) {
-                                bodies.add(e);
-                            }
+                            declare(getCurrentPath(), m, e);
                         }
                         return super.visitMethod(m, v);
                     }
@@ -214,24 +899,110 @@ public final class Edges {
             }
         }
 
-        void resolve(List<Site> sites) {
-            for (Site s : sites) {
-                Facts.SuppliedEdge e = new Facts.SuppliedEdge();
-                e.site_id = s.siteId();
-                e.caller_id = s.caller();
-                answer(s, e);
-                if (e.file.isEmpty()) {
-                    if ("outside".equals(e.reason)) {
-                        found.outside++;
-                    } else {
-                        found.unknown++;
+        /** Write down what this method overrides, and where it is, so a call in any batch
+         *  can count it. Only a method can override; javac's own answer decides which. */
+        void declare(TreePath path, MethodTree m, ExecutableElement e) {
+            if (e.getKind() != ElementKind.METHOD || e.getModifiers().contains(Modifier.STATIC)
+                || e.getModifiers().contains(Modifier.PRIVATE)
+                || !(e.getEnclosingElement() instanceof TypeElement owner)) {
+                return;
+            }
+            Set<String> up = closure(owner);
+            Over self = null;
+            String name = e.getSimpleName().toString();
+            for (TypeElement sup : supertypes(owner)) {
+                for (ExecutableElement x : declared(sup).getOrDefault(name, List.of())) {
+                    if (x == e || !elements.overrides(e, x, owner)) {
+                        continue;
+                    }
+                    if (self == null) {
+                        Facts.SuppliedEdge at = new Facts.SuppliedEdge();
+                        pointAt(path, e, at);
+                        self = new Over(key(e), key(owner), m.getBody() != null, at.file,
+                            at.line, at.name);
+                    }
+                    String k = key(x);
+                    if (index.seen.add(k + "\u0000" + self.file() + ":" + self.line())) {
+                        index.overriddenBy.computeIfAbsent(k, z -> new ArrayList<>()).add(self);
                     }
                 }
-                found.edges.add(e);
             }
+            index.closure.putIfAbsent(key(owner), up);
         }
 
-        void answer(Site s, Facts.SuppliedEdge e) {
+        Map<String, List<ExecutableElement>> declared(TypeElement t) {
+            return declared.computeIfAbsent(t, z -> {
+                Map<String, List<ExecutableElement>> by = new HashMap<>();
+                for (Element m : t.getEnclosedElements()) {
+                    if (m instanceof ExecutableElement x && m.getKind() == ElementKind.METHOD) {
+                        by.computeIfAbsent(x.getSimpleName().toString(),
+                            k -> new ArrayList<>()).add(x);
+                    }
+                }
+                return by;
+            });
+        }
+
+        /** Every type this one is a subtype of, erased, itself first. */
+        List<TypeElement> supertypes(TypeElement t) {
+            List<TypeElement> out = new ArrayList<>();
+            Set<TypeElement> seen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+            java.util.ArrayDeque<javax.lang.model.type.TypeMirror> todo = new java.util.ArrayDeque<>();
+            todo.add(types.erasure(t.asType()));
+            while (!todo.isEmpty()) {
+                javax.lang.model.type.TypeMirror m = todo.poll();
+                if (!(types.asElement(m) instanceof TypeElement te) || !seen.add(te)) {
+                    continue;
+                }
+                out.add(te);
+                try {
+                    for (javax.lang.model.type.TypeMirror s : types.directSupertypes(m)) {
+                        todo.add(types.erasure(s));
+                    }
+                } catch (RuntimeException ex) {
+                    // an error type has no supertypes to list
+                }
+            }
+            return out;
+        }
+
+        Set<String> closure(TypeElement t) {
+            Set<String> out = new java.util.HashSet<>();
+            for (TypeElement s : supertypes(t)) {
+                out.add(key(s));
+            }
+            return out;
+        }
+
+        String key(TypeElement t) {
+            return elements.getBinaryName(t).toString();
+        }
+
+        /** A method's name in every batch: its class's binary name, its name and its erased
+         *  parameters. Two batches load one method as two elements and agree on this. */
+        String key(ExecutableElement m) {
+            StringBuilder b = new StringBuilder();
+            b.append(m.getEnclosingElement() instanceof TypeElement t ? key(t)
+                : m.getEnclosingElement().toString());
+            b.append('#').append(m.getKind() == ElementKind.CONSTRUCTOR ? "<init>"
+                : m.getSimpleName().toString()).append('(');
+            boolean first = true;
+            for (javax.lang.model.element.VariableElement p : m.getParameters()) {
+                if (!first) {
+                    b.append(',');
+                }
+                first = false;
+                b.append(types.erasure(p.asType()));
+            }
+            return b.append(')').toString();
+        }
+
+        /** Phase A of one site: everything javac can answer now, and what Phase B needs. */
+        Question ask(Site s) {
+            Question q = new Question();
+            Facts.SuppliedEdge e = q.e;
+            e.site_id = s.siteId();
+            e.caller_id = s.caller();
             Element el;
             try {
                 el = trees.getElement(TreePath.getPath(s.unit(), s.node()));
@@ -243,7 +1014,7 @@ public final class Edges {
                 // a Kotlin file, generated code, or a dependency that is not here.
                 e.reason = "untyped";
                 e.frontier = s.dotted();
-                return;
+                return q;
             }
             TypeElement owner = target.getEnclosingElement() instanceof TypeElement t ? t : null;
             if (guessed(s, target, owner)) {
@@ -252,88 +1023,40 @@ public final class Edges {
                 // with nothing to say it was not `width(String)` (rule 1).
                 e.reason = "untyped";
                 e.frontier = s.dotted();
-                return;
+                return q;
             }
             if (s.construction() && owner != null && owner.getNestingKind().name().equals("ANONYMOUS")) {
                 // `new Runnable() { … }` builds a class with no name and no structure.
                 e.reason = "unfollowed";
                 e.frontier = "anonymous " + s.dotted();
-                return;
+                return q;
             }
             TreePath decl = trees.getPath(target);
-            Extract.Source home = decl == null ? null : ours(decl.getCompilationUnit());
+            String home = decl == null ? null : ours(decl.getCompilationUnit());
             TypeElement receiver = receiverType(s, target, owner);
+            q.receiverKey = receiver == null
+                || receiver.asType().getKind() == javax.lang.model.type.TypeKind.ERROR
+                ? null : key(receiver);
+            q.targetKey = key(target);
+            q.frontier = qualified(target);
+            q.nonVirtual = nonVirtual(s, target, owner);
             if (home == null) {
-                List<ExecutableElement> over = overridersOf(target, receiver);
-                if (!nonVirtual(s, target, owner) && !over.isEmpty()) {
-                    e.reason = "dynamic";
-                    e.candidates = over.size();
-                    e.frontier = qualified(target);
-                    answers(over, e);
-                    return;
-                }
-                e.reason = "outside";
-                e.how = "symbol";
-                e.frontier = qualified(target);
-                return;
+                q.pending = true;
+                return q;
             }
             if (elements.getOrigin(target) != Elements.Origin.EXPLICIT) {
                 implicit(s, target, owner, e);
-                return;
+                return q;
             }
-            boolean hasBody = bodies.contains(target);
-            List<ExecutableElement> over = overridersOf(target, receiver);
-            if (nonVirtual(s, target, owner) && hasBody) {
-                pointAt(decl, target, e);
-                e.how = "non-virtual";
-                return;
-            }
-            if (over.isEmpty() && hasBody) {
-                pointAt(decl, target, e);
-                e.how = "unoverridden";
-                return;
-            }
-            int answering = (hasBody ? 1 : 0)
-                + (int) over.stream().filter(bodies::contains).count();
-            if (answering == 0) {
-                // An interface no class in the tree implements: Spring Data writes the
-                // repository at run time, and a library's caller writes the rest.
-                e.reason = "outside";
-                e.how = "unimplemented";
-                e.frontier = qualified(target);
-                return;
-            }
-            e.reason = "dynamic";
-            e.candidates = answering;
-            e.frontier = qualified(target);
-            List<ExecutableElement> all = new ArrayList<>();
-            if (hasBody) {
-                all.add(target);
-            }
-            all.addAll(over);
-            answers(all, e);
-        }
-
-        /** Where each body that may answer a dispatched call is, by the same line rule an
-         *  edge's target is named by (`schema.Answer`). Only bodies: a declaration with none
-         *  is not a routine, and could not be linked to one. */
-        void answers(List<ExecutableElement> bodiesThatMay, Facts.SuppliedEdge e) {
-            for (ExecutableElement m : bodiesThatMay) {
-                if (!bodies.contains(m)) {
-                    continue;
-                }
-                TreePath decl = trees.getPath(m);
-                if (decl == null || ours(decl.getCompilationUnit()) == null) {
-                    continue;
-                }
-                Facts.SuppliedEdge at = new Facts.SuppliedEdge();
-                pointAt(decl, m, at);
-                Facts.Answer a = new Facts.Answer();
-                a.file = at.file;
-                a.line = at.line;
-                a.name = at.name;
-                e.answers.add(a);
-            }
+            q.home = true;
+            q.hasBody = decl.getLeaf() instanceof MethodTree mt && mt.getBody() != null;
+            Facts.SuppliedEdge at = new Facts.SuppliedEdge();
+            pointAt(decl, target, at);
+            q.file = at.file;
+            q.line = at.line;
+            q.name = at.name;
+            q.pending = true;
+            return q;
         }
 
         /** Did javac resolve this call with an argument it could not type, among several
@@ -381,11 +1104,11 @@ public final class Edges {
         void implicit(Site s, ExecutableElement target, TypeElement owner, Facts.SuppliedEdge e) {
             if (target.getKind() == ElementKind.CONSTRUCTOR && owner != null) {
                 TreePath cls = trees.getPath(owner);
-                Extract.Source src = cls == null ? null : ours(cls.getCompilationUnit());
+                String src = cls == null ? null : ours(cls.getCompilationUnit());
                 if (src != null && cls.getLeaf() instanceof ClassTree ct) {
                     e.constructs = qualnameOf(cls);
-                    e.file = src.rel;
-                    e.line = lineOf(cls.getCompilationUnit(), src.rel, ct, ct.getModifiers());
+                    e.file = src;
+                    e.line = lineOf(cls.getCompilationUnit(), src, ct, ct.getModifiers());
                     e.name = owner.getSimpleName().toString();
                     e.how = "implicit constructor";
                     return;
@@ -422,16 +1145,53 @@ public final class Edges {
             return "";
         }
 
-        /** The source this unit was read from, if it is one of this tree's. */
-        Extract.Source ours(CompilationUnitTree unit) {
-            return unit.getSourceFile() == null ? null : byUri.get(unit.getSourceFile().toUri());
+        /** The tree's name for the file this unit was read from, or null when it is not
+         *  one of the tree's walked files. A batch's own units are ours by their URI; a
+         *  unit javac loaded off the source path is ours by its path. */
+        String ours(CompilationUnitTree unit) {
+            JavaFileObject fo = unit.getSourceFile();
+            if (fo == null) {
+                return null;
+            }
+            Extract.Source src = byUri.get(fo.toUri());
+            if (src != null) {
+                return src.rel;
+            }
+            TreeSource held = sp == null ? null : sp.byUri.get(fo.toUri());
+            if (held != null) {
+                return held.rel;
+            }
+            if (!"file".equals(fo.toUri().getScheme())) {
+                return null;
+            }
+            try {
+                return tree.get(Path.of(fo.toUri()).toAbsolutePath().normalize());
+            } catch (RuntimeException ex) {
+                return null;
+            }
+        }
+
+        /** The text the unit was parsed from: the batch's own, or what javac read off the
+         *  source path, which is the text its positions count in. */
+        String textOf(CompilationUnitTree unit, String rel) {
+            String t = texts.get(rel);
+            if (t != null) {
+                return t;
+            }
+            try {
+                t = unit.getSourceFile().getCharContent(true).toString();
+            } catch (IOException ex) {
+                t = "";
+            }
+            texts.put(rel, t);
+            return t;
         }
 
         void pointAt(TreePath decl, ExecutableElement target, Facts.SuppliedEdge e) {
-            Extract.Source src = ours(decl.getCompilationUnit());
+            String src = ours(decl.getCompilationUnit());
             MethodTree m = (MethodTree) decl.getLeaf();
-            e.file = src.rel;
-            e.line = lineOf(decl.getCompilationUnit(), src.rel, m, m.getModifiers());
+            e.file = src;
+            e.line = lineOf(decl.getCompilationUnit(), src, m, m.getModifiers());
             e.name = target.getKind() == ElementKind.CONSTRUCTOR
                 ? target.getEnclosingElement().getSimpleName().toString()
                 : target.getSimpleName().toString();
@@ -439,7 +1199,7 @@ public final class Edges {
 
         long lineOf(CompilationUnitTree unit, String rel, Tree decl,
                     com.sun.source.tree.ModifiersTree mods) {
-            long at = Extract.declStart(pos, unit, texts.get(rel), decl, mods);
+            long at = Extract.declStart(pos, unit, textOf(unit, rel), decl, mods);
             return unit.getLineMap().getLineNumber(at);
         }
 
@@ -459,26 +1219,6 @@ public final class Edges {
                 && mi.getMethodSelect() instanceof MemberSelectTree ms
                 && ms.getExpression() instanceof IdentifierTree id
                 && id.getName().contentEquals("super");
-        }
-
-        /** The methods in the tree that can answer this call instead of {@code target}: the
-         *  ones that override it <b>in a subtype of the receiver's static type</b>. A sibling
-         *  class's override can never answer a call on this receiver: {@code Event}'s
-         *  {@code setDeviceId()} is {@code Message}'s, whatever {@code Command}, another
-         *  subclass of {@code Message}, does with its own (traccar, 2026-11-01). */
-        List<ExecutableElement> overridersOf(ExecutableElement target, TypeElement receiver) {
-            List<ExecutableElement> all = allOverriders(target);
-            if (receiver == null || all.isEmpty()) {
-                return all;
-            }
-            javax.lang.model.type.TypeMirror r = types.erasure(receiver.asType());
-            List<ExecutableElement> out = new ArrayList<>();
-            for (ExecutableElement m : all) {
-                if (types.isSubtype(types.erasure(m.getEnclosingElement().asType()), r)) {
-                    out.add(m);
-                }
-            }
-            return out;
         }
 
         /** The class whose instance the call is made on, as the source types it: the
@@ -511,21 +1251,6 @@ public final class Edges {
                 return null;
             }
             return null;
-        }
-
-        /** Every method in the tree that overrides this one, asked once per method. */
-        List<ExecutableElement> allOverriders(ExecutableElement target) {
-            return overriders.computeIfAbsent(target, t -> {
-                List<ExecutableElement> out = new ArrayList<>();
-                for (ExecutableElement m : byName.getOrDefault(
-                        target.getSimpleName().toString(), List.of())) {
-                    if (m != target && m.getEnclosingElement() instanceof TypeElement mt
-                        && elements.overrides(m, target, mt)) {
-                        out.add(m);
-                    }
-                }
-                return out;
-            });
         }
 
         /** {@code java.sql.Statement.executeQuery}: the declaring type's own name. */

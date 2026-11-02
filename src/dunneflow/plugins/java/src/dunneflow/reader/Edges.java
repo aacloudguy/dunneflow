@@ -75,6 +75,9 @@ public final class Edges {
         final List<String> notes = new ArrayList<>();
         long outside;
         long unknown;
+        /** What was read beyond the tree, and what was looked for and is not here. */
+        final List<String> readBeyond = new ArrayList<>();
+        final List<String> notPresent = new ArrayList<>();
     }
 
     /** One call the walk recorded, held until attribution can answer it. */
@@ -115,8 +118,22 @@ public final class Edges {
                 }
             }
         };
+        // The jars the build files name, where this machine holds them (`Deps`): never
+        // fetched. Put on a file manager of the edge pass's own, so a file's facts never
+        // depend on what happens to be in somebody's cache (rule 95).
+        Deps.Result deps = Deps.resolve(root);
+        found.readBeyond.addAll(deps.read);
+        found.notPresent.addAll(deps.absent);
+        found.notes.addAll(deps.notes);
+        javax.tools.StandardJavaFileManager fm = Extract.compiler().getStandardFileManager(
+            null, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8);
+        try {
+            fm.setLocationFromPaths(javax.tools.StandardLocation.CLASS_PATH, deps.jars);
+        } catch (IOException e) {
+            found.notes.add("edges: the dependency jars could not be put on the classpath: " + e);
+        }
         JavacTask task = (JavacTask) Extract.compiler().getTask(
-            null, Extract.fileManager(), listen,
+            null, fm, listen,
             List.of("-proc:none", "-Xlint:none", "-nowarn", "-implicit:none",
                 "-XDshould-stop.ifError=FLOW", "-XDshould-stop.ifNoError=FLOW"),
             null, sources);

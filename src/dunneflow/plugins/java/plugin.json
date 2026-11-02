@@ -68,6 +68,7 @@
     "plugin.json",
     "Build.java",
     "src/dunneflow/reader/Comments.java",
+    "src/dunneflow/reader/Deps.java",
     "src/dunneflow/reader/Edges.java",
     "src/dunneflow/reader/Extract.java",
     "src/dunneflow/reader/Facts.java",

@@ -146,6 +146,7 @@ public final class Main {
         send(new Json.Frame("edges_done").put("id", id).put("supplied", supplied)
             .put("unresolved", found.outside + found.unknown)
             .put("outside", found.outside).put("unknown", found.unknown)
+            .put("read_beyond", found.readBeyond).put("not_present", found.notPresent)
             .finish());
     }
 

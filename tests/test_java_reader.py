@@ -18,6 +18,7 @@ or this machine has no `java` the plugin's toolchain probe accepts.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -474,3 +475,151 @@ def test_every_supplied_edge_lands_on_its_routine_s_first_line(tmp_path):
     store.close()
     assert rep.supplied == rep.exact > 0 and rep.constructions == 1
     assert (rep.by_span, rep.name_mismatch, rep.no_routine) == (0, 0, 0)
+
+
+# ------------------------------------------------- dependencies, never fetched --- #
+
+def _pom(g: str, a: str, v: str, body: str = "", parent: str = "") -> str:
+    return (f"<project><modelVersion>4.0.0</modelVersion>{parent}<groupId>{g}</groupId>"
+            f"<artifactId>{a}</artifactId><version>{v}</version>{body}</project>")
+
+
+def _dep(g: str, a: str, v: str = "", extra: str = "") -> str:
+    ver = f"<version>{v}</version>" if v else ""
+    return (f"<dependency><groupId>{g}</groupId><artifactId>{a}</artifactId>{ver}{extra}"
+            "</dependency>")
+
+
+def _jar(tmp: Path, cls: str) -> bytes:
+    """A real jar holding `org.acme.<cls>` with a method `hello()`, compiled by this JDK."""
+    import zipfile
+    src = tmp / "jarsrc" / cls
+    (src / "org" / "acme").mkdir(parents=True)
+    (src / "org" / "acme" / f"{cls}.java").write_text(
+        f"package org.acme;\npublic class {cls} {{ public void hello() {{}} }}\n", encoding="utf-8")
+    out = tmp / "jarout" / cls
+    argv = ["javac", "-d", str(out), str(src / "org" / "acme" / f"{cls}.java")]
+    subprocess.run(argv, check=True, capture_output=True)  # noqa: S603
+    jar = tmp / f"{cls}.jar"
+    with zipfile.ZipFile(jar, "w") as z:
+        z.write(out / "org" / "acme" / f"{cls}.class", f"org/acme/{cls}.class")
+    return jar.read_bytes()
+
+
+def _m2(repo: Path, g: str, a: str, v: str, pom: str, jar: bytes | None = None) -> None:
+    d = repo / g.replace(".", "/") / a / v
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{a}-{v}.pom").write_text(pom, encoding="utf-8")
+    if jar is not None:
+        (d / f"{a}-{v}.jar").write_bytes(jar)
+
+
+@pytest.fixture(scope="module")
+def deps_tree(tmp_path_factory):
+    """A Maven tree and a Gradle tree over one fake repository, and their edges."""
+    if _WHY:
+        pytest.skip(_WHY)
+    assert PLUGIN is not None
+    tmp = tmp_path_factory.mktemp("deps")
+    repo = tmp / "m2"
+    g = "org.acme"
+    _m2(repo, g, "acme-parent", "1", _pom(g, "acme-parent", "1",
+        "<packaging>pom</packaging><properties><lib.version>2.0</lib.version></properties>"
+        "<dependencyManagement><dependencies>"
+        + _dep(g, "acme-bom", "1", "<type>pom</type><scope>import</scope>")
+        + "</dependencies></dependencyManagement>"))
+    _m2(repo, g, "acme-bom", "1", _pom(g, "acme-bom", "1",
+        "<packaging>pom</packaging><dependencyManagement><dependencies>"
+        + _dep(g, "extra", "3.0") + "</dependencies></dependencyManagement>"))
+    _m2(repo, g, "lib", "2.0", _pom(g, "lib", "2.0", "<dependencies>"
+        + _dep(g, "trans", "1.0") + _dep(g, "opt", "1.0", "<optional>true</optional>")
+        + _dep(g, "gone", "1.0") + _dep(g, "tested", "1.0", "<scope>test</scope>")
+        + "</dependencies>"), _jar(tmp, "Lib"))
+    _m2(repo, g, "extra", "3.0", _pom(g, "extra", "3.0"), _jar(tmp, "Extra"))
+    _m2(repo, g, "trans", "1.0", _pom(g, "trans", "1.0"), _jar(tmp, "Trans"))
+    for never in ("opt", "gone", "tested"):
+        _m2(repo, g, never, "1.0", _pom(g, never, "1.0"), _jar(tmp, never.capitalize()))
+
+    maven = tmp / "maven"
+    (maven / "src" / "main" / "java" / "app").mkdir(parents=True)
+    (maven / "pom.xml").write_text(_pom("app", "app", "1", "<dependencies>"
+        + _dep(g, "lib", "${lib.version}",
+               "<exclusions><exclusion><groupId>org.acme</groupId>"
+               "<artifactId>gone</artifactId></exclusion></exclusions>")
+        + _dep(g, "extra") + _dep(g, "missing", "9") + "</dependencies>",
+        parent=f"<parent><groupId>{g}</groupId><artifactId>acme-parent</artifactId>"
+               "<version>1</version></parent>"), encoding="utf-8")
+    (maven / "src" / "main" / "java" / "app" / "App.java").write_text(
+        "package app;\n\nimport org.acme.*;\n\nclass App {\n"
+        "    void f(Lib l, Extra e, Trans t, Gone g) {\n"
+        "        l.hello();\n        e.hello();\n        t.hello();\n        g.hello();\n"
+        "    }\n}\n", encoding="utf-8")
+
+    gradle = tmp / "gradle"
+    (gradle / "gradle").mkdir(parents=True)
+    (gradle / "src" / "main" / "java" / "app").mkdir(parents=True)
+    (gradle / "build.gradle").write_text(
+        "ext {\n    libVersion = \"2.0\"\n}\n\ndependencies {\n"
+        "    implementation \"org.acme:lib:$libVersion\"\n"
+        "    implementation libs.acme.extra\n"
+        "    testImplementation \"org.acme:tested:1.0\"\n}\n", encoding="utf-8")
+    (gradle / "gradle" / "libs.versions.toml").write_text(
+        '[versions]\nextra = "3.0"\n\n[libraries]\n'
+        'acme-extra = { module = "org.acme:extra", version.ref = "extra" }\n', encoding="utf-8")
+    (gradle / "src" / "main" / "java" / "app" / "App.java").write_text(
+        (maven / "src" / "main" / "java" / "app" / "App.java").read_text(encoding="utf-8"),
+        encoding="utf-8")
+
+    old = os.environ.get("MAVEN_OPTS")
+    os.environ["MAVEN_OPTS"] = f"-Dmaven.repo.local={repo}"
+    out = {}
+    try:
+        for name, root in (("maven", maven), ("gradle", gradle)):
+            files = sorted(root.rglob("*.java"))
+            PLUGIN.probe()
+            PLUGIN.open(root, files)
+            try:
+                facts = list(PLUGIN.extract(files, root))
+                edges = list(PLUGIN.edges())
+                read = list(PLUGIN.edges_read_beyond)
+                absent = list(PLUGIN.edges_not_present)
+            finally:
+                PLUGIN.close()
+            sites = {c.site_id: c.callee_expr for ff in facts for c in ff.calls}
+            out[name] = ({sites[e.site_id]: e for e in edges}, read, absent)
+    finally:
+        if old is None:
+            os.environ.pop("MAVEN_OPTS", None)
+        else:
+            os.environ["MAVEN_OPTS"] = old
+    return out
+
+
+def test_a_cached_dependency_turns_untyped_into_a_named_far_end(deps_tree):
+    """Design rule 14: read from this machine, never fetched. A parent's property, a BOM
+    the parent imports, and a dependency's own dependency are each followed."""
+    edges, read, absent = deps_tree["maven"]
+    for call, owner in (("l.hello", "Lib"), ("e.hello", "Extra"), ("t.hello", "Trans")):
+        e = edges[call]
+        assert (e.reason, e.frontier) == ("outside", f"org.acme.{owner}.hello"), call
+    assert read == ["org.acme:extra:3.0", "org.acme:lib:2.0", "org.acme:trans:1.0"]
+    assert "org.acme:missing:9" in absent, "declared and not on this machine: said"
+
+
+def test_mediation_honours_exclusions_optional_and_scope(deps_tree):
+    """`gone` is excluded, `opt` optional and `tested` test-scoped, so none is read even
+    though all three are cached, and a call into an excluded one stays untyped."""
+    edges, read, _ = deps_tree["maven"]
+    assert not any(x in " ".join(read) for x in ("gone", "opt", "tested"))
+    assert edges["g.hello"].reason == "untyped"
+
+
+def test_gradle_variables_and_the_version_catalog_name_the_same_jars(deps_tree):
+    edges, read, absent = deps_tree["gradle"]
+    # No exclusion is written here, so `gone` is `lib`'s dependency and is read: the two
+    # trees differ by exactly what their build files say.
+    assert read == ["org.acme:extra:3.0", "org.acme:gone:1.0", "org.acme:lib:2.0",
+                    "org.acme:trans:1.0"]
+    assert edges["g.hello"].reason == "outside"
+    assert edges["l.hello"].reason == "outside" and edges["e.hello"].reason == "outside"
+    assert absent == []

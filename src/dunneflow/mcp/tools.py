@@ -175,6 +175,14 @@ def _touches(session: Session, args: dict[str, Any]) -> dict[str, Any]:
             # a name was sent that links to nothing. The `how` is on every row, because a
             # string equal to a name is not a reference (`resolve/ipc.py`).
             "by_name": [_sent(x) for x in store.ipc_sent(store.reachable_from(match["id"]))],
+            # Where the reach went on into the bodies a dispatched call may run. Already
+            # inside `reaches`; listed so a reader can see which of it is *may* rather
+            # than *does* (`resolve/dispatch.py`).
+            "by_dispatch": [
+                {"call": x["callee_expr"], "caller": x["caller"], "file": x["file"],
+                 "line": x["line"], "bodies": x["bodies"], "how": x["how"]}
+                for x in store.dispatched(store.reachable_from(match["id"]))
+            ],
         })
     return {"asked": needle, **note, "routines": out}
 
@@ -200,6 +208,13 @@ def _impact(session: Session, args: dict[str, Any]) -> dict[str, Any]:
             # The dependents that reach this from another process, by a command's name.
             # Already inside `dependents`; listed so the crossing is not hidden in a count.
             "by_name": [_sent(x) for x in store.ipc_received([match["id"], *callers])],
+            # The dependents that reach this only as one of the bodies a dispatched call
+            # may run. Already inside `dependents`, and listed for `by_name`'s reason.
+            "by_dispatch": [
+                {"call": x["callee_expr"], "caller": x["caller"], "file": x["file"],
+                 "line": x["line"], "body": x["body"], "how": x["how"]}
+                for x in store.dispatched_into([match["id"], *callers])
+            ],
             # Calls with no edge that use this routine's name: undrawn possibilities, by
             # reason, and never counted among the dependents.
             "unresolved_by_name": dict(store.unresolved_named(match["name"])),

@@ -372,6 +372,24 @@ Unresolved = Literal["", "outside", "untyped", "dynamic", "bound", "unfollowed"]
 UNRESOLVED_REASONS: tuple[str, ...] = ("outside", "untyped", "dynamic", "bound", "unfollowed")
 
 @dataclass(slots=True)
+class Answer:
+    """One body that may answer a dispatched call, named as a target is: by location.
+
+    A `dynamic` call is one the checker resolved to a slot that several bodies fill
+    (`SuppliedEdge.reason`). The reader knows which, and until 2026-11-02 sent only how many
+    (`candidates`), so every walk stopped at the call and traccar's whole protocol layer --
+    271 decoders behind one abstract `decode` -- read as unreachable. Each is named the way
+    `SuppliedEdge` names its one target, a file, a line and a name, never an id
+    (PLAN-v2 section 1g), and the host links them as `dispatch_links`, which is a fact beside
+    the call graph and never an edge in it (rule 2): any of them **may** run.
+    """
+
+    file: str
+    line: int
+    name: str
+
+
+@dataclass(slots=True)
 class SuppliedEdge:
     """Where a call goes, according to a reader whose toolchain already knows.
 
@@ -425,6 +443,9 @@ class SuppliedEdge:
     # spelling, and how the reader knew it is `how`. Empty where nothing is known about it.
     frontier: str = ""
     reason: Unresolved = ""
+    # **The bodies a `dynamic` call may reach**, where the reader knows them (`Answer`).
+    # Empty for every other row, and for a reader that has not been taught to send them.
+    answers: list[Answer] = field(default_factory=list)
 
 
 class ControlKind(StrEnum):

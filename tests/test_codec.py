@@ -262,6 +262,24 @@ def test_a_supplied_edge_round_trips():
     assert decode(SuppliedEdge, wire) == edge
 
 
+def test_a_dispatched_edge_carries_the_bodies_that_may_answer_it():
+    """`SuppliedEdge.answers` (2026-11-02): one `Answer` per body, by location, through the
+    same strict codec, and absent from the wire where there are none."""
+    from dunneflow.schema import Answer, SuppliedEdge
+
+    edge = SuppliedEdge(site_id="s", caller_id="c", candidates=2, reason="dynamic",
+                        answers=[Answer("a/Square.java", 11, "area"),
+                                 Answer("a/Circle.java", 5, "area")])
+    wire = encode(edge)
+    assert wire["answers"] == [{"file": "a/Square.java", "line": 11, "name": "area"},
+                               {"file": "a/Circle.java", "line": 5, "name": "area"}]
+    assert decode(SuppliedEdge, wire) == edge
+    assert "answers" not in encode(SuppliedEdge(site_id="s", caller_id="c"))
+    with pytest.raises(CodecError):
+        decode(SuppliedEdge, {"site_id": "s", "caller_id": "c",
+                              "answers": [{"file": "a", "line": "eleven", "name": "x"}]})
+
+
 def test_an_edge_with_a_field_of_the_wrong_shape_is_refused():
     """An edge has no `errors` list of its own, so there is nowhere for a dropped field to
     be recorded — which is why the host turns this into a refusal rather than a gap."""

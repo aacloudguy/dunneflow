@@ -26,13 +26,18 @@ def test_the_model_reads_its_big_tables_in_table_order(analyzed, name):
     assert not walked, f"{name} walks an index row by row: {plan}"
 
 
-def test_reach_walked_in_memory_is_the_reach_the_query_finds(analyzed):
+def test_reach_walked_in_memory_is_the_reach_the_query_finds(analyzed, monkeypatch):
     """BACKLOG 8's second step: the cover's reach, walked in memory on a read-only store,
-    must be the set the recursive query returns, for every routine and for a set of them."""
+    must be the set the recursive query returns, for every routine and for a set of them.
+
+    Both kinds of store walk in memory since 2026-11-02 (a writable one keyed by what it
+    has written), so the query is reached by taking the graph away from one of them: the
+    query is still the path every walk without a graph takes, and the two must agree."""
     from dunneflow.store import Store
 
     ids = [r["id"] for r in analyzed.query("SELECT id FROM routines ORDER BY id")]
     reader = Store(analyzed.path, writable=False)
+    monkeypatch.setattr(analyzed, "_reach_graph", lambda cross=True: None)
     try:
         assert reader._reach_graph() is not None and analyzed._reach_graph() is None
         for rid in ids:
@@ -46,6 +51,26 @@ def test_reach_walked_in_memory_is_the_reach_the_query_finds(analyzed):
                     == analyzed.boundaries_reached_many([rid])), rid
     finally:
         reader.close()
+
+
+def test_a_writable_store_s_graph_is_the_graph_it_has_now(analyzed):
+    """The cache a writable store keeps is stamped with `total_changes`, so a row it writes
+    is in the next walk: a graph taken before `resolve_calls` finished must never answer
+    after it (the reason a writable store kept the query until 2026-11-02)."""
+    rows = [r["id"] for r in analyzed.query("SELECT id FROM routines ORDER BY id")]
+    a = rows[0]
+    before = set(analyzed.reachable_from(a))
+    b = next(x for x in rows if x not in before)  # a routine the walk cannot reach yet
+    assert analyzed._reach_graph() is not None
+    analyzed.conn.execute(
+        "INSERT INTO dispatch_links(site_id, caller_id, routine_id) VALUES('probe', ?, ?)",
+        (a, b))
+    try:
+        assert b in set(analyzed.reachable_from(a))
+        assert b in analyzed.reachable_from_many([a])
+    finally:
+        analyzed.conn.execute("DELETE FROM dispatch_links WHERE site_id = 'probe'")
+    assert set(analyzed.reachable_from(a)) == before
 
 
 def test_a_finished_map_carries_its_counts_and_a_reader_uses_them(sample_tree, tmp_path):

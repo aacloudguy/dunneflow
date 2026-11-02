@@ -596,7 +596,11 @@ def _unreachable(store: Store, r: Report) -> None:
         title=f"{stranded:,} of {plural(total, 'routine')} {are(stranded)} not reachable "
               f"from any way in",
         detail="These cannot run when the program is started by any entrypoint "
-               "DunneFlow found.",
+               "DunneFlow found."
+               # Said where it is true, so a figure that crossed dispatch is never read as
+               # one that stopped at it (rule 32; `resolve/dispatch.py`).
+               + (" Reach followed every dispatched call into each body that may answer "
+                  "it." if store.dispatch_of_map() else ""),
         blind_spot="An edge lost to ambiguity strands everything behind it, so "
                    "LOST_EDGE findings inflate this number. Library code meant to be "
                    "imported by other programs is also unreachable by design.",

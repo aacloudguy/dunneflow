@@ -450,16 +450,24 @@ type FileFacts struct {
 	Errors           List[string]          `json:"errors,omitempty"`
 }
 
+// Answer is `schema.Answer`.
+type Answer struct {
+	File string `json:"file"`
+	Line int    `json:"line"`
+	Name string `json:"name"`
+}
+
 // SuppliedEdge is `schema.SuppliedEdge`.
 type SuppliedEdge struct {
-	SiteId     string `json:"site_id"`
-	CallerId   string `json:"caller_id"`
-	File       string `json:"file,omitempty"`
-	Line       int    `json:"line,omitempty"`
-	Name       string `json:"name,omitempty"`
-	How        string `json:"how,omitempty"`
-	Candidates int    `json:"candidates,omitempty"`
-	Constructs string `json:"constructs,omitempty"`
-	Frontier   string `json:"frontier,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	SiteId     string       `json:"site_id"`
+	CallerId   string       `json:"caller_id"`
+	File       string       `json:"file,omitempty"`
+	Line       int          `json:"line,omitempty"`
+	Name       string       `json:"name,omitempty"`
+	How        string       `json:"how,omitempty"`
+	Candidates int          `json:"candidates,omitempty"`
+	Constructs string       `json:"constructs,omitempty"`
+	Frontier   string       `json:"frontier,omitempty"`
+	Reason     string       `json:"reason,omitempty"`
+	Answers    List[Answer] `json:"answers,omitempty"`
 }

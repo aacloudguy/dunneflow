@@ -54,6 +54,7 @@ from ..schema import Confidence
 from ..store import Store
 
 if TYPE_CHECKING:
+    from .dispatch import DispatchStats
     from .ipc import IpcStats
 
 
@@ -141,6 +142,9 @@ class ResolveStats:
     # total only. `None` until the linker has run; an `IpcStats` with `recorded = False`
     # means it ran and no language here declares a client.
     ipc: IpcStats | None = None
+    # Dispatched calls linked to the bodies that may answer them (`resolve/dispatch.py`),
+    # filled on the total only, as `ipc` is. `None` until the linker has run.
+    dispatch: DispatchStats | None = None
 
     @property
     def resolved(self) -> int:

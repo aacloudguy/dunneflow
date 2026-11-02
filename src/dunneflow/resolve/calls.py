@@ -41,6 +41,7 @@ from ..schema import Confidence
 from ..store import Store
 from . import supplied
 from .contract import CallRow, Edge, Resolver, ResolveStats
+from .dispatch import resolve_dispatch
 from .ipc import resolve_ipc
 from .python.calls import resolve as _resolve_python
 
@@ -215,4 +216,7 @@ def resolve_calls(store: Store) -> ResolveStats:
     # analysis, and the tests that walk a tree and resolve it -- has to get the links with
     # them or read a map with the crossings missing (rule 51).
     stats.ipc = resolve_ipc(store)
+    # Read off `supplied_edges` and the routines alone, so its place among the passes is
+    # only that it runs where every caller of this function gets it (rule 51).
+    stats.dispatch = resolve_dispatch(store)
     return stats

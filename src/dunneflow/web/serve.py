@@ -2557,6 +2557,8 @@ class _Handler(BaseHTTPRequestHandler):
             frontier = base.store.frontier_of_map()
             # Commands sent by name between two languages (`resolve/ipc.py`).
             by_name = base.store.ipc_of_map()
+            # Calls dispatched to several bodies, crossed by every walk (`resolve/dispatch.py`).
+            by_dispatch = base.store.dispatch_of_map()
             # **What this map was read from, not what this build can read** (rule 24).
             # The dialog's subject is the map on screen, and the same claim the mirror
             # page makes in prose is the one this row states as a count.
@@ -2647,6 +2649,7 @@ class _Handler(BaseHTTPRequestHandler):
             "languages": langs,
             "frontier": frontier,
             "by_name": by_name,
+            "by_dispatch": by_dispatch,
         })
 
     def _version_of(self, graph: Path) -> dict[str, Any]:

@@ -1100,7 +1100,7 @@ SELECT DISTINCT a.owner_id AS node
 FROM annotations a
 JOIN routines r ON r.id = a.owner_id
 WHERE a.value = :value AND a.owner_kind = 'routine'
-ORDER BY r.qualname
+ORDER BY r.qualname, r.file, r.line_start, r.id
 """
 
 # Every routine a measured naming convention is about. `GLOB` rather than `LIKE`
@@ -1119,7 +1119,7 @@ WHERE r.is_nested = 0
   AND r.name NOT GLOB '__*__'
   AND r.name NOT GLOB '<*>'
   AND r.name GLOB :glob
-ORDER BY r.qualname
+ORDER BY r.qualname, r.file, r.line_start, r.id
 """
 
 # Every routine whose name uses one of the program's own words.
@@ -1147,7 +1147,7 @@ WHERE r.is_nested = 0
        OR lower(r.module) GLOB :m_pre
        OR lower(r.module) GLOB :m_suf
        OR lower(r.module) GLOB :m_mid )
-ORDER BY r.qualname
+ORDER BY r.qualname, r.file, r.line_start, r.id
 """
 
 NET_ROUTINES = """
@@ -1155,7 +1155,7 @@ SELECT DISTINCT n.routine_id AS node
 FROM net_calls n
 JOIN routines r ON r.id = n.routine_id
 WHERE n.destination = :target
-ORDER BY r.qualname
+ORDER BY r.qualname, r.file, r.line_start, r.id
 """
 
 

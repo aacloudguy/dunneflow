@@ -1045,6 +1045,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         # something sends or answers a command: a Python-only run reads as it always did.
         if rstats.ipc is not None and (said := rstats.ipc.sentence()):
             _emit("  " + said)
+        if rstats.dispatch is not None and (said := rstats.dispatch.sentence()):
+            _emit("  " + said)
         _emit(
             f"cli: {clistats.apps} apps, {clistats.commands_found} commands "
             f"({clistats.commands_attached} in a tree), "
@@ -1295,10 +1297,26 @@ def cmd_touches(args: argparse.Namespace) -> int:
             print(f"  {kind:10s} {', '.join(targets) if targets else '(dynamic)'}")
         for line in frontier_lines(store.frontier_reached(m["id"])):
             print(f"  {line}")
-        for line in ipc_sent_lines(store.ipc_sent(store.reachable_from(m["id"]))):
+        reached = store.reachable_from(m["id"])
+        for line in ipc_sent_lines(store.ipc_sent(reached)):
+            print(f"  {line}")
+        for line in dispatched_lines(store.dispatched(reached)):
             print(f"  {line}")
     store.close()
     return 0
+
+
+def dispatched_lines(rows: Sequence[Any]) -> list[str]:
+    """Where a reach went *by dispatch*: the calls whose bodies it entered, any of which
+    may run (`resolve/dispatch.py`). Said every time as *may*, because the map follows every
+    body and the program runs one. Nothing is printed where nothing is dispatched."""
+    if not rows:
+        return []
+    bodies = sum(int(x["bodies"]) for x in rows)
+    names = sorted({str(x["callee_expr"]) for x in rows})
+    shown = ", ".join(names[:8]) + (f" · {len(names) - 8} more" if len(names) > 8 else "")
+    return [f"goes on by dispatch at {plural(len(rows), 'call')}, into "
+            f"{plural(bodies, 'body', 'bodies')} any of which may run: {shown}"]
 
 
 _IPC_SAID = {"unknown": "no command answers", "unregistered": "the command is unregistered",
@@ -1389,6 +1407,12 @@ def cmd_impact(args: argparse.Namespace) -> int:
                   f" (matched by name, not by reference): "
                   + ", ".join(senders[:8])
                   + (f" · {len(senders) - 8} more" if len(senders) > 8 else ""))
+        into = store.dispatched_into([m["id"], *callers])
+        if into:
+            calls = sorted({f"{x['caller']} → {x['callee_expr']}" for x in into})
+            print(f"  reached by dispatch from {plural(len(calls), 'call')} (one of the "
+                  f"bodies that may run): " + ", ".join(calls[:8])
+                  + (f" · {len(calls) - 8} more" if len(calls) > 8 else ""))
         eps = ways_in_affected(store, callers)
         if eps:
             print(f"  ways in affected ({len(eps)}):")

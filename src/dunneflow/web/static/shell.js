@@ -17952,6 +17952,18 @@ function aboutDialog() {
       + (left ? `<ul class="about-residue">${left}</ul>` : ""));
   }
 
+  /* Calls dispatched to several bodies (`resolve/dispatch.py`): a template method's
+     abstract step, an interface's implementations. The checker named every body, so it
+     is not inference; it is a *may*, and the map follows all of them without drawing any
+     as an edge. No row where there are none (rule 32). */
+  const bd = d.by_dispatch;
+  if (bd) {
+    row("Dispatch",
+      `${bd.calls.toLocaleString()} calls are dispatched to one of several bodies; reach
+       follows them ${esc(bd.how)} into ${bd.bodies.toLocaleString()} bodies, any of which
+       may run, and none is drawn as an edge`);
+  }
+
   return `
   <div class="about-scrim" data-closeabout></div>
   <div class="about" role="dialog" aria-modal="true" aria-label="About this map">

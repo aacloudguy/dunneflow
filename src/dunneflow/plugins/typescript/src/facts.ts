@@ -319,6 +319,12 @@ export interface FileFacts {
   errors?: string[];
 }
 
+export interface Answer {
+  file: string;
+  line: number;
+  name: string;
+}
+
 export interface SuppliedEdge {
   site_id: string;
   caller_id: string;
@@ -330,4 +336,5 @@ export interface SuppliedEdge {
   constructs?: string;
   frontier?: string;
   reason?: "" | "outside" | "untyped" | "dynamic" | "bound" | "unfollowed";
+  answers?: Answer[];
 }

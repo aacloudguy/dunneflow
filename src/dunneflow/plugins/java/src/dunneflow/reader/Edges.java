@@ -269,6 +269,7 @@ public final class Edges {
                     e.reason = "dynamic";
                     e.candidates = over.size();
                     e.frontier = qualified(target);
+                    answers(over, e);
                     return;
                 }
                 e.reason = "outside";
@@ -305,6 +306,34 @@ public final class Edges {
             e.reason = "dynamic";
             e.candidates = answering;
             e.frontier = qualified(target);
+            List<ExecutableElement> all = new ArrayList<>();
+            if (hasBody) {
+                all.add(target);
+            }
+            all.addAll(over);
+            answers(all, e);
+        }
+
+        /** Where each body that may answer a dispatched call is, by the same line rule an
+         *  edge's target is named by (`schema.Answer`). Only bodies: a declaration with none
+         *  is not a routine, and could not be linked to one. */
+        void answers(List<ExecutableElement> bodiesThatMay, Facts.SuppliedEdge e) {
+            for (ExecutableElement m : bodiesThatMay) {
+                if (!bodies.contains(m)) {
+                    continue;
+                }
+                TreePath decl = trees.getPath(m);
+                if (decl == null || ours(decl.getCompilationUnit()) == null) {
+                    continue;
+                }
+                Facts.SuppliedEdge at = new Facts.SuppliedEdge();
+                pointAt(decl, m, at);
+                Facts.Answer a = new Facts.Answer();
+                a.file = at.file;
+                a.line = at.line;
+                a.name = at.name;
+                e.answers.add(a);
+            }
         }
 
         /** Did javac resolve this call with an argument it could not type, among several

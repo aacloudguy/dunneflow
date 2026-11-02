@@ -1260,6 +1260,25 @@ impl ToJson for FileFacts {
     }
 }
 
+/// `schema.Answer`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Answer {
+    pub file: String,
+    pub line: i64,
+    pub name: String,
+}
+
+impl ToJson for Answer {
+    fn write_json(&self, out: &mut String) {
+        out.push('{');
+        let mut first = true;
+        crate::json::field(out, &mut first, "file", &self.file);
+        crate::json::field(out, &mut first, "line", &self.line);
+        crate::json::field(out, &mut first, "name", &self.name);
+        out.push('}');
+    }
+}
+
 /// `schema.SuppliedEdge`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SuppliedEdge {
@@ -1273,6 +1292,7 @@ pub struct SuppliedEdge {
     pub constructs: String,
     pub frontier: String,
     pub reason: String,
+    pub answers: Vec<Answer>,
 }
 
 impl ToJson for SuppliedEdge {
@@ -1305,6 +1325,9 @@ impl ToJson for SuppliedEdge {
         }
         if self.reason != zero.reason {
             crate::json::field(out, &mut first, "reason", &self.reason);
+        }
+        if self.answers != zero.answers {
+            crate::json::field(out, &mut first, "answers", &self.answers);
         }
         out.push('}');
     }

@@ -186,7 +186,10 @@ CREATE TABLE IF NOT EXISTS supplied_edges (
     candidates INTEGER NOT NULL DEFAULT 0,
     constructs TEXT NOT NULL DEFAULT '',
     frontier   TEXT NOT NULL DEFAULT '',
-    reason     TEXT NOT NULL DEFAULT ''
+    reason     TEXT NOT NULL DEFAULT '',
+    -- `SuppliedEdge.answers`, as JSON `[[file, line, name], …]`: the bodies a `dynamic`
+    -- call may reach. Read by `resolve/dispatch.py` and by nothing else.
+    answers    TEXT NOT NULL DEFAULT '[]'
 );
 
 -- Names a file hands to an IPC dispatch (`schema.IpcRegistration`). Per file, like
@@ -220,6 +223,19 @@ CREATE TABLE IF NOT EXISTS ipc_links (
     status        TEXT NOT NULL,
     how           TEXT NOT NULL DEFAULT '',
     confidence    TEXT NOT NULL DEFAULT 'INFERRED'
+);
+
+-- A dispatched call and one body that may answer it (`schema.Answer`), one row per body.
+-- **Never `calls.callee_id`** (rule 2): the checker resolved the call to a slot that
+-- several bodies fill, and which one runs is the object's at run time. So this is a fact
+-- beside the call graph that every walk crosses as an arm of its own, and `how` says *by
+-- dispatch* wherever a surface shows it: any of these may run, and none is said to. Derived
+-- by `resolve/dispatch.py` after edges and replaced whole, for `ipc_links`' reason.
+CREATE TABLE IF NOT EXISTS dispatch_links (
+    site_id    TEXT NOT NULL,
+    caller_id  TEXT NOT NULL,
+    routine_id TEXT NOT NULL,
+    how        TEXT NOT NULL DEFAULT 'by dispatch'
 );
 
 CREATE TABLE IF NOT EXISTS boundaries (
@@ -474,6 +490,8 @@ CREATE INDEX IF NOT EXISTS ix_supplied_lang    ON supplied_edges(lang);
 CREATE INDEX IF NOT EXISTS ix_ipcreg_name      ON ipc_registrations(name);
 CREATE INDEX IF NOT EXISTS ix_ipclink_caller   ON ipc_links(caller_id);
 CREATE INDEX IF NOT EXISTS ix_ipclink_routine  ON ipc_links(routine_id);
+CREATE INDEX IF NOT EXISTS ix_disp_caller      ON dispatch_links(caller_id);
+CREATE INDEX IF NOT EXISTS ix_disp_routine     ON dispatch_links(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_routine    ON boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
@@ -1178,11 +1196,12 @@ class Store:
         c = self.conn
         c.execute("DELETE FROM supplied_edges WHERE lang = ?", (lang,))
         rows = [(lang, e.site_id, e.caller_id, e.file, e.line, e.name, e.how, e.candidates,
-                 e.constructs, e.frontier, e.reason)
+                 e.constructs, e.frontier, e.reason,
+                 json.dumps([[a.file, a.line, a.name] for a in e.answers]))
                 for e in edges]
         c.executemany(
             "INSERT INTO supplied_edges(lang,site_id,caller_id,file,line,name,how,candidates,"
-            "constructs,frontier,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "constructs,frontier,reason,answers) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         return len(rows)
@@ -1514,6 +1533,13 @@ class Store:
     # A second recursive arm rather than a `UNION` subquery over both tables, because a
     # subquery in the join takes `calls`' indexes away on exactly the large maps this
     # comment is about. Never an edge in `calls` (rule 2): only the walk crosses it.
+    #
+    # **And a third, the dispatch arm** (Tom, 2026-11-02). A call the reader marked
+    # `dynamic` reaches every body that may answer it (`dispatch_links`), so a template
+    # method's abstract step and an interface's implementations are inside the reach of
+    # whatever calls them. Crossed by every walk, `cross=False` included: dispatch never
+    # leaves the process. Never an edge either, and every surface that names one says *by
+    # dispatch*: any of the bodies may run.
 
     def _reach_graph(self, cross: bool = True) -> dict[str, list[str]] | None:
         """Every call edge, caller to callees, read once -- on a store that cannot change.
@@ -1525,12 +1551,24 @@ class Store:
         be reached at -- on 947,786 calls, once per way in. Read in table order and walked in
         memory the same set costs one scan.
 
-        Only where nothing can write: a writable store is the one `resolve_calls` is still
-        filling, and a cache taken before it finished would answer the previous graph. So a
-        writable store keeps the query, and this returns `None` for it.
+        **On a writable store too, keyed by what this connection has written.** A writable
+        store is the one `resolve_calls` is still filling, and a cache taken before it
+        finished would answer the previous graph, so until 2026-11-02 a writable store kept
+        the recursive query. The dispatch arm made that a sixteenfold cost: the query
+        deduplicates on `(id, depth)`, so a routine reachable at many depths is visited at
+        each, and dispatch multiplies the paths -- traccar's `ways_in` went from 0.3 s to
+        4.8 s inside every analysis. `total_changes` counts every row this connection has
+        inserted, updated or deleted, and only this connection writes a writable store, so
+        a cache stamped with it is the current graph exactly when the stamp still matches
+        (rule 81: the key carries everything the work depends on).
         """
-        if self.writable:
-            return None
+        stamp = self.conn.total_changes if self.writable else -1
+        if getattr(self, "_reach_stamp", None) != stamp:
+            for cached in ("_reach_cache", "_reach_cache_own", "_routine_id_cache",
+                           "_boundary_cache"):
+                if hasattr(self, cached):
+                    delattr(self, cached)
+            self._reach_stamp = stamp
         if not cross:
             # The walk that stops at a process boundary: the call edges alone.
             own = getattr(self, "_reach_cache_own", None)
@@ -1541,6 +1579,7 @@ class Store:
                     " WHERE callee_id IS NOT NULL"
                 ):
                     own.setdefault(caller, []).append(callee)
+                self._dispatch_into(own)
                 self._reach_cache_own = own
             return own
         graph = getattr(self, "_reach_cache", None)
@@ -1558,13 +1597,24 @@ class Store:
                 " WHERE status = 'linked' ORDER BY rowid"
             ):
                 graph.setdefault(caller, []).append(callee)
+            self._dispatch_into(graph)
             self._reach_cache = graph
         return graph
+
+    def _dispatch_into(self, graph: dict[str, list[str]]) -> None:
+        """The dispatch arm, in memory: a call reaches every body that may answer it
+        (`resolve/dispatch.py`). In both graphs, because dispatch never leaves the process
+        the call is made in, and `cross=False` is about a process boundary only."""
+        for caller, callee in self.conn.execute(
+            "SELECT caller_id, routine_id FROM dispatch_links ORDER BY rowid"
+        ):
+            graph.setdefault(caller, []).append(callee)
 
     def _routine_ids(self) -> set[str]:
         """Every routine id, read once on a store that cannot change -- the reach walk's
         seed check, which was an index search per call and 29 s of the cover on a large
-        map. Only ever asked after `_reach_graph` has said the store is read-only."""
+        map. Only ever asked after `_reach_graph`, which drops it when the store has
+        written anything since it was taken."""
         ids = getattr(self, "_routine_id_cache", None)
         if ids is None:
             ids = {r[0] for r in self.conn.execute("SELECT id FROM routines NOT INDEXED")}
@@ -1606,10 +1656,14 @@ class Store:
                 SELECT l.routine_id, r.depth + 1
                   FROM ipc_links l JOIN reach r ON l.caller_id = r.id
                  WHERE l.status = 'linked' AND r.depth < ?
+                UNION
+                SELECT d.routine_id, r.depth + 1
+                  FROM dispatch_links d JOIN reach r ON d.caller_id = r.id
+                 WHERE r.depth < ?
             )
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
             """,
-            (routine_id, max_depth, max_depth),
+            (routine_id, max_depth, max_depth, max_depth),
         )
         return [r["id"] for r in rows]
 
@@ -1627,10 +1681,14 @@ class Store:
                 SELECT l.caller_id, b.depth + 1
                   FROM ipc_links l JOIN back b ON l.routine_id = b.id
                  WHERE l.status = 'linked' AND b.depth < ?
+                UNION
+                SELECT d.caller_id, b.depth + 1
+                  FROM dispatch_links d JOIN back b ON d.routine_id = b.id
+                 WHERE b.depth < ?
             )
             SELECT DISTINCT id FROM back WHERE id IS NOT NULL AND id != ?
             """,
-            (routine_id, max_depth, max_depth, routine_id),
+            (routine_id, max_depth, max_depth, max_depth, routine_id),
         )
         return [r["id"] for r in rows]
 
@@ -1648,11 +1706,15 @@ class Store:
                 SELECT l.routine_id, r.depth + 1
                   FROM ipc_links l JOIN reach r ON l.caller_id = r.id
                  WHERE l.status = 'linked' AND r.depth < ?
+                UNION
+                SELECT d.routine_id, r.depth + 1
+                  FROM dispatch_links d JOIN reach r ON d.caller_id = r.id
+                 WHERE r.depth < ?
             )
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
             ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
-            (routine_id, max_depth, max_depth),
+            (routine_id, max_depth, max_depth, max_depth),
         )
         return [
             BoundaryHit(
@@ -1685,13 +1747,17 @@ class Store:
                 SELECT l.routine_id, r.depth + 1
                   FROM ipc_links l JOIN reach r ON l.caller_id = r.id
                  WHERE l.status = 'linked' AND r.depth < ?
+                UNION
+                SELECT d.routine_id, r.depth + 1
+                  FROM dispatch_links d JOIN reach r ON d.caller_id = r.id
+                 WHERE r.depth < ?
             )
             SELECT c.reason, c.frontier, COUNT(*) AS n
               FROM calls c JOIN (SELECT DISTINCT id FROM reach) r ON c.caller_id = r.id
              WHERE c.callee_id IS NULL AND c.at_boundary = 0 AND c.constructs = ''
              GROUP BY c.reason, c.frontier
             """,
-            (routine_id, max_depth, max_depth),
+            (routine_id, max_depth, max_depth, max_depth),
         ).fetchall()
         return _frontier(rows)
 
@@ -1733,6 +1799,57 @@ class Store:
             " WHERE l.status = 'linked'"
             " ORDER BY l.command, l.file, l.line, l.site_id"
         ))
+
+    def _ids_table(self, routine_ids: Iterable[str]) -> bool:
+        ids = sorted(set(routine_ids))
+        if not ids:
+            return False
+        self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _disp_ids(id TEXT PRIMARY KEY)")
+        self.conn.execute("DELETE FROM _disp_ids")
+        self.conn.executemany("INSERT OR IGNORE INTO _disp_ids VALUES(?)", [(i,) for i in ids])
+        return True
+
+    def dispatched(self, routine_ids: Iterable[str]) -> list[sqlite3.Row]:
+        """Every dispatched call made from these routines, one row per call, with how many
+        bodies it may reach: `touches`' account of where its reach went *by dispatch*.
+        Ordered by where the call is written, never by the order of the reach."""
+        if not self._ids_table(routine_ids):
+            return []
+        return list(self.conn.execute(
+            "SELECT c.callee_expr, c.file, c.line, s.qualname AS caller,"
+            "       COUNT(*) AS bodies, d.how"
+            "  FROM dispatch_links d JOIN _disp_ids i ON i.id = d.caller_id"
+            "  JOIN calls c ON c.site_id = d.site_id AND c.caller_id = d.caller_id"
+            "  LEFT JOIN routines s ON s.id = d.caller_id"
+            " GROUP BY d.site_id"
+            " ORDER BY c.file, c.line, c.callee_expr, d.site_id"
+        ))
+
+    def dispatched_into(self, routine_ids: Iterable[str]) -> list[sqlite3.Row]:
+        """Every dispatched call that may run one of these routines: `impact`'s account.
+        One row per call and body, ordered by where the call is written."""
+        if not self._ids_table(routine_ids):
+            return []
+        return list(self.conn.execute(
+            "SELECT c.callee_expr, c.file, c.line, s.qualname AS caller,"
+            "       r.qualname AS body, d.how"
+            "  FROM dispatch_links d JOIN _disp_ids i ON i.id = d.routine_id"
+            "  JOIN calls c ON c.site_id = d.site_id AND c.caller_id = d.caller_id"
+            "  LEFT JOIN routines s ON s.id = d.caller_id"
+            "  LEFT JOIN routines r ON r.id = d.routine_id"
+            " ORDER BY c.file, c.line, c.callee_expr, r.qualname, d.site_id"
+        ))
+
+    def dispatch_of_map(self) -> dict[str, Any] | None:
+        """Dispatched calls across the map (`resolve/dispatch.py`), for *About this map*.
+        `None` where there are none, so a map without them gets no row (rule 32)."""
+        row = self.conn.execute(
+            "SELECT COUNT(DISTINCT site_id), COUNT(DISTINCT routine_id), COUNT(*)"
+            "  FROM dispatch_links").fetchone()
+        if not row or not row[2]:
+            return None
+        return {"calls": int(row[0]), "bodies": int(row[1]), "links": int(row[2]),
+                "how": "by dispatch"}
 
     def frontier_of_map(self) -> dict[str, Any]:
         """`frontier_reached` over every call in the map, for *About this map*."""
@@ -1789,7 +1906,8 @@ class Store:
 
         `cross=False` stops at a command sent by name. *Which process is this routine in?*
         is a question a crossing must not answer: the Rust command a TypeScript store
-        names runs in the other process, and following the link would put it in both.
+        names runs in the other process, and following the link would put it in both. It
+        still crosses dispatch, which never leaves the process.
         """
         if not routine_ids:
             return set()
@@ -1812,10 +1930,14 @@ class Store:
                 SELECT l.routine_id, r.depth + 1
                   FROM ipc_links l JOIN reach r ON l.caller_id = r.id
                  WHERE l.status = 'linked' AND r.depth < ?
+                UNION
+                SELECT d.routine_id, r.depth + 1
+                  FROM dispatch_links d JOIN reach r ON d.caller_id = r.id
+                 WHERE r.depth < ?
             )
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
             """,
-            (routine_ids[0], *routine_ids, max_depth, max_depth if cross else -1),
+            (routine_ids[0], *routine_ids, max_depth, max_depth if cross else -1, max_depth),
         )
         return {r["id"] for r in rows}
 
@@ -1865,11 +1987,15 @@ class Store:
                 SELECT l.routine_id, r.depth + 1
                   FROM ipc_links l JOIN reach r ON l.caller_id = r.id
                  WHERE l.status = 'linked' AND r.depth < ?
+                UNION
+                SELECT d.routine_id, r.depth + 1
+                  FROM dispatch_links d JOIN reach r ON d.caller_id = r.id
+                 WHERE r.depth < ?
             )
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
             ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
-            (*routine_ids, max_depth, max_depth),
+            (*routine_ids, max_depth, max_depth, max_depth),
         )
         yield from rows
 

@@ -1327,6 +1327,29 @@ public final class Facts {
         }
     }
 
+    /** `schema.Answer`. */
+    public static final class Answer implements Json.Writable {
+        public String file = null;
+        public long line;
+        public String name = null;
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            out.append('{');
+            boolean[] first = {true};
+            if (file == null) {
+                throw new IllegalStateException("Answer.file is required and was never set");
+            }
+            Json.field(out, first, "file", file);
+            Json.field(out, first, "line", line);
+            if (name == null) {
+                throw new IllegalStateException("Answer.name is required and was never set");
+            }
+            Json.field(out, first, "name", name);
+            out.append('}');
+        }
+    }
+
     /** `schema.SuppliedEdge`. */
     public static final class SuppliedEdge implements Json.Writable {
         public String site_id = null;
@@ -1339,6 +1362,7 @@ public final class Facts {
         public String constructs = "";
         public String frontier = "";
         public String reason = "";
+        public List<Answer> answers = new ArrayList<>();
 
         @Override
         public void writeJson(StringBuilder out) {
@@ -1375,6 +1399,9 @@ public final class Facts {
             }
             if (!Objects.equals(reason, "")) {
                 Json.field(out, first, "reason", reason);
+            }
+            if (!answers.isEmpty()) {
+                Json.field(out, first, "answers", answers);
             }
             out.append('}');
         }

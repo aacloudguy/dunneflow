@@ -623,3 +623,57 @@ def test_gradle_variables_and_the_version_catalog_name_the_same_jars(deps_tree):
     assert edges["g.hello"].reason == "outside"
     assert edges["l.hello"].reason == "outside" and edges["e.hello"].reason == "outside"
     assert absent == []
+
+
+# ---------------------------------------------- what the judgements say of it ---- #
+
+_DISPATCH = {
+    "Base.java": "package p;\n\npublic abstract class Base {\n    abstract void step();\n\n"
+                 "    void tick() {\n        step();\n    }\n}\n",
+    "A.java": "package p;\n\nclass A extends Base {\n    void step() {}\n}\n",
+    "B.java": "package p;\n\nclass B extends Base {\n    void step() {}\n}\n",
+    "Util.java": "package p;\n\nimport org.nowhere.Missing;\n\nclass Util {\n"
+                 "    static int width(int n) {\n        return 1;\n    }\n\n"
+                 "    static int width(String s) {\n        return 2;\n    }\n\n"
+                 "    static void use(Missing m) {\n        width(m.part());\n    }\n\n"
+                 "    static void never() {}\n}\n",
+}
+
+
+@pytest.fixture(scope="module")
+def judged(tmp_path_factory):
+    if _WHY:
+        pytest.skip(_WHY)
+    from dunneflow.anomalies import detect
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path_factory.mktemp("judged")
+    (root / "p").mkdir()
+    for name, text in _DISPATCH.items():
+        (root / "p" / name).write_text(text, encoding="utf-8")
+    store = Store(root.parent / f"{root.name}.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    found = {a.kind: a for a in detect(store, include_tests=False).items}
+    store.close()
+    return found
+
+
+def test_dispatch_is_said_as_dispatch_and_not_as_a_shared_name(judged):
+    """Tom, 2026-11-02: the finding stands (the edge is not drawn) and says which cause it
+    is, off `calls.reason`. A template method calling its abstract step is the design."""
+    lost = judged["LOST_EDGE"]
+    assert "dispatched to one of 2 implementations" in lost.title
+    assert "share the name" not in lost.title
+    assert "design working" in lost.blind_spot
+
+
+def test_a_routine_an_untyped_call_may_reach_is_not_called_dead(judged):
+    """`width(m.part())` cannot be typed (`Missing` is nowhere), and with two `width`s javac
+    cannot choose, which is traccar's `BufferUtil.indexOf(…, buf)`. Either may be its target,
+    so both are left out, and the finding says so (design rule 1)."""
+    dead = judged["DEAD_CODE"]
+    assert "p.Util.never" in dead.detail and "p.Util.width" not in dead.detail
+    assert "2 routines are left out because a call the reader could not type" in dead.blind_spot

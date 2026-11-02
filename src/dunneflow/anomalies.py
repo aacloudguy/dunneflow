@@ -427,8 +427,16 @@ def _redefinitions(store: Store, r: Report) -> None:
 
 def _lost_edges(store: Store, r: Report) -> None:
     """Calls that meant something local but could not be pinned to one definition."""
+    # **Two causes, one finding, two sentences** (Tom, 2026-11-02). A name several routines
+    # share is Python's case and the sentence below was written for it. A call the reader
+    # marked `dynamic` is dispatch: the checker resolved it, to a slot that several bodies
+    # fill, which is the language working rather than a collision. The edge is still not
+    # drawn, so the finding stands -- what changes is that it says which of the two it is,
+    # off `calls.reason` and never off a language's name. The Java reader's first real tree
+    # (traccar) gave 22 of these, every one dispatch, under the collision sentence.
     rows = store.query(
-        "SELECT callee_expr, MAX(ambiguous) rivals, COUNT(*) n, MIN(file) f"
+        "SELECT callee_expr, MAX(ambiguous) rivals, COUNT(*) n, MIN(file) f,"
+        "       SUM(reason = 'dynamic') dispatched"
         "  FROM calls"
         " WHERE ambiguous > 1"
         "   AND (callee_expr NOT LIKE '%.%' OR callee_expr LIKE 'self.%'"
@@ -436,17 +444,34 @@ def _lost_edges(store: Store, r: Report) -> None:
         " GROUP BY callee_expr ORDER BY n DESC, callee_expr"
     )
     for row in rows:
+        dispatch = row["dispatched"] == row["n"]
+        if dispatch:
+            title = (f"`{row['callee_expr']}` is dispatched to one of "
+                     f"{row['rivals']} implementations, and none is drawn")
+            detail = (f"`{row['callee_expr']}` is called {plural(row['n'], 'time')}. The "
+                      f"reader resolved it to a method that {row['rivals']} definitions in "
+                      f"this tree can answer, and which one runs is decided by the object "
+                      f"at run time. The call graph has no edge here, so anything "
+                      f"downstream is missing from every flow that passes through it.")
+            blind = ("Dispatch is ordinary: a template method calling its own abstract "
+                     "step, or an interface with several implementations, is the design "
+                     "working, and nothing is wrong with the program. The finding is what "
+                     "the map cannot follow, not what the code does.")
+        else:
+            title = (f"`{row['callee_expr']}` could not be connected: "
+                     f"{row['rivals']} definitions share the name")
+            detail = (f"`{row['callee_expr']}` is called {plural(row['n'], 'time')}, and "
+                      f"{row['rivals']} routines share that name. The call graph has no "
+                      f"edge here, so anything downstream is missing from every flow "
+                      f"that passes through it.")
+            blind = ("If the receiver is a third-party object, or the method is "
+                     "supplied by a mixin or set dynamically, no local definition "
+                     "was ever intended and nothing is wrong.")
         r.add(Anomaly(
             kind="LOST_EDGE", severity=SUSPECT, confidence=PROBABLE,
-            title=f"`{row['callee_expr']}` could not be connected: "
-                  f"{row['rivals']} definitions share the name",
-            detail=f"`{row['callee_expr']}` is called {plural(row['n'], 'time')}, and "
-                   f"{row['rivals']} routines share that name. The call graph has no "
-                   f"edge here, so anything downstream is missing from every flow "
-                   f"that passes through it.",
-            blind_spot="If the receiver is a third-party object, or the method is "
-                       "supplied by a mixin or set dynamically, no local definition "
-                       "was ever intended and nothing is wrong.",
+            title=title,
+            detail=detail,
+            blind_spot=blind,
             # The expression that could not be pinned. **Not** the rivals and not the
             # callers: both are what the finding *reports*, and both move while the
             # finding stays the same one -- 93 of Mensores' 106 findings are this kind,
@@ -483,6 +508,22 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         "                   WHERE routine_id IS NOT NULL)"
         " ORDER BY qualname, file, line_start"
     )
+    # **A call the reader could not type may be a call to this routine**, and the map has
+    # no way to say it is not (Tom, 2026-11-02). A checker that is missing a dependency
+    # cannot choose an overload once one argument's type is unknown, so traccar's
+    # `BufferUtil.indexOf(…, buf)` -- `buf` a Netty `ByteBuf`, Netty not on the machine --
+    # is `untyped`, and `indexOf` read as never called. So a routine whose name is the last
+    # segment of any untyped call is left out: the finding loses a routine it could not
+    # stand behind, and nothing gains an edge it was never given (rule 1, rule 49).
+    untyped = {
+        str(x["callee_expr"]).rsplit(".", 1)[-1]
+        for x in store.query("SELECT DISTINCT callee_expr FROM calls WHERE reason = 'untyped'")
+    }
+    spared = 0
+    if untyped:
+        kept = [x for x in rows if str(x["qualname"]).rsplit(".", 1)[-1] not in untyped]
+        spared = len(rows) - len(kept)
+        rows = kept
     if not rows:
         return
     scope = (
@@ -498,7 +539,10 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         detail="; ".join(x["qualname"] for x in rows),
         blind_spot=f"{scope} Routines reached by name (plugin registries, "
                    f"`getattr`, entry-point groups) also appear here, because no "
-                   f"static analysis can see those calls.",
+                   f"static analysis can see those calls."
+                   + (f" {plural(spared, 'routine')} {are(spared)} left out because a "
+                      f"call the reader could not type uses the name, and may be a call "
+                      f"to it." if spared else ""),
         # One per program: this is a finding *about the program*, not about any of the
         # routines it lists. `file` and `line` point at the first of them so the row is
         # clickable, and neither may enter the key -- which routine sorts first is not

@@ -65,10 +65,29 @@ boundaries:
             java.net.http.HttpClient.newBuilder, OkHttpClient, okhttp3.OkHttpClient]
     target_arg: 0
 
-  # JDBC and JPA, which is how a Java server keeps anything.
+  # JDBC, which is how a Java server keeps anything. **A statement is prepared on a
+  # connection, and that is the act**: `prepareStatement`, `prepareCall` and
+  # `createStatement` are `java.sql.Connection`'s own names. `executeQuery` and
+  # `executeUpdate` are not matched, because a program's own query builder is called that
+  # too: traccar's `builder.executeUpdate()` is its `QueryBuilder`, and a boundary there
+  # would cut every flow into the class that does the touching (rule 2, rule 5).
   - kind: DATABASE
     direction: BOTH
     exact: [DriverManager.getConnection, java.sql.DriverManager.getConnection]
+    method: [prepareStatement, prepareCall, createStatement]
+    target_arg: 0
+
+  # **Netty**, which is how a Java network server is written. A bootstrap is where it
+  # listens or connects, and `writeAndFlush` is the write: Netty's own name, used 207 times
+  # in traccar and by nothing else. `write` and `connect` alone are not matched (rule 5).
+  - kind: NETWORK
+    direction: BOTH
+    exact: [ServerBootstrap, Bootstrap, io.netty.bootstrap.ServerBootstrap,
+            io.netty.bootstrap.Bootstrap]
+    target_arg: 0
+  - kind: NETWORK
+    direction: OUT
+    method: [writeAndFlush]
     target_arg: 0
 
   - kind: STDIO
@@ -144,8 +163,11 @@ entrypoints:
   - kind: QUEUE_CONSUMER
     decorator_method: [KafkaListener, JmsListener, RabbitListener, SqsListener]
     evidence: "called by the framework for each message"
+  # Spring's and Guice's and Dagger's: a method the container calls to build or announce
+  # something. traccar's `MainModule` is 24 `@Provides` methods that nothing in the program
+  # calls, and each read as dead code without this rule.
   - kind: LIBRARY
-    decorator_method: [EventListener, PostConstruct, Bean]
+    decorator_method: [EventListener, PostConstruct, Bean, Provides, Binds]
     evidence: "called by the framework, by annotation"
   # A test is a way in too: nothing in the program calls it, and it is the only caller many
   # routines have. Kept separate so a reader can tell it from a way in a user reaches.

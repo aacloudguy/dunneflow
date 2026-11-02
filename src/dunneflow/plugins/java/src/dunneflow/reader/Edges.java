@@ -176,6 +176,7 @@ public final class Edges {
     private static final class Resolver {
         final Trees trees;
         final Elements elements;
+        final javax.lang.model.util.Types types;
         final SourcePositions pos;
         final Map<String, String> texts;
         final Map<java.net.URI, Extract.Source> byUri;
@@ -191,6 +192,7 @@ public final class Edges {
                  Map<java.net.URI, Extract.Source> byUri, Found found) {
             this.trees = Trees.instance(task);
             this.elements = task.getElements();
+            this.types = task.getTypes();
             this.pos = trees.getSourcePositions();
             this.texts = texts;
             this.byUri = byUri;
@@ -244,6 +246,14 @@ public final class Edges {
                 return;
             }
             TypeElement owner = target.getEnclosingElement() instanceof TypeElement t ? t : null;
+            if (guessed(s, target, owner)) {
+                // javac chose one of several overloads with an argument it could not type,
+                // which is a pick and not an answer: `width(m.part())` went to `width(int)`
+                // with nothing to say it was not `width(String)` (rule 1).
+                e.reason = "untyped";
+                e.frontier = s.dotted();
+                return;
+            }
             if (s.construction() && owner != null && owner.getNestingKind().name().equals("ANONYMOUS")) {
                 // `new Runnable() { … }` builds a class with no name and no structure.
                 e.reason = "unfollowed";
@@ -252,8 +262,9 @@ public final class Edges {
             }
             TreePath decl = trees.getPath(target);
             Extract.Source home = decl == null ? null : ours(decl.getCompilationUnit());
+            TypeElement receiver = receiverType(s, target, owner);
             if (home == null) {
-                List<ExecutableElement> over = overridersOf(target);
+                List<ExecutableElement> over = overridersOf(target, receiver);
                 if (!nonVirtual(s, target, owner) && !over.isEmpty()) {
                     e.reason = "dynamic";
                     e.candidates = over.size();
@@ -270,7 +281,7 @@ public final class Edges {
                 return;
             }
             boolean hasBody = bodies.contains(target);
-            List<ExecutableElement> over = overridersOf(target);
+            List<ExecutableElement> over = overridersOf(target, receiver);
             if (nonVirtual(s, target, owner) && hasBody) {
                 pointAt(decl, target, e);
                 e.how = "non-virtual";
@@ -294,6 +305,44 @@ public final class Edges {
             e.reason = "dynamic";
             e.candidates = answering;
             e.frontier = qualified(target);
+        }
+
+        /** Did javac resolve this call with an argument it could not type, among several
+         *  overloads that could have taken it? Then its answer is a choice it was forced
+         *  to make, and is not one this map may draw. */
+        boolean guessed(Site s, ExecutableElement target, TypeElement owner) {
+            List<? extends com.sun.source.tree.ExpressionTree> args =
+                s.node() instanceof MethodInvocationTree mi ? mi.getArguments()
+                : s.node() instanceof com.sun.source.tree.NewClassTree nc ? nc.getArguments()
+                : List.of();
+            boolean blind = false;
+            for (com.sun.source.tree.ExpressionTree a : args) {
+                javax.lang.model.type.TypeMirror t;
+                try {
+                    t = trees.getTypeMirror(TreePath.getPath(s.unit(), a));
+                } catch (RuntimeException ex) {
+                    t = null;
+                }
+                if (t == null || t.getKind() == javax.lang.model.type.TypeKind.ERROR) {
+                    blind = true;
+                    break;
+                }
+            }
+            if (!blind || owner == null) {
+                return false;
+            }
+            int rivals = 0;
+            try {
+                for (Element m : elements.getAllMembers(owner)) {
+                    if (m.getKind() == target.getKind()
+                        && m.getSimpleName().contentEquals(target.getSimpleName())) {
+                        rivals++;
+                    }
+                }
+            } catch (RuntimeException ex) {
+                return true; // its members cannot be listed, so nothing rules a rival out
+            }
+            return rivals > 1;
         }
 
         /** A member javac declared and the source did not: a default constructor, a
@@ -383,8 +432,60 @@ public final class Edges {
                 && id.getName().contentEquals("super");
         }
 
+        /** The methods in the tree that can answer this call instead of {@code target}: the
+         *  ones that override it <b>in a subtype of the receiver's static type</b>. A sibling
+         *  class's override can never answer a call on this receiver: {@code Event}'s
+         *  {@code setDeviceId()} is {@code Message}'s, whatever {@code Command}, another
+         *  subclass of {@code Message}, does with its own (traccar, 2026-11-01). */
+        List<ExecutableElement> overridersOf(ExecutableElement target, TypeElement receiver) {
+            List<ExecutableElement> all = allOverriders(target);
+            if (receiver == null || all.isEmpty()) {
+                return all;
+            }
+            javax.lang.model.type.TypeMirror r = types.erasure(receiver.asType());
+            List<ExecutableElement> out = new ArrayList<>();
+            for (ExecutableElement m : all) {
+                if (types.isSubtype(types.erasure(m.getEnclosingElement().asType()), r)) {
+                    out.add(m);
+                }
+            }
+            return out;
+        }
+
+        /** The class whose instance the call is made on, as the source types it: the
+         *  receiver expression's type, or for a bare {@code m()} the innermost enclosing
+         *  class that has {@code m} as a member. Null where it cannot be said, which counts
+         *  every override rather than guessing which (rule 1). */
+        TypeElement receiverType(Site s, ExecutableElement target, TypeElement owner) {
+            if (!(s.node() instanceof MethodInvocationTree mi) || owner == null) {
+                return null;
+            }
+            try {
+                if (mi.getMethodSelect() instanceof MemberSelectTree ms) {
+                    javax.lang.model.type.TypeMirror t = trees.getTypeMirror(
+                        TreePath.getPath(s.unit(), ms.getExpression()));
+                    if (t instanceof javax.lang.model.type.TypeVariable tv) {
+                        t = tv.getUpperBound();
+                    }
+                    return t != null && types.asElement(t) instanceof TypeElement te ? te : null;
+                }
+                javax.lang.model.type.TypeMirror want = types.erasure(owner.asType());
+                for (TreePath p = TreePath.getPath(s.unit(), s.node()); p != null;
+                     p = p.getParentPath()) {
+                    if (p.getLeaf() instanceof ClassTree
+                        && trees.getElement(p) instanceof TypeElement te
+                        && types.isSubtype(types.erasure(te.asType()), want)) {
+                        return te;
+                    }
+                }
+            } catch (RuntimeException ex) {
+                return null;
+            }
+            return null;
+        }
+
         /** Every method in the tree that overrides this one, asked once per method. */
-        List<ExecutableElement> overridersOf(ExecutableElement target) {
+        List<ExecutableElement> allOverriders(ExecutableElement target) {
             return overriders.computeIfAbsent(target, t -> {
                 List<ExecutableElement> out = new ArrayList<>();
                 for (ExecutableElement m : byName.getOrDefault(

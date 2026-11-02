@@ -1,0 +1,139 @@
+# What a Java program touches outside itself, and the judgements only Java can make.
+#
+# Matched against the dotted form of a call (`ingest/dotted.py`), which for Java is the
+# expression as written: `java.nio.file.Files.readString(p)` is
+# `java.nio.file.Files.readString`, and after `import java.nio.file.Files;` it is
+# `Files.readString`. **Both spellings are declared where both are written.** The reader
+# never expands an import (clause 4, and rule 5), so a rule naming only the long one would
+# miss most of every corpus with no symptom. `new Socket(h, p)` is the construction
+# `Socket` (clause 7), and a type argument is not part of a name: `List.<T>of()` is
+# `List.of` (clause 6).
+#
+# `kotlin.yaml` holds the JVM's own classes too, and was the starting point here. Nothing
+# was copied without being read, because a Kotlin rule is matched against Kotlin's
+# spellings (`readText` is an extension Java does not have).
+
+version: 1
+
+boundaries:
+  - kind: ENV
+    direction: IN
+    exact: [System.getenv, System.getProperty, java.lang.System.getenv,
+            java.lang.System.getProperty]
+    target_arg: 0
+
+  - kind: FILE
+    direction: IN
+    exact: [FileInputStream, FileReader, RandomAccessFile, java.io.FileInputStream,
+            java.io.FileReader, Files.readString, Files.readAllBytes, Files.readAllLines,
+            Files.lines, Files.newBufferedReader, Files.newInputStream, Files.list,
+            Files.walk, Files.exists, Files.isDirectory, Files.isRegularFile, Files.size,
+            java.nio.file.Files.readString, java.nio.file.Files.readAllBytes,
+            java.nio.file.Files.readAllLines, java.nio.file.Files.lines,
+            java.nio.file.Files.newBufferedReader, java.nio.file.Files.newInputStream]
+    target_arg: 0
+  - kind: FILE
+    direction: OUT
+    exact: [FileOutputStream, FileWriter, PrintWriter, java.io.FileOutputStream,
+            java.io.FileWriter, Files.writeString, Files.write, Files.newBufferedWriter,
+            Files.newOutputStream, Files.createDirectories, Files.createDirectory,
+            Files.createFile, Files.createTempFile, Files.createTempDirectory, Files.delete,
+            Files.deleteIfExists, Files.copy, Files.move,
+            java.nio.file.Files.writeString, java.nio.file.Files.write,
+            java.nio.file.Files.newBufferedWriter, java.nio.file.Files.newOutputStream,
+            java.nio.file.Files.createDirectories, java.nio.file.Files.delete,
+            java.nio.file.Files.copy, java.nio.file.Files.move]
+    target_arg: 0
+
+  - kind: PROCESS
+    direction: BOTH
+    exact: [ProcessBuilder, java.lang.ProcessBuilder, Runtime.getRuntime.exec]
+    target_arg: 0
+  # **Leaving the process is a touch, and a quiet one.** `os.Exit` was 714 of beads' 5,891
+  # touches until it was given low salience; `System.exit` is the same act.
+  - kind: PROCESS
+    direction: OUT
+    salience: low
+    exact: [System.exit, Runtime.getRuntime.halt]
+    target_arg: 0
+
+  - kind: NETWORK
+    direction: BOTH
+    exact: [Socket, ServerSocket, DatagramSocket, java.net.Socket, java.net.ServerSocket,
+            URL.openConnection, URL.openStream, HttpClient.newHttpClient,
+            HttpClient.newBuilder, java.net.http.HttpClient.newHttpClient,
+            java.net.http.HttpClient.newBuilder, OkHttpClient, okhttp3.OkHttpClient]
+    target_arg: 0
+
+  # JDBC and JPA, which is how a Java server keeps anything.
+  - kind: DATABASE
+    direction: BOTH
+    exact: [DriverManager.getConnection, java.sql.DriverManager.getConnection]
+    target_arg: 0
+
+  - kind: STDIO
+    direction: OUT
+    exact: [System.out.println, System.out.print, System.out.printf, System.out.format,
+            System.out.write, System.err.println, System.err.print, System.err.printf,
+            System.err.format, System.err.write]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: high
+    exact: [System.in.read, System.console]
+    target_arg: 0
+
+  - kind: CRYPTO
+    direction: BOTH
+    exact: [MessageDigest.getInstance, Cipher.getInstance, Mac.getInstance,
+            KeyGenerator.getInstance, KeyPairGenerator.getInstance, Signature.getInstance,
+            SecretKeyFactory.getInstance, SecureRandom, SecureRandom.getInstanceStrong,
+            java.security.MessageDigest.getInstance, javax.crypto.Cipher.getInstance,
+            javax.crypto.Mac.getInstance]
+    target_arg: 0
+
+network:
+  libraries:
+    "HttpClient.newHttpClient":                 {protocol: HTTP, async: false}
+    "HttpClient.newBuilder":                    {protocol: HTTP, async: false}
+    "java.net.http.HttpClient.newHttpClient":   {protocol: HTTP, async: false}
+    "java.net.http.HttpClient.newBuilder":      {protocol: HTTP, async: false}
+    "URL.openConnection":                       {protocol: HTTP, async: false}
+    "URL.openStream":                           {protocol: HTTP, async: false}
+    "OkHttpClient":                             {protocol: HTTP, async: false}
+    "okhttp3.OkHttpClient":                     {protocol: HTTP, async: false}
+    "Socket":                                   {protocol: TCP,  async: false}
+    "java.net.Socket":                          {protocol: TCP,  async: false}
+    "ServerSocket":                             {protocol: TCP,  async: false}
+    "java.net.ServerSocket":                    {protocol: TCP,  async: false}
+    "DatagramSocket":                           {protocol: UDP,  async: false}
+  verbs: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
+  kwargs: []
+
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3, h2, mv.db]
+    CONFIG: [json, xml, yaml, yml, properties, toml, conf]
+    ARCHIVE: [zip, jar, war, ear]
+
+# **A dropped future runs.** That is Kotlin's answer and JavaScript's, not Python's.
+# `CompletableFuture.supplyAsync(…)` and `executor.submit(…)` start the work when they are
+# called; never joining the result loses the ordering and, unhandled, the failure, but the
+# work still happens. So the cost is SUSPECT rather than BROKEN. Java has no `async`
+# keyword, so only a call a rule marks `async: true` can be read as dropped, and
+# `dunneflow check` on a real tree is what says whether that is right (rule 98).
+unawaited_async: runs
+
+# **Java overloads**, like C++ and Kotlin and unlike Python. A second method with a
+# different parameter list is a different method, so a name collision finding would report
+# the language working as a defect (rule 98).
+redefinition: overloads
+
+# `public static void main(String[] args)`, and only that shape: the reader checks that it
+# is static and takes one `String[]` or `String...`. Java 21's instance `main` is a preview
+# feature and is not read as a way in.
+entry_names: [main]
+
+# **None.** Java has no free functions, so no bare call can be a library's rather than
+# yours (rule 3). An empty list is the declared answer, not a default.
+builtins: []

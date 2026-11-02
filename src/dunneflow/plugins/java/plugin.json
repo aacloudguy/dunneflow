@@ -1,0 +1,80 @@
+{
+  "lang": "java",
+  "display": "Java",
+  "version": "0.1.0",
+  "protocol": 1,
+  "schema_version": 17,
+  "rules": "java.yaml",
+  "in_process": false,
+  "workers": 1,
+  "toolchain": {
+    "command": "java",
+    "probe": [
+      "-version"
+    ],
+    "min_version": "17.0.0",
+    "install": "a JDK 17 or newer: Temurin from adoptium.net, or brew install openjdk"
+  },
+  "build": [
+    "java",
+    "Build.java",
+    "{output}"
+  ],
+  "run": [
+    "-Xss16m",
+    "-XX:+UseSerialGC",
+    "-jar",
+    "{reader}"
+  ],
+  "receiver_words": [
+    "this"
+  ],
+  "supplies_edges": true,
+  "reports_literals": true,
+  "discovery": {
+    "suffixes": [
+      ".java"
+    ],
+    "skip_dirs": [
+      "build",
+      "target",
+      "out",
+      ".gradle",
+      ".idea",
+      "generated"
+    ],
+    "skip_names": [
+      "module-info.java",
+      "package-info.java"
+    ],
+    "test_dirs": [
+      "test",
+      "tests",
+      "androidTest",
+      "testFixtures",
+      "integrationTest"
+    ],
+    "test_name_suffixes": [
+      "Test.java",
+      "Tests.java",
+      "IT.java",
+      "TestCase.java"
+    ],
+    "test_stem_prefixes": [],
+    "test_stem_suffixes": [],
+    "test_stem_exact": []
+  },
+  "fingerprint": [
+    "plugin.json",
+    "Build.java",
+    "src/dunneflow/reader/Edges.java",
+    "src/dunneflow/reader/Extract.java",
+    "src/dunneflow/reader/Facts.java",
+    "src/dunneflow/reader/Ids.java",
+    "src/dunneflow/reader/Json.java",
+    "src/dunneflow/reader/Main.java",
+    "src/dunneflow/reader/Rules.java",
+    "src/dunneflow/reader/SelfTest.java",
+    "src/dunneflow/reader/Text.java"
+  ]
+}

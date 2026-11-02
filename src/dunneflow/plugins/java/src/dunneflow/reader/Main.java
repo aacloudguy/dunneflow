@@ -117,8 +117,13 @@ public final class Main {
         String rel = relPath(abs);
         try {
             Facts.FileFacts ff = Extract.extractFile(rel, source, rules);
-            // Echoed rather than assumed: the hash of what was actually read.
-            return new Json.Frame("facts").put("hash", Ids.hashSource(source)).put("facts", ff);
+            // Echoed rather than assumed: the hash of what was actually read. Encoded here,
+            // inside the guard, so a fact the encoder refuses is this file's failure and not
+            // the session's (`Facts.java`: a required field left unset throws).
+            StringBuilder facts = new StringBuilder();
+            ff.writeJson(facts);
+            return new Json.Frame("facts").put("hash", Ids.hashSource(source))
+                .put("facts", new Json.Raw(facts.toString()));
         } catch (RuntimeException | StackOverflowError e) {
             return new Json.Frame("failed").put("reason", describe(e));
         }

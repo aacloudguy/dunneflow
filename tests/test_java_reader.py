@@ -210,3 +210,155 @@ def test_paths_and_modules_are_spelled_as_every_reader_spells_them(read):
     assert facts["src/main/java/a/B.java"].module == "src.main.java.a.B"
     assert all(ff.lang == "java" for ff in facts.values())
 
+
+
+# ------------------------------------------------------------- facts ------------ #
+
+_OWNER = '''package org.x;
+
+import java.nio.file.Files;
+import java.util.*;
+
+/** The owners' controller. */
+@RestController
+@RequestMapping("/owners")
+public class Owner extends Base implements Runnable {
+    static final int LIMIT = 10;
+    private final List<String> names = new ArrayList<>();
+
+    enum Colour {
+        RED(1), GREEN(2) { void m() { tick(); } };
+        Colour(int n) {}
+        void m() {}
+        static void tick() {}
+    }
+
+    record Pet(String name, int age) {}
+
+    interface Repo { List<String> all(); }
+
+    Owner(int n) { super(n); }
+
+    /** Shows one owner. */
+    @Override
+    @GetMapping("/{id}")
+    public String show(String id) throws Exception {
+        // look it up
+        String s = Files.readString(java.nio.file.Path.of(id));
+        for (String n : names) {
+            if (n.isEmpty()) {
+                continue;
+            }
+            System.out.println(n);
+        }
+        names.forEach(n -> log(n));
+        new Thread(new Runnable() { public void run() { tick(); } }).start();
+        return List.<String>of("x").get(0);
+    }
+
+    void helper() {}
+    void helper(int x) {}
+    void log(String s) {}
+    void tick() {}
+    public void run() {}
+
+    public static void main(String... args) { new Owner(1).show("abc"); }
+}
+'''
+
+
+@pytest.fixture(scope="module")
+def owner(tmp_path_factory):
+    if _WHY:
+        pytest.skip(_WHY)
+    assert PLUGIN is not None
+    root = tmp_path_factory.mktemp("owner")
+    f = root / "src" / "main" / "java" / "org" / "x" / "Owner.java"
+    f.parent.mkdir(parents=True)
+    f.write_text(_OWNER, encoding="utf-8")
+    PLUGIN.probe()
+    PLUGIN.open(root, [f])
+    try:
+        (ff,) = list(PLUGIN.extract([f], root))
+    finally:
+        PLUGIN.close()
+    assert ff.errors == [], ff.errors
+    return ff
+
+
+def test_a_qualname_is_the_package_s_and_the_module_is_the_file_s(owner):
+    """Identity, decided first (LANGUAGES.md): the package is how a Java author addresses a
+    method, as Kotlin's is; the file is in the id and the module, as every reader's is."""
+    quals = [r.qualname for r in owner.routines]
+    assert owner.module == "src.main.java.org.x.Owner"
+    assert "org.x.Owner.show" in quals
+    assert "org.x.Owner.Owner" in quals, "a constructor is spelt with its class's name"
+    assert "org.x.Owner.show.$1.run" in quals, "an anonymous class carries its method (rule 10)"
+    assert "org.x.Owner.Colour.GREEN.m" in quals, "an enum constant's body is named by it"
+    helpers = [r for r in owner.routines if r.qualname == "org.x.Owner.helper"]
+    assert len(helpers) == 2 and helpers[0].id != helpers[1].id, "an overload is a routine"
+    assert all(r.file == "src/main/java/org/x/Owner.java" for r in owner.routines)
+
+
+def test_a_declaration_with_no_body_is_a_field_of_its_shape_and_not_a_routine(owner):
+    assert not any(r.name == "all" for r in owner.routines)
+    repo = next(s for s in owner.structures if s.name == "Repo")
+    assert repo.kind.value == "INTERFACE"
+    assert [f.name for f in repo.fields] == ["all"]
+
+
+def test_a_return_type_is_always_declared(owner):
+    """Go's `MISSING_RETURN_TYPE` lesson: `None` means undeclared, and no Java method is."""
+    by = {r.qualname: r for r in owner.routines if r.name != "<module>"}
+    assert by["org.x.Owner.Owner"].returns == ""
+    assert by["org.x.Owner.show"].returns == "String"
+    assert by["org.x.Owner.tick"].returns == "void"
+
+
+def test_the_first_line_is_the_declaration_and_not_its_annotations(owner):
+    show = next(r for r in owner.routines if r.qualname == "org.x.Owner.show")
+    assert _OWNER.splitlines()[show.line_start - 1].strip().startswith("public String show")
+    assert show.decorators == ["Override", "GetMapping"]
+    assert show.docstring == "Shows one owner."
+    assert [c.text for c in show.comments] == ["look it up"]
+
+
+def test_an_enum_constant_is_a_member_and_never_a_construction(owner):
+    """javac writes `RED(1)` as a `new` it made itself, which nobody wrote (rule 1)."""
+    colour = next(s for s in owner.structures if s.name == "Colour")
+    assert colour.kind.value == "ENUM"
+    assert [f.name for f in colour.fields] == ["RED", "GREEN"]
+    assert not any(c.callee_expr == "Colour" for c in owner.calls)
+    assert {c.name for c in owner.constants} >= {"RED", "GREEN", "LIMIT"}
+
+
+def test_ways_in_main_and_a_route_named_with_its_class_s_prefix(owner):
+    kinds = {(e.kind.value, e.name) for e in owner.entrypoints}
+    assert ("MAIN", "main") in kinds
+    assert ("HTTP_ROUTE", "GetMapping /owners/{id}") in kinds
+
+
+def test_calls_follow_the_dotted_contract_and_boundaries_are_matched(owner):
+    calls = {c.callee_expr for c in owner.calls}
+    assert {"Files.readString", "java.nio.file.Path.of", "System.out.println",
+            "names.forEach", "log", "Thread.start", "List.of.get", "Owner.show"} <= calls
+    news = {c.callee_expr for c in owner.calls if c.is_construction}
+    assert {"ArrayList", "Thread", "Runnable", "Owner"} <= news
+    hits = {(b.kind.value, b.evidence) for b in owner.boundaries}
+    assert ("FILE", "Files.readString") in hits and ("STDIO", "System.out.println") in hits
+    at = {c.callee_expr for c in owner.calls if c.at_boundary}
+    assert at == {"Files.readString", "System.out.println"}, "rule 2, and only those"
+
+
+def test_a_field_initialiser_belongs_to_the_module_scope(owner):
+    """Rule 18: `new ArrayList<>()` on a field runs at construction, in no method written."""
+    (alloc,) = [c for c in owner.calls if c.callee_expr == "ArrayList"]
+    scope = next(r for r in owner.routines if r.name == "<module>")
+    assert alloc.caller_id == scope.id
+
+
+def test_control_where_something_can_move(owner):
+    spans = {(p.kind.value, p.word, p.header, p.exits) for p in owner.control}
+    assert ("LOOP", "for", "String n : names", "") in spans
+    assert ("GUARD", "if", "n.isEmpty()", "continue") in spans
+    assert ("COMPREHENSION", "forEach", "names.forEach", "") in spans

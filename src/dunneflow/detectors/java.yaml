@@ -129,6 +129,31 @@ unawaited_async: runs
 # the language working as a defect (rule 98).
 redefinition: overloads
 
+entrypoints:
+  # **A Java server declares its ways in by annotation**, and the framework calls them:
+  # nothing in the program does, so without a rule each reads as dead code in a worklist.
+  # The reader names a route by its annotation and path as written, with the class's own
+  # `@RequestMapping` or `@Path` in front (`GetMapping /owners/{ownerId}`).
+  - kind: HTTP_ROUTE
+    decorator_method: [GetMapping, PostMapping, PutMapping, DeleteMapping, PatchMapping,
+                       RequestMapping, GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
+    evidence: "an HTTP route declared by annotation (Spring MVC or JAX-RS)"
+  - kind: SCHEDULED
+    decorator_method: [Scheduled]
+    evidence: "run on a schedule by the framework"
+  - kind: QUEUE_CONSUMER
+    decorator_method: [KafkaListener, JmsListener, RabbitListener, SqsListener]
+    evidence: "called by the framework for each message"
+  - kind: LIBRARY
+    decorator_method: [EventListener, PostConstruct, Bean]
+    evidence: "called by the framework, by annotation"
+  # A test is a way in too: nothing in the program calls it, and it is the only caller many
+  # routines have. Kept separate so a reader can tell it from a way in a user reaches.
+  - kind: CLI
+    decorator_method: [Test, ParameterizedTest, BeforeEach, AfterEach, BeforeAll, AfterAll,
+                       Before, After, BeforeClass, AfterClass]
+    evidence: "run by the test framework"
+
 # `public static void main(String[] args)`, and only that shape: the reader checks that it
 # is static and takes one `String[]` or `String...`. Java 21's instance `main` is a preview
 # feature and is not read as a way in.
@@ -137,3 +162,8 @@ entry_names: [main]
 # **None.** Java has no free functions, so no bare call can be a library's rather than
 # yours (rule 3). An empty list is the declared answer, not a default.
 builtins: []
+
+# **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
+# `protected` and package-private are recorded as private beside `private` itself, and
+# both are visible beyond the file, so a call from another file is often correct code.
+private_means: surface

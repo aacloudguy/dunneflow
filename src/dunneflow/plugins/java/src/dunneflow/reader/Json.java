@@ -117,6 +117,20 @@ public final class Json {
         field(out, first, name, (Object) v);
     }
 
+    /** JSON already written, by a record that wrote itself. */
+    public static final class Raw implements Writable {
+        private final String json;
+
+        public Raw(String json) {
+            this.json = json;
+        }
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            out.append(json);
+        }
+    }
+
     /** One frame under construction: {@code t} first, then whatever is put. */
     public static final class Frame {
         private final Map<String, Object> members = new LinkedHashMap<>();

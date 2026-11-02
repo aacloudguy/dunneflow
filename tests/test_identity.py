@@ -135,9 +135,11 @@ def test_two_languages_in_one_directory_do_not_collide_on_an_id(tmp_path):
     """The tree that could not be analysed at all, analysed — rule 106.
 
     `tests/fixtures/polyglot/` holds `probe.py`, `probe.ts`, `probe.cpp`, `probe.kt` and,
-    since 2026-11-01, `probe.go` and `probe.rs`. Every reader derives a module name from the
-    path with the suffix dropped, so all six are module `probe` and five of them declare
-    `probe.main`.
+    since 2026-11-01, `probe.go`, `probe.rs` and `probe.java`. Every reader derives a module
+    name from the path with the suffix dropped, so all seven are module `probe` and five of
+    them declare `probe.main`. Java's `main` is a method of a class, and its qualname is
+    the package's, as Kotlin's is: `Probe.main`, in the default package. It is asserted by
+    that name rather than bent to fit the others.
     Keyed on the name alone that was one id in three languages, and the store said so:
 
         sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
@@ -158,8 +160,9 @@ def test_two_languages_in_one_directory_do_not_collide_on_an_id(tmp_path):
     assert mains == ["go", "kotlin", "python", "rust", "typescript"], (
         "one module name, one routine name, five languages — all five must be here"
     )
+    assert [r["lang"] for r in rows if r["qualname"] == "Probe.main"] == ["java"]
     settings = list(store.query("SELECT id FROM structures WHERE name = 'Setting'"))
-    assert len({r["id"] for r in settings}) == len(settings) == 5
+    assert len({r["id"] for r in settings}) == len(settings) == 6
     store.close()
 
 

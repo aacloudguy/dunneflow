@@ -63,7 +63,12 @@ def plugin_argv(manifest: PluginManifest) -> list[str]:
     this machine has not built this version of it before.
     """
     if manifest.build:
-        return [str(built_reader(manifest))]
+        built = str(built_reader(manifest))
+        if not manifest.run:
+            return [built]
+        # `built_reader` has already refused a build with no toolchain command.
+        command = manifest.toolchain.command if manifest.toolchain else ""
+        return [command, *(built if a == "{reader}" else a for a in manifest.run)]
     tc = manifest.toolchain
     if tc is None or not tc.command:
         raise PluginRefused(
@@ -118,7 +123,12 @@ def built_reader(manifest: PluginManifest) -> Path:
     key = hashlib.sha256("\0".join(
         [lang_fingerprint(manifest.lang), sys.platform, platform.machine(), said]
     ).encode("utf-8")).hexdigest()[:16]
-    name = manifest.lang + (".exe" if sys.platform == "win32" else "")
+    # A program the machine runs is `<lang>` (`.exe` on Windows); a file the toolchain
+    # starts (`run`) is `<lang>.reader`, which no platform will try to execute.
+    if manifest.run:
+        name = manifest.lang + ".reader"
+    else:
+        name = manifest.lang + (".exe" if sys.platform == "win32" else "")
     target = reader_cache_root() / f"{manifest.lang}-{key}" / name
     if target.is_file():
         return target
@@ -168,7 +178,7 @@ def built_reader(manifest: PluginManifest) -> Path:
             f"toolchain ({said or 'no version given'}), not in the code being read; "
             f"`--without {manifest.lang}` reads everything else.\n{tail}"
         )
-    if sys.platform != "win32":
+    if sys.platform != "win32" and not manifest.run:
         tmp.chmod(0o755)
     os.replace(tmp, target)
     return target

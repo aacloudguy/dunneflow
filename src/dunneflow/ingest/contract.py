@@ -288,6 +288,12 @@ class PluginManifest:
     # value of `None` removes that variable. It was Go's four names spelt in the host until
     # Rust, which is the host naming a language one layer below where rule 92 looked.
     build_env: tuple[tuple[str, str | None], ...] = ()
+    # **How the built program is started, where it is not a program the machine can run by
+    # itself.** The toolchain's command is put first and `{reader}` stands for what the build
+    # wrote. Added for Java, whose build writes a jar that only `java -jar` can start;
+    # without it the built file is run as it is, as Go's and Rust's are. The cached file is
+    # then `<lang>.reader` and is never marked executable, because it is not.
+    run: tuple[str, ...] = ()
     root: Path = field(default=Path("."), compare=False)
 
 

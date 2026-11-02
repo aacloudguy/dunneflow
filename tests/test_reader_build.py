@@ -176,3 +176,52 @@ def test_a_build_that_cannot_find_its_product_is_refused_when_it_is_read(
     with pytest.raises(PluginRefused) as exc:
         read_manifest(path)
     assert said in str(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# A built file the machine cannot run by itself: `run` and `{reader}` (added for Java,
+# whose build writes a jar that only `java -jar` starts).
+
+def _run_plugin(tmp_path: Path, run: list[str]) -> Path:
+    path = _plugin(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["run"] = run
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def test_run_starts_the_built_file_with_the_toolchain_and_fills_only_whole_arguments(
+        tmp_path, cache):
+    m = read_manifest(_run_plugin(tmp_path, ["-X", "--r={reader}", "{reader}"]))
+    built = built_reader(m)
+    assert plugin_argv(m) == [sys.executable, "-X", "--r={reader}", str(built)]
+
+
+def test_a_file_the_toolchain_starts_is_never_named_or_marked_as_a_program(tmp_path, cache):
+    import os
+    m = read_manifest(_run_plugin(tmp_path, ["{reader}"]))
+    built = built_reader(m)
+    assert built.name == "fake.reader", "not `.exe`: no platform should try to execute it"
+    if sys.platform != "win32":
+        assert not os.access(built, os.X_OK), "a jar is not a program and is not marked one"
+
+
+def test_without_run_the_built_program_is_still_run_as_it_is(tmp_path, cache):
+    m = read_manifest(_plugin(tmp_path))
+    assert m.run == ()
+    assert plugin_argv(m) == [str(built_reader(m))]
+
+
+@pytest.mark.parametrize("change, said", [
+    ({"run": ["-jar"]}, "{reader}"),                     # never names the program
+    ({"run": ["{reader}"], "build": []}, "no `build`"),  # nothing to start
+])
+def test_a_run_that_cannot_start_the_reader_is_refused_when_it_is_read(
+        tmp_path, change, said):
+    path = _plugin(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(change)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(PluginRefused) as exc:
+        read_manifest(path)
+    assert said in str(exc.value)

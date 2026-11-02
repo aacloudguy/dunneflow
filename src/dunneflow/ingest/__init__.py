@@ -239,6 +239,18 @@ def read_manifest(path: Path) -> PluginManifest:
             f"is the environment of nothing."
         )
     build_env = tuple(sorted((str(k), v) for k, v in raw_env.items()))
+    run = tuple(str(x) for x in data.get("run", []))
+    if run and not build:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} says how to start what its build wrote (`run`) "
+            f"and declares no `build`, so there is nothing for it to start."
+        )
+    if run and "{reader}" not in run:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} declares a `run` that never names the program "
+            f"its build wrote: none of its arguments is `{{reader}}`, so the toolchain "
+            f"would be started with nothing of this reader in it."
+        )
 
     tc = data.get("toolchain")
     toolchain = None
@@ -270,6 +282,7 @@ def read_manifest(path: Path) -> PluginManifest:
         build=build,
         product=product,
         build_env=build_env,
+        run=run,
         root=path.parent,
     )
 

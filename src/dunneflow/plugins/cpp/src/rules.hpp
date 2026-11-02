@@ -72,7 +72,10 @@ struct Preset {
     std::string top;                // the marker's directory, relative: the highest include root
     std::vector<std::string> defines;
     std::map<std::string, std::vector<std::string>> platform_defines;  // darwin, linux, win32
-    std::vector<std::string> empty_suffixes;  // `*_API` macros defined empty
+    // A framework's modules each get a define of their own, named by a file each module has:
+    // Unreal's `Core.Build.cs` is why `CORE_API` is defined. `{MODULE}` is the stem, upper-cased.
+    std::string module_file_suffix;
+    std::string module_define;
 };
 
 struct Rules {
@@ -125,7 +128,8 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         x.top = p["top"].str();
         x.defines = p["defines"].strings();
         for (const auto& [plat, ds] : p["platform_defines"].map()) x.platform_defines[plat] = ds.strings();
-        x.empty_suffixes = p["empty_suffixes"].strings();
+        x.module_file_suffix = p["module_defines"]["file_suffix"].str();
+        x.module_define = p["module_defines"]["define"].str();
         if (x.name.empty() || x.marker.empty()) {
             notes.push_back("a preset in detectors/cpp.yaml has no name or no marker, and is not used");
             continue;

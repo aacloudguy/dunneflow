@@ -236,7 +236,7 @@ def test_a_construction_written_as_a_declaration_is_one(read):
 def test_a_call_keeps_the_dotted_contract(read):
     facts, _ = read
     calls = {c.callee_expr for c in facts["src/app.cpp"].calls}
-    assert {"store.Load.size", "store.Fire", "std.getline", "classify", "run"} <= calls
+    assert {"store.Load", "value.size", "store.Fire", "std.getline", "classify", "run"} <= calls
 
 
 @needs_clang
@@ -250,8 +250,8 @@ def test_an_else_if_ladder_is_one_decision_with_its_arms(read):
     assert arms == ["if", "else if", "else"]
     assert not any(w == "if" and 28 < line <= 34 for w, line in by_word), "an else-if is an arm"
     assert by_word[("for", 40)].once_start == 40
-    assert by_word[("switch", 43)].arms == 2
-    assert by_word[("try", 49)].kind is ControlKind.HANDLER
+    assert by_word[("switch", 44)].arms == 2
+    assert by_word[("try", 50)].kind is ControlKind.HANDLER
 
 
 @needs_clang
@@ -289,3 +289,73 @@ def test_an_include_two_files_answer_adds_no_directory(tmp_path):
     files = [src, tmp_path / "a" / "inc" / "same.h", tmp_path / "b" / "inc" / "same.h"]
     _, notes = _read(tmp_path, files)
     assert any("1 answered by more than one file" in n for n in notes), notes
+
+
+# ------------------------------------------------------------------- edges --- #
+
+@pytest.fixture(scope="module")
+def edges():
+    if _WHY:
+        pytest.skip(_WHY)
+    assert PLUGIN is not None
+    files = sorted(p for p in FIXTURE.rglob("*") if p.is_file())
+    PLUGIN.open(FIXTURE, files)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(files, FIXTURE)}
+        got = list(PLUGIN.edges())
+        return facts, got, list(PLUGIN.edges_said)
+    finally:
+        PLUGIN.close()
+
+
+def _by_expr(facts, got):
+    site = {c.site_id: (ff.path, c.callee_expr) for ff in facts.values() for c in ff.calls}
+    return {site[e.site_id]: e for e in got if e.site_id in site}
+
+
+@needs_clang
+def test_every_call_has_an_answer_and_every_edge_lands_on_a_routine_s_first_line(edges):
+    """The host turns a location into an id (`resolve/supplied.py`): an edge whose line is not
+    a routine's first line is an edge the map cannot draw."""
+    facts, got, _ = edges
+    calls = {c.site_id for ff in facts.values() for c in ff.calls}
+    assert {e.site_id for e in got} == calls, "every written call is answered, edge or stop"
+    starts = {(r.file, r.line_start, r.name) for ff in facts.values() for r in ff.routines}
+    landed = [e for e in got if e.file]
+    assert landed
+    for e in landed:
+        assert (e.file, e.line, e.name) in starts, e
+
+
+@needs_clang
+def test_a_call_in_another_call_s_arguments_is_a_call(edges):
+    """`printf("%d lines\\n", count_lines(path))`: the syntactic reader stepped over every
+    call written inside an argument list."""
+    facts, got, _ = edges
+    by = _by_expr(facts, got)
+    e = by[("c/tool.c", "count_lines")]
+    assert (e.file, e.name) == ("c/tool.c", "count_lines")
+
+
+@needs_clang
+def test_an_overridden_method_is_dispatched_with_its_bodies_named(edges):
+    """Tom's rule: only a method nothing overrides is CERTAIN. `store.Load(k)` on a
+    `Store&` reaches whatever implements the pure virtual — here one body, named, and not
+    drawn as an edge."""
+    facts, got, _ = edges
+    e = _by_expr(facts, got)[("src/app.cpp", "store.Load")]
+    assert e.reason == "dynamic" and not e.file
+    assert [(a.file, a.name) for a in e.answers] == [("src/app.cpp", "Load")]
+    fire = _by_expr(facts, got)[("src/app.cpp", "store.Fire")]
+    assert (fire.file, fire.name, fire.reason) == ("src/app.cpp", "Fire", "")
+
+
+@needs_clang
+def test_a_call_outside_the_tree_says_where_it_went(edges):
+    facts, got, said = edges
+    by = _by_expr(facts, got)
+    fopen = by[("c/tool.c", "fopen")]
+    assert (fopen.reason, fopen.frontier) == ("outside", "fopen")
+    # The inline namespace a standard library hides in is not part of what anybody wrote.
+    assert by[("src/app.cpp", "std.getline")].frontier == "std.getline"
+    assert any(n.startswith("edges: 3 files parsed by libclang") for n in said), said

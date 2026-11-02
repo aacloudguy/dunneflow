@@ -22,7 +22,7 @@ Adding a language means adding a file here. The test fails until you do.
 
 ## Why the files share a stem, which is the point
 
-They are `probe.py`, `probe.ts`, `probe.cpp`, `probe.kt`, `probe.go` (2026-11-01), `probe.rs` (2026-11-01) and `probe.java` (2026-11-01),
+They are `probe.py`, `probe.ts`, `probe.cpp`, `probe.kt`, `probe.go` (2026-11-01), `probe.rs` (2026-11-01), `probe.java` (2026-11-01) and `probe.c` (2026-11-02, C's half of the C and C++ reader, which reads both),
 **deliberately**. For a day they
 could not be: named that way, this tree could not be analysed at all.
 

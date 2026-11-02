@@ -226,7 +226,8 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
         if (text::read_source(f, t)) include_spellings(t, spellings);
         reach.push_back(generic(fs::absolute(f)));
     }
-    if (!s.top.empty() && s.top != s.root) {
+    std::set<std::string> module_defines;
+    if (!s.top.empty()) {
         std::error_code ec;
         for (auto it = fs::recursive_directory_iterator(s.top, fs::directory_options::skip_permission_denied, ec);
              it != fs::recursive_directory_iterator(); it.increment(ec)) {
@@ -237,11 +238,26 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
                 it.disable_recursion_pending();
                 continue;
             }
-            if (it->is_regular_file(ec) && HEADER_SUFFIXES.count(suffix(name))) {
+            if (!it->is_regular_file(ec)) continue;
+            if (preset && !preset->module_file_suffix.empty() && name.size() > preset->module_file_suffix.size() &&
+                name.compare(name.size() - preset->module_file_suffix.size(), std::string::npos,
+                             preset->module_file_suffix) == 0) {
+                std::string stem = name.substr(0, name.size() - preset->module_file_suffix.size());
+                std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char ch) { return std::toupper(ch); });
+                std::string d = preset->module_define;
+                size_t at = d.find("{MODULE}");
+                if (at != std::string::npos) d.replace(at, 8, stem);
+                module_defines.insert(d);
+            }
+            if (HEADER_SUFFIXES.count(suffix(name))) {
                 std::string g = generic(p);
-                if (g.rfind(s.root + "/", 0) != 0) reach.push_back(g);
+                if (s.top != s.root && g.rfind(s.root + "/", 0) != 0) reach.push_back(g);
             }
         }
+        for (const auto& d : module_defines) s.base.push_back("-D" + d);
+        if (!module_defines.empty())
+            s.notes.push_back("the " + s.preset + " preset defined " + std::to_string(module_defines.size()) +
+                              " module macros, one per " + preset->module_file_suffix + " under its top");
     }
     std::map<std::string, std::vector<std::string>> by_base;
     for (const auto& g : reach) by_base[g.substr(g.find_last_of('/') + 1)].push_back(g);

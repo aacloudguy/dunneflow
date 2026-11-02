@@ -29,7 +29,7 @@
   "receiver_words": [
     "this"
   ],
-  "supplies_edges": false,
+  "supplies_edges": true,
   "reports_literals": true,
   "discovery": {
     "suffixes": [

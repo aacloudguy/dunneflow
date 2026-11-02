@@ -1213,6 +1213,10 @@ ORDER BY e.kind, e.name
 #
 # `why` is here because table mode shows it. The signature is not: 4,734 signatures is most
 # of the payload and neither the navigator nor the table has anywhere to put one.
+# **Module and line are not an order on their own** (rule 66). C's population found it on the
+# first map read by the clang reader: `foo.c` and `foo.h` are one module, and a macro line
+# such as tmux's `RB_GENERATE` defines a dozen routines at one line, so `/api/routines`
+# answered 312 lines differently under a row reversal. File, qualname and id break the tie.
 NAV_ROUTINES = f"""
 SELECT r.id           AS id,
        r.name         AS name,
@@ -1220,7 +1224,7 @@ SELECT r.id           AS id,
        {PACKAGE_EXPR} AS pkg,
        COALESCE(r.docstring, '') AS why
 FROM routines r
-ORDER BY r.module, r.line_start
+ORDER BY r.module, r.line_start, r.file, r.qualname, r.id
 """
 
 # Every structure, for the navigator's own group and for the search across it. 671 rows on
@@ -1238,7 +1242,7 @@ SELECT s.id           AS id,
        s.kind         AS kind,
        {PACKAGE_EXPR} AS pkg
 FROM structures s
-ORDER BY s.module, s.line
+ORDER BY s.module, s.line, s.file, s.name, s.id
 """
 
 DOC_ROUTINES = """
@@ -1256,7 +1260,7 @@ SELECT r.id       AS node,
        r.file     AS file,
        r.line_start AS line
 FROM routines r
-ORDER BY r.module, r.line_start
+ORDER BY r.module, r.line_start, r.file, r.qualname, r.id
 """
 
 DOC_STRUCTURES = """
@@ -1272,7 +1276,7 @@ SELECT s.id     AS node,
        s.file   AS file,
        s.line   AS line
 FROM structures s
-ORDER BY s.module, s.line
+ORDER BY s.module, s.line, s.file, s.name, s.id
 """
 
 DOC_CONSTANTS = """

@@ -87,7 +87,7 @@ struct Site {
 
 // One definition this file holds, as the edge pass names it to the host.
 struct Def {
-    std::string usr, file, name;
+    std::string usr, file, name, qualname;
     long line = 0;
     bool has_body = true;
     bool is_record = false;
@@ -375,7 +375,8 @@ inline std::vector<std::string> scope_parts(CXCursor c, bool& nested, std::strin
          p = C().clang_getCursorSemanticParent(p)) {
         CXCursorKind k = C().clang_getCursorKind(p);
         if (k == CXCursor_Namespace) {
-            if (!C().clang_Cursor_isAnonymous(p)) parts.push_back(spelling(p));
+            // An inline namespace (libc++'s `std::__1`) is not part of what anybody writes.
+            if (!C().clang_Cursor_isAnonymous(p) && !C().clang_Cursor_isInlineNamespace(p)) parts.push_back(spelling(p));
         } else if (is_record_kind(k) || k == CXCursor_EnumDecl) {
             std::string name = spelling(p);
             if (!name.empty() && !C().clang_Cursor_isAnonymous(p)) {
@@ -894,6 +895,7 @@ private:
         d.file = x_.rel;
         d.line = s.line;
         d.name = name;
+        d.qualname = qualname;
         d.is_record = true;
         x_.out->defs.push_back(d);
     }
@@ -1170,7 +1172,11 @@ private:
             p.ref = r->second.second;
             p.resolved = true;
         }
-        next = cl + 1;
+        // On from the first argument list, not past the last: a call written inside another
+        // call's arguments is a call (`printf("%d", count(path))`). The syntactic reader
+        // stepped over them, and every one was missing from its maps. The rest of the chain
+        // cannot be recorded twice, because a name after `.` is never a chain's root.
+        next = j + 1;
         return true;
     }
 
@@ -1343,6 +1349,13 @@ private:
             e.is_virtual = C().clang_CXXMethod_isVirtual(ref) != 0;
             e.is_dynamic = C().clang_Cursor_isDynamicCall(call) != 0;
             e.final_ = has_final(ref) || has_final(C().clang_getCursorSemanticParent(ref));
+            // The receiver's static type: only an override in a subtype of it can answer.
+            CXType rt = C().clang_Cursor_getReceiverType(call);
+            if (rt.kind == CXType_Pointer || rt.kind == CXType_LValueReference || rt.kind == CXType_RValueReference)
+                rt = C().clang_getPointeeType(rt);
+            CXCursor rd = C().clang_getTypeDeclaration(rt);
+            if (!C().clang_Cursor_isNull(rd)) e.receiver_usr = usr(rd);
+            if (e.receiver_usr.empty()) e.receiver_usr = usr(C().clang_getCursorSemanticParent(ref));
         }
         if (e.is_ctor) e.construct_usr = usr(C().clang_getCursorSemanticParent(ref));
     }

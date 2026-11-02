@@ -245,3 +245,34 @@ redefinition: overloads
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # a class's private member is private to the class, whose members are routinely defined in another file.
 private_means: surface
+
+# A framework's build configuration, for a tree with no compile_commands.json (Tom,
+# 2026-11-02). The C and C++ reader parses with the machine's own target and headers; what a
+# framework's build tool adds on top of that — the defines that choose its platform headers,
+# and one per module — is declared here, matched by a marker file found at or above the
+# analysed root, and said in the map when it applies. A compile_commands.json always wins.
+#
+# `top` is the highest directory include roots may be looked for in, relative to the
+# directory the marker was found from: the reader may search above the analysed root as far
+# as this and no further (rule 108), and says what it read there as `read_beyond`.
+#
+# Measured on Unreal's Runtime/Core (123 files): 32 % of calls resolved with nothing, 65 %
+# with these defines, 88 % with them and the whole Runtime's include roots.
+presets:
+  - name: Unreal Engine
+    marker: Runtime/Core/Public/HAL/Platform.h
+    top: Runtime
+    defines:
+      - UE_BUILD_DEVELOPMENT=1
+      - WITH_EDITOR=0
+      - WITH_EDITORONLY_DATA=0
+      - WITH_ENGINE=1
+      - IS_PROGRAM=0
+      - IS_MONOLITHIC=0
+    platform_defines:
+      darwin: [UBT_COMPILED_PLATFORM=Mac, PLATFORM_MAC=1, PLATFORM_APPLE=1]
+      linux: [UBT_COMPILED_PLATFORM=Linux, PLATFORM_LINUX=1, PLATFORM_UNIX=1]
+      win32: [UBT_COMPILED_PLATFORM=Windows, PLATFORM_WINDOWS=1, PLATFORM_MICROSOFT=1]
+    module_defines:
+      file_suffix: .Build.cs
+      define: "{MODULE}_API="

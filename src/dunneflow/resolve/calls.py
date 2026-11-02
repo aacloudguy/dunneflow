@@ -67,6 +67,9 @@ RESOLVERS: dict[str, Resolver] = {
     # javac, attributing the whole tree in one compilation: a checker, as TypeScript's and
     # Go's are, and the dispatch rule it answers by is the reader's (`Edges.java`).
     "java": supplied.resolve,
+    # libclang, one parse per file, joined by USR once every parse is done; Java's dispatch
+    # rule in C++'s terms (`plugins/cpp/src/edges.hpp`).
+    "cpp": supplied.resolve,
 }
 
 

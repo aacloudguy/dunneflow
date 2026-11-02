@@ -38,7 +38,8 @@ int run(lib::Store& store, const std::vector<std::string>& keys)
 {
     int total = 0;
     for (const auto& k : keys) {
-        total += static_cast<int>(store.Load(k).size());
+        const std::string value = store.Load(k);
+        total += static_cast<int>(value.size());
     }
     switch (classify(total)) {
         case -1:

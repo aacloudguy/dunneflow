@@ -62,6 +62,7 @@
     X(clang_Cursor_isNull)                      \
     X(clang_equalCursors)                       \
     X(clang_Cursor_isAnonymous)                 \
+    X(clang_Cursor_isInlineNamespace)           \
     X(clang_getCursorType)                      \
     X(clang_getTypeSpelling)                    \
     X(clang_getCanonicalType)                   \
@@ -78,6 +79,7 @@
     X(clang_getCXXAccessSpecifier)              \
     X(clang_Cursor_getRawCommentText)           \
     X(clang_Cursor_isDynamicCall)               \
+    X(clang_Cursor_getReceiverType)             \
     X(clang_Cursor_hasAttrs)                    \
     X(clang_tokenize)                           \
     X(clang_disposeTokens)                      \

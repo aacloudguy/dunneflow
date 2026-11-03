@@ -469,3 +469,97 @@ def test_a_nameless_record_a_macro_writes_is_not_a_structure(tmp_path):
         "struct node { ENTRY(node) link; int v; };\n"
         "struct { int a; } g;\n")})
     assert sorted(s.name for s in facts["q.c"].structures) == ["<anonymous>", "node"]
+
+
+# --------------------------------------- chunk 5: Unreal Core, old against new --- #
+
+@needs_clang
+def test_a_routine_is_named_as_written_not_as_clang_spells_a_template(tmp_path):
+    """clang spells a class template's constructor `TBox<T>`, its destructor `~TBox<T>`, and
+    `operator T&()` as `operator type-parameter-0-0 &`. Nobody writes or searches for those."""
+    facts, _, _ = _tree(tmp_path, {"t.cpp": (
+        "template <typename T> struct TBox {\n"
+        "  TBox() {}\n"
+        "  template <typename U> TBox(U u) {}\n"
+        "  ~TBox() {}\n"
+        "  operator T&() { return v; }\n"
+        "  T v;\n"
+        "};\n")})
+    names = sorted(r.name for r in facts["t.cpp"].routines if r.name != "<module>")
+    assert names == ["TBox", "TBox", "operator T&", "~TBox"]
+
+
+@needs_clang
+def test_a_variable_a_macro_declares_does_not_hide_the_macro_s_call(tmp_path):
+    """Unreal's `UE_LOG` declares `LOG_Static(Format, ...)`, a variable whose location is the
+    macro's own name, and every `UE_LOG(...)` read as a declaration: 1,825 calls to 43."""
+    facts, _, _ = _tree(tmp_path, {"l.cpp": (
+        "struct R { R(const char*) {} };\n"
+        "void emit(const R&);\n"
+        "#define LOG(F) do { static R LOG_Static(F); emit(LOG_Static); } while (0)\n"
+        "void f() { LOG(\"hello\"); }\n")})
+    assert [c.callee_expr for c in facts["l.cpp"].calls] == ["LOG"]
+
+
+@needs_clang
+def test_a_record_a_macro_names_by_pasting_is_not_a_structure(tmp_path):
+    """`DECLARE_CYCLE_STAT(..., STAT_X, ...)` is a `struct FStat_STAT_X`, hundreds of them in
+    Core; a record whose name the file writes, as `TAILQ_HEAD(joblist, job)` does, is kept."""
+    facts, _, _ = _tree(tmp_path, {"s.cpp": (
+        "#define STAT(N) struct FStat_##N { int v; };\n"
+        "#define HEAD(N) struct N { int first; };\n"
+        "STAT(Draw)\nHEAD(joblist)\n")})
+    assert [s.name for s in facts["s.cpp"].structures] == ["joblist"]
+
+
+@needs_clang
+def test_an_include_directory_is_never_above_the_root_without_a_preset(tmp_path):
+    """Rule 108, and the gate's third decision: a spelling that names the root's own parent
+    (`Core/Public/x.h`, read from inside `Core`) does not make that parent a directory."""
+    root = tmp_path / "Core"
+    _, _, said = _tree(root, {
+        "Public/x.h": "int x(void);\n",
+        "a.c": '#include "Core/Public/x.h"\nint main(void) { return x(); }\n'})
+    assert any("1 not taken, because the directory they name is above the analysed root" in n
+               for n in said), said
+
+
+@needs_clang
+def test_unreal_s_preset_compiles_cpp_as_its_build_tool_does(tmp_path):
+    """UnrealBuildTool's Apple toolchain compiles every `.cpp` as Objective-C++, and Mac
+    sources are written for it; read as C++, a routine after an `@` was lost. Off Apple the
+    preset says nothing, and C++ is C++."""
+    _tree(tmp_path, {"Runtime/Core/Public/HAL/Platform.h": "#pragma once\n"})
+    facts, _, said = _tree(tmp_path / "Runtime" / "Core", {
+        "Private/Mac/Misc.cpp": "void a() { @autoreleasepool { } }\nvoid b() { }\n"})
+    objc = any("compiles C++ as objective-c++" in n for n in said)
+    assert objc == (sys.platform == "darwin"), said
+    if objc:
+        names = [r.name for r in facts["Private/Mac/Misc.cpp"].routines if r.name != "<module>"]
+        assert names == ["a", "b"]
+
+
+@needs_clang
+def test_a_macro_that_expands_to_several_calls_is_none_of_them(tmp_path):
+    """Taking the first call made every Unreal `UE_LOG` the construction of the static variable
+    it declares. A macro that wraps a function of its own name is that function (git's
+    `error`); one with several callees is a macro, and says so."""
+    facts, got, _ = _tree(tmp_path, {"m.cpp": (
+        "struct D { int n; };\n"
+        "bool quiet(); void basic_log(const char*) {}\n"
+        "int error(const char*); int const_error();\n"
+        "void *chk(void*, const void*, unsigned long, unsigned long);\n"
+        "unsigned long osize(const void*);\n"
+        "#define LOG(F) do { static D d; if (!quiet()) basic_log(F); } while (0)\n"
+        "#define error(F) (error(F), const_error())\n"
+        "#define copy(D, S, N) chk(D, S, N, osize(D))\n"
+        'void f(char *a, char *b) { LOG("x"); error("y"); copy(a, b, 1); }\n')})
+    by = _by_expr(facts, got)
+    log = by[("m.cpp", "LOG")]
+    assert (log.reason, log.frontier, log.constructs) == ("unfollowed", "LOG", "")
+    err = by[("m.cpp", "error")]
+    assert (err.reason, err.frontier) == ("outside", "error")
+    # Several calls and none of them here: macOS's fortified `memcpy`. It leaves, as written.
+    cp = by[("m.cpp", "copy")]
+    assert (cp.reason, cp.frontier) == ("outside", "copy")
+    assert not any(c.is_construction for c in facts["m.cpp"].calls)

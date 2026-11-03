@@ -83,7 +83,8 @@ struct Site {
     bool construction = false;
     bool bound = false;         // a call through a function value
     bool untyped = false;       // an argument clang could not type, under an overload set
-    std::string macro;          // the function-like macro written here, when it expands to no call
+    std::string macro;          // the function-like macro written here, when it is not one call
+    std::vector<std::string> macro_usrs;  // what it calls instead, when it calls several things
     std::string construct_usr;  // a construction's record
     std::string receiver_usr;   // a member call's receiver type
 };
@@ -149,14 +150,23 @@ struct Ctx {
         return it != pp_spans.begin() && std::prev(it)->second >= off;
     }
 
-    // Is this offset inside a macro expansion written in this file?
-    bool in_macro(unsigned off) const {
+    // The macro expansion written in this file that holds this offset, if one does.
+    const std::pair<unsigned, unsigned>* macro_at(unsigned off) const {
         auto it = std::upper_bound(macro_spans.begin(), macro_spans.end(), std::make_pair(off, ~0u));
         while (it != macro_spans.begin()) {
             --it;
-            if (it->second >= off) return true;
+            if (it->second >= off) return &*it;
             if (it->first + 4096 < off) break;  // spans are short; a long scan back finds nothing
         }
+        return nullptr;
+    }
+    bool in_macro(unsigned off) const { return macro_at(off) != nullptr; }
+    // Is `name` written, as a token, inside the expansion that holds `off`?
+    bool written_in_macro(unsigned off, const std::string& name) const {
+        const auto* m = macro_at(off);
+        if (!m) return true;
+        for (size_t i = tok_at(m->first); i < toks.size() && toks[i].off <= m->second; i++)
+            if (toks[i].text == name) return true;
         return false;
     }
 
@@ -362,6 +372,18 @@ inline clang::Api& C() { return clang::api(); }
 
 inline std::string spelling(CXCursor c) { return clang::str(C().clang_getCursorSpelling(c)); }
 
+// A routine's name as written. clang spells a class template's constructor and destructor
+// with the template's parameters, `TTransform<T>` and `~TRWScopeLock<MutexType>`, which
+// nobody writes and nobody searches for.
+// A constructor *template* is a FunctionTemplate cursor spelled the same way, so the rule
+// is the spelling's: a name with `<` that is not an operator's is a class template's.
+inline std::string routine_name(CXCursor c) {
+    std::string n = spelling(c);
+    size_t lt = n.find('<');
+    if (lt != std::string::npos && n.compare(0, 8, "operator") != 0) n.resize(lt);
+    return n;
+}
+
 // A location's offset in this file, through macro expansions to where it was written.
 inline bool offset_of(CXSourceLocation loc, unsigned& off) {
     CXFile f = nullptr;
@@ -544,7 +566,10 @@ private:
             // constructor through an initialiser list, not as the declaration's own child.
             // And its name is a declaration, so `int x(5)` is not a call to `x`.
             unsigned at;
-            if (offset_of(C().clang_getCursorLocation(c), at)) var_names_.insert(at);
+            // Only a name written here: a variable a macro declares maps to the macro's own
+            // name, and Unreal's `UE_LOG` declares `LOG_Static(Format, ...)`, so every
+            // `UE_LOG(...)` read as a declaration and not a call (1,825 to 43 in Core).
+            if (offset_of(C().clang_getCursorLocation(c), at) && !x_.in_macro(at)) var_names_.insert(at);
             vars_.push_back(c);
             visit(c);
             vars_.pop_back();
@@ -716,7 +741,22 @@ private:
         bool nested;
         std::string record;
         auto parts = scope_parts(c, nested, record);
-        std::string name = spelling(c);
+        std::string name = routine_name(c);
+        if (name.find("type-parameter-") != std::string::npos) {
+            // `operator T&()` is spelled `operator type-parameter-0-0 &`, clang's name for a
+            // template parameter; the name is what is written, up to its `(`.
+            unsigned at;
+            if (offset_of(C().clang_getCursorLocation(c), at)) {
+                std::string w;
+                for (size_t i = x_.tok_at(at); i < x_.toks.size() && x_.toks[i].text != "("; i++) {
+                    if (!w.empty() && namey(x_.toks[i]) && (std::isalnum(static_cast<unsigned char>(w.back())) || w.back() == '_'))
+                        w += ' ';
+                    w += x_.toks[i].text;
+                    if (w.size() > 200) break;
+                }
+                if (w.compare(0, 8, "operator") == 0) name = w;
+            }
+        }
         std::string qualname = join(parts, name);
         int n = ++seen_routines_[qualname];
 
@@ -890,6 +930,12 @@ private:
             // its expansion location, so it cannot say.
             if (x_.in_macro(a)) return;
             name = "<anonymous>";
+        } else if (!x_.written_in_macro(a, name)) {
+            // A record a macro names by pasting is the macro's too: Unreal's
+            // `DECLARE_CYCLE_STAT(..., STAT_X, ...)` is a `struct FStat_STAT_X`, and there
+            // were hundreds. One whose name the file writes is kept: `TAILQ_HEAD(joblist,
+            // job)` is the `struct joblist` tmux goes on to use by that name.
+            return;
         }
         std::string qualname = join(parts, name);
         int n = ++seen_records_[qualname];
@@ -1065,6 +1111,29 @@ private:
     std::set<unsigned> constructions_;  // offsets where what is written constructs a type
     std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
     std::set<std::pair<unsigned, unsigned>> records_read_;  // by extent, so each is read once
+    std::map<unsigned, std::vector<std::pair<CXCursor, CXCursor>>> macro_calls_;  // by the macro's offset
+
+    // **Which call a macro written as a call is.** One that calls a function of its own name
+    // is that call: git's `error(...)` is `(error(...), const_error())`. Otherwise one with a
+    // single callee is that callee: `skip_prefix(...)` is `skip_prefix_impl(...)`. A macro
+    // that expands to several is none of them, and says it is a macro (rule 1): taking the
+    // first made every Unreal `UE_LOG` the construction of a static variable it declares.
+    bool macro_call(unsigned off, const std::string& name, CXCursor& call, CXCursor& ref) {
+        auto it = macro_calls_.find(off);
+        if (it == macro_calls_.end()) return false;
+        for (const auto& [c, r] : it->second)
+            if (!C().clang_Cursor_isNull(r) && spelling(r) == name) {
+                call = c;
+                ref = r;
+                return true;
+            }
+        std::set<std::string> callees;
+        for (const auto& [c, r] : it->second) callees.insert(C().clang_Cursor_isNull(r) ? "" : usr(r));
+        if (callees.size() != 1) return false;
+        call = it->second.front().first;
+        ref = it->second.front().second;
+        return true;
+    }
     std::map<const Routine*, std::vector<Pending>> pending_;
 
     // In a routine's body, during the walk: note what clang made of each call.
@@ -1072,6 +1141,9 @@ private:
         unsigned a, b;
         extent(c, a, b);
         CXCursor ref = C().clang_getCursorReferenced(c);
+        // Every call a macro written here expands to, by the macro's offset: which of them
+        // the written call is, is decided at `emit_calls`, and not by which came first.
+        if (x_.macro_names.count(a)) macro_calls_[a].push_back({c, ref});
         bool ctor = !C().clang_Cursor_isNull(ref) && C().clang_getCursorKind(ref) == CXCursor_Constructor;
         if (ctor && C().clang_getCursorKind(parent) == CXCursor_CXXNewExpr) return;  // the `new` names it
         if (ctor) {
@@ -1098,7 +1170,9 @@ private:
                 pending_[stack_.back()].push_back(p);
                 return;
             }
-            constructions_.insert(a);  // `Foo(a)`, `Foo{a}`: the token scan names it
+            // `Foo(a)`, `Foo{a}`: the token scan names it. Never a macro's name: Unreal's
+            // `UE_LOG` declares a static variable, and every `UE_LOG` was a construction.
+            if (!x_.macro_names.count(a)) constructions_.insert(a);
         }
         resolved_.emplace(a, std::make_pair(c, ref));
     }
@@ -1376,15 +1450,28 @@ private:
             e.caller_id = *owner->r.id;
             e.expr = p.expr;
             e.construction = p.construction;
-            // A call written as a macro is what the macro's first call is, where it has one:
+            // A call written as a macro is the call `macro_call` says it is, where it says one:
             // git's `skip_prefix(...)` reaches `skip_prefix_impl`, which is what runs. Where
-            // it expands to no call at all (`N_("...")`, `OPT_BOOL(...)`, a struct literal)
+            // it expands to no call at all, or to several, (`N_("...")`, `OPT_BOOL(...)`, a struct literal)
             // it is a macro and says so, not a call clang failed to resolve (rule 32).
             // The two are different counts, and only one is a gap in what clang could read.
             auto mac = x_.macro_names.find(p.off);
-            if (p.resolved) resolve(e, p.call, p.ref);
-            else if (mac != x_.macro_names.end()) e.macro = mac->second;
-            else e.untyped = true;  // written, and clang kept nothing to say what it reaches
+            if (mac != x_.macro_names.end() && !p.construction) {
+                CXCursor call, ref;
+                if (macro_call(p.off, mac->second, call, ref)) {
+                    resolve(e, call, ref);
+                } else {
+                    e.macro = mac->second;
+                    auto mc = macro_calls_.find(p.off);
+                    if (mc != macro_calls_.end())
+                        for (const auto& [c, r] : mc->second)
+                            if (!C().clang_Cursor_isNull(r)) e.macro_usrs.push_back(usr(r));
+                }
+            } else if (p.resolved) {
+                resolve(e, p.call, p.ref);
+            } else {
+                e.untyped = true;  // written, and clang kept nothing to say what it reaches
+            }
             x_.out->sites.push_back(std::move(e));
         }
     }
@@ -1407,7 +1494,7 @@ private:
         e.usr = usr(ref);
         bool nested;
         std::string rec;
-        e.qualified = join(scope_parts(ref, nested, rec), spelling(ref));
+        e.qualified = join(scope_parts(ref, nested, rec), routine_name(ref));
         e.is_ctor = rk == CXCursor_Constructor;
         e.is_method = rk == CXCursor_CXXMethod || rk == CXCursor_Destructor || rk == CXCursor_ConversionFunction;
         if (e.is_method) {

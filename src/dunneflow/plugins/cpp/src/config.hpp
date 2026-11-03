@@ -94,6 +94,7 @@ struct Session {
     std::vector<std::string> base;         // every parse gets these
     std::vector<std::string> include_dirs; // inferred, sorted
     bool tree_has_cpp = false;
+    std::string cxx = "c++";  // what C++ is compiled as: a preset may say objective-c++
     std::string preset;                    // the matched preset's name, or ""
     std::string top;                       // the preset's top, absolute, or ""
     std::map<std::string, std::vector<std::string>> database;  // file -> args, from compile_commands.json
@@ -102,6 +103,7 @@ struct Session {
     std::vector<std::string> read_beyond;  // include roots above the analysed root
     int ambiguous = 0;                     // spellings two or more files answer
     int unanswered = 0;                    // spellings no file in reach answers
+    int above = 0;                         // spellings whose directory would be above the ceiling
 
     // The arguments for one file. The language comes first, so a database entry that names
     // another is still parsed as the file's own suffix says.
@@ -109,9 +111,9 @@ struct Session {
         std::vector<std::string> a;
         bool c = is_c(path) || (is_header(path) && !tree_has_cpp);
         if (is_header(path)) {
-            a = {"-x", c ? "c-header" : "c++-header"};
+            a = {"-x", c ? "c-header" : cxx + "-header"};
         } else {
-            a = {"-x", c ? "c" : "c++"};
+            a = {"-x", c ? "c" : cxx};
         }
         // **No error limit.** clang stops a file at its twentieth error ("too many errors
         // emitted, stopping now", a fatal), and a reader that reads on past a missing header
@@ -229,6 +231,11 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
         auto pd = preset->platform_defines.find(plat);
         if (pd != preset->platform_defines.end())
             for (const auto& d : pd->second) s.base.push_back("-D" + d);
+        auto pl = preset->platform_language.find(plat);
+        if (pl != preset->platform_language.end() && pl->second != s.cxx) {
+            s.cxx = pl->second;
+            s.notes.push_back("the " + preset->name + " preset compiles C++ as " + s.cxx + " here, as its build tool does");
+        }
         s.notes.push_back("the " + preset->name + " preset applied (" + preset->marker +
                           " found), with the defines its build tool would pass");
     }
@@ -291,6 +298,15 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
                     hits.push_back(g);
         if (hits.size() == 1) {
             std::string dir = hits[0].substr(0, hits[0].size() - sp.size() - 1);
+            // **Never above the top, nor above the root without one** (Tom's decision at the
+            // gate, and rule 108). The file is in reach, but the directory a spelling makes of
+            // it may not be: Core's `#include "Runtime/Launch/Resources/Version.h"` made
+            // `Engine/Source` an include directory, above the preset's `Runtime`.
+            const std::string& ceiling = s.top.empty() ? s.root : s.top;
+            if (dir != ceiling && dir.rfind(ceiling + "/", 0) != 0) {
+                s.above++;
+                continue;
+            }
             dirs.insert(dir);
             if (dir != s.root && dir.rfind(s.root + "/", 0) != 0) beyond.insert(dir);
         } else if (hits.size() > 1) {
@@ -303,7 +319,10 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
     s.read_beyond.assign(beyond.begin(), beyond.end());
     s.notes.push_back(std::to_string(s.include_dirs.size()) + " include directories inferred from " +
                       std::to_string(spellings.size()) + " #include spellings; " +
-                      std::to_string(s.ambiguous) + " answered by more than one file and left unresolved");
+                      std::to_string(s.ambiguous) + " answered by more than one file and left unresolved" +
+                      (s.above ? "; " + std::to_string(s.above) + " not taken, because the directory they name is above " +
+                                     (s.top.empty() ? std::string("the analysed root") : "the preset's top")
+                               : std::string()));
     return s;
 }
 

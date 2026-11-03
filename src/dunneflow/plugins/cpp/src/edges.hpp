@@ -168,10 +168,22 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
             e.name = w.name;
             e.how = how;
         };
-        if (!s.macro.empty()) {
+        bool any_here = false;
+        for (const auto& u : s.macro_usrs) any_here = any_here || bodies.count(u) > 0;
+        if (!s.macro.empty() && !s.macro_usrs.empty() && !any_here) {
+            // Several calls, none of them this tree's: the call leaves, as what was written.
+            // macOS's `memcpy(d, s, n)` is `__builtin___memcpy_chk(d, s, n,
+            // __builtin_object_size(d, 0))`, and what a reader wrote, and goes looking for, is
+            // `memcpy`.
+            e.reason = "outside";
+            e.frontier = s.macro;
+            e.how = "clang · a macro whose calls are all outside this tree";
+            outside++;
+        } else if (!s.macro.empty()) {
             e.reason = "unfollowed";
             e.frontier = s.macro;
-            e.how = "clang · a macro that expands to no call";
+            e.how = s.macro_usrs.empty() ? "clang · a macro that expands to no call"
+                                         : "clang · a macro that expands to several calls";
             macros++;
             unknown++;
         } else if (s.untyped || (s.usr.empty() && !s.bound)) {
@@ -270,7 +282,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                     " reaching outside it, " + std::to_string(dynamic) + " dispatched, " + std::to_string(untyped) +
                     " that clang could not resolve, " + std::to_string(bound) + " through a function value, " +
                     std::to_string(ambiguous) + " with two definitions to choose between, " + std::to_string(macros) +
-                    " written as a macro that expands to no call");
+                    " written as a macro that is not one call");
     if (constructs) notes.push_back("edges: " + std::to_string(constructs) + " constructions of this tree's classes by a constructor nobody wrote");
     if (t.missing_files) {
         notes.push_back("edges: " + std::to_string(t.missing_files) + " of " + std::to_string(t.files) +

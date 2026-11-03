@@ -287,6 +287,12 @@ presets:
       darwin: [UBT_COMPILED_PLATFORM=Mac, PLATFORM_MAC=1, PLATFORM_APPLE=1]
       linux: [UBT_COMPILED_PLATFORM=Linux, PLATFORM_LINUX=1, PLATFORM_UNIX=1]
       win32: [UBT_COMPILED_PLATFORM=Windows, PLATFORM_WINDOWS=1, PLATFORM_MICROSOFT=1]
+    # UnrealBuildTool's Apple toolchain compiles every `.cpp` as Objective-C++
+    # (`AppleToolChain.cs`, `GetCompileArguments_CPP`: `-x objective-c++`), and the Mac
+    # sources are written for it: `MacPlatformMisc.cpp` sends `@autoreleasepool` and `[NSApp
+    # ...]`. Read as C++, every routine after the first `@` was lost.
+    platform_language:
+      darwin: objective-c++
     module_defines:
       file_suffix: .Build.cs
       define: "{MODULE}_API="

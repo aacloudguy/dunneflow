@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .detectors import load_rules
@@ -1180,12 +1181,25 @@ DETECTORS = (
 )
 
 
-def detect(store: Store, include_tests: bool = False) -> Report:
-    """Run every detector against a stored graph."""
+def detect(store: Store, include_tests: bool = False,
+           tick: Callable[[int, int, str], None] | None = None) -> Report:
+    """Run every detector against a stored graph.
+
+    `tick(done, total, what)` is called before each detector and once at the end, so a run
+    that spends forty minutes here -- Unreal's `Runtime`, 223,614 routines -- says which of
+    fifteen it is on rather than nothing at all.
+    """
     report = Report()
-    for fn in DETECTORS:
+    total = len(DETECTORS) + 1
+    for i, fn in enumerate(DETECTORS):
+        if tick is not None:
+            tick(i, total, "detector")
         fn(store, report)
+    if tick is not None:
+        tick(total - 1, total, "detector")
     _dead_code(store, report, include_tests)
+    if tick is not None:
+        tick(total, total, "detector")
     # **Every finding says what it is about, or why it cannot.** Asserted here rather than
     # in `Report.add`, and the difference is what the rule is *about*: this is a contract on
     # **detectors**, not on the `Anomaly` type -- `add` is also called by tests building a

@@ -35,7 +35,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qs
 
-from .. import macapp, revisions, runtime
+from .. import macapp, revisions, runstate, runtime
 from ..docstore import DocStore
 from ..resolve import languages
 from ..resolve import version as version_order
@@ -320,6 +320,17 @@ def build_payload(store: Store, program: str,
     payload["program"] = program
     return payload
 
+
+def _analysing(d: Path) -> dict[str, Any] | None:
+    """The live run another process is making of this program, in the panel's shape, or `None`.
+
+    See `runstate`. `None` for a sidecar whose run has gone: what that leaves behind is a
+    graph marked unfinished, and `finished` already says so in the store's own words.
+    """
+    body = runstate.read(d)
+    if body is None or not body["running"]:
+        return None
+    return runstate.as_progress(body)
 
 def _relaxed(q: dict[str, list[str]]) -> bool:
     """Whether a naming request asks for a leading underscore to be allowed."""
@@ -752,6 +763,8 @@ class _Live:
         # process question was added for. The process question stays beside it: claimed
         # with a child that has exited is still a stale lock and is still cleared.
         self.analysis_claimed = False
+        # The program directory whose terminal-started run the panel is following.
+        self.terminal_dir: Path | None = None
 
     # -- the one door onto a version -------------------------------------- #
 
@@ -1221,6 +1234,7 @@ class _Live:
                 return False
             self.analysis_claimed = True
             self.analysis_proc = None
+            self.terminal_dir = None    # a run started here replaces any ending on show
             self.analysis = {"state": "working", "program": name, "step": "",
                              "done_steps": 0, "steps": 0, "detail": "",
                              # Both stamped now and only `moved` bumped afterwards, so the
@@ -1293,6 +1307,15 @@ class _Live:
         there is a panel on their screen saying it started (design rule 21).
         """
         with self.analysis_lock:
+            own = self.analysis_running()
+        if not own:
+            other = runstate.running_under(revisions.programs_under(self.out_root))
+            if other is None:
+                return False, "no analysis is running"
+            # Outside the lock for the reason given below: up to six seconds of waiting.
+            said = analysis.stop_pid(int(other.get("pid") or 0))
+            return True, f"{other.get('program', '')}: {said}"
+        with self.analysis_lock:
             if not self.analysis_running():
                 return False, "no analysis is running"
             if self.analysis_proc is None:
@@ -1352,13 +1375,52 @@ class _Live:
         that needs to know they have stopped agreeing.
         """
         with self.analysis_lock:
+            own = self.analysis_running()
             out = dict(self.analysis)
+        if not own:
+            # **A run this server did not start**, found by the sidecar it writes (see
+            # `runstate`). Asked only while this server's own slot is idle, so a run the
+            # reader started here is never displaced by one somebody started in a terminal,
+            # and kept on once it is being shown, so the panel watching it sees it end --
+            # `done`, or stopped without finishing -- rather than the idle report replacing
+            # it mid-poll.
+            other = self._terminal_run()
+            if other is not None:
+                return other
+        with self.analysis_lock:
             now = time.time()
             if "began" in out:
                 out["running_for"] = round(now - float(out["began"]), 1)
                 out["silent_for"] = round(now - float(out.get("moved", now)), 1)
-            out["running"] = self.analysis_running()
+            out["running"] = own
             return out
+
+    def _terminal_run(self) -> dict[str, Any] | None:
+        """The live run in this root that some other process started, in the panel's shape.
+
+        **Once one has been shown, its ending is shown too, for `runstate.ENDED_S`.** A panel
+        polls for the end, and the end has to still be there when it asks. This reported the
+        ending *once*, and the browser found what that costs: pressing Stop holds the stop
+        route for its grace period while the panel keeps polling, so the one report of
+        *stopped* went to a poll the panel was not listening to, and every poll after it got
+        the idle report -- a panel stuck on *"asking the server…"* over a run that had
+        ended. A window rather than a count, then. It cannot re-raise a panel on a reload,
+        because `resumeAnalysis` only picks up a run that is running, and a claim here clears
+        it (see `claim_analysis`).
+        """
+        watching = self.terminal_dir
+        if watching is not None:
+            body = runstate.read(watching)
+            if body is not None and (body["running"]
+                                     or time.time() - float(body.get("beat") or 0)
+                                     <= runstate.ENDED_S):
+                return runstate.as_progress(body)
+            self.terminal_dir = None
+        body = runstate.running_under(revisions.programs_under(self.out_root))
+        if body is None:
+            return None
+        self.terminal_dir = self.out_root.resolve() / str(body.get("program") or "")
+        return runstate.as_progress(body)
 
     def note(self, **fields: Any) -> None:
         """Replace the progress report. Whole, never field by field.
@@ -3063,6 +3125,11 @@ class _Handler(BaseHTTPRequestHandler):
                 # leave them hunting for a program they know they started. The switch
                 # refuses it with the store's own sentence.
                 "finished": self._finished(d, is_here),
+                # **Unfinished and still being worked on** is the third answer the graph
+                # cannot give, and the start page said *"never finished — analyse it again"*
+                # over a run two hours into finishing it. The sidecar is a file read, not
+                # an open, so it keeps the bargain above.
+                "analysing": _analysing(d),
                 "files": served_files if is_here else None,
                 # A glob, not an open -- see the note above. It is what tells a reader on
                 # the start page that a program has more than one point in time in it.

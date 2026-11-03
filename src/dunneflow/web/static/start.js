@@ -119,7 +119,17 @@
       </a>`;
     }
     let why = "";
-    if (!p.openable) {
+    const run = p.analysing;
+    if (run) {
+      /* **Unfinished and still being worked on**: the third answer, from the run's own
+         sidecar. Without it this row said "never finished — analyse it again" over a run
+         two hours into finishing, and the button that sentence points at would have
+         started a second analysis into the same directory. */
+      const steps = Number(run.steps) || 0;
+      why = `being analysed from a terminal — ${run.step || "starting"}${
+        run.detail ? " (" + run.detail + ")" : ""}${
+        steps ? `, step ${(Number(run.done_steps) || 0) + 1} of ${steps}` : ""}`;
+    } else if (!p.openable) {
       why = "no map in it — an analysis was started here and wrote nothing";
     } else if (!p.finished) {
       /* The store's own three states, not two: an analysis that was killed leaves a graph
@@ -129,7 +139,7 @@
     }
     const busy = OPENING === p.name;
     return `<button class="start-prog" data-open="${esc(p.name)}"
-                    ${(!p.openable || !p.finished || busy) ? "disabled" : ""}>
+                    ${(!p.openable || !p.finished || run || busy) ? "disabled" : ""}>
       <span class="start-progname">${esc(p.name)}</span>
       <span class="start-progwhat">${busy ? "opening…" : esc(why || points)}</span>
     </button>`;

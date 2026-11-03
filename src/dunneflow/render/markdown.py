@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -80,8 +81,13 @@ def render_all(store: Store, out_dir: Path, program: str,
                docs: DocStore | None = None,
                standards: DocStore | None = None,
                standards_note: str = "",
-               report: Report | None = None) -> list[Path]:
+               report: Report | None = None,
+               tick: Callable[[int, int, str], None] | None = None) -> list[Path]:
     """Write the whole map. Returns the files written.
+
+    `tick(done, total, what)` is called before each document and, inside the flows
+    document, per way in -- the document that is 5,705 sections on Unreal's `Runtime`, and
+    the one that was silent for most of a fifteen-minute phase.
 
     **`report` is the anomalies, detected once.** This function called `detect` twice --
     here for `09-anomalies.md` and again inside `_overview` for the headline that points
@@ -110,27 +116,38 @@ def render_all(store: Store, out_dir: Path, program: str,
     stamp = Stamp.of(store, when)
     if report is None:
         report = detect(store, include_tests)
-    written = [
-        _overview(store, out_dir, program, stamp, report),
-        _entrypoints(store, out_dir, program, stamp),
-        _flows(store, out_dir, program, stamp),
-        _routines(store, out_dir, program, stamp),
-        _data(store, out_dir, program, stamp),
-        _boundaries(store, out_dir, program, stamp),
-        _governance(store, out_dir, program, stamp),
-        render_database(store, out_dir, program, stamp),
-        render_network(store, out_dir, program, stamp),
-        render_anomalies(report, out_dir, program, stamp),
+    say = tick or (lambda _done, _total, _what: None)
+
+    def flows() -> Path:
+        return _flows(store, out_dir, program, stamp,
+                      tick=lambda i, n: say(i, n, "02-flows.md, way in"))
+
+    pages: list[Callable[[], Path | None]] = [
+        lambda: _overview(store, out_dir, program, stamp, report),
+        lambda: _entrypoints(store, out_dir, program, stamp),
+        flows,
+        lambda: _routines(store, out_dir, program, stamp),
+        lambda: _data(store, out_dir, program, stamp),
+        lambda: _boundaries(store, out_dir, program, stamp),
+        lambda: _governance(store, out_dir, program, stamp),
+        lambda: render_database(store, out_dir, program, stamp),
+        lambda: render_network(store, out_dir, program, stamp),
+        lambda: render_anomalies(report, out_dir, program, stamp),
         # Documentation is a parallel input, so its two documents are written whether or
         # not any documentation was found. A glossary that says "nothing defines these
         # eleven words" is a finding; an absent glossary is a silence.
-        render_glossary(store, docs, out_dir, program, stamp),
-        render_naming(store, docs, out_dir, program, stamp,
-                      standards=standards, standards_note=standards_note),
-        render_traceability(store, docs, out_dir, program, stamp),
-        render_mirror(store, docs, out_dir, program, stamp),
-        render_constants(store, out_dir, program, stamp),
+        lambda: render_glossary(store, docs, out_dir, program, stamp),
+        lambda: render_naming(store, docs, out_dir, program, stamp,
+                              standards=standards, standards_note=standards_note),
+        lambda: render_traceability(store, docs, out_dir, program, stamp),
+        lambda: render_mirror(store, docs, out_dir, program, stamp),
+        lambda: render_constants(store, out_dir, program, stamp),
     ]
+    written = []
+    for i, page in enumerate(pages):
+        say(i, len(pages), "document")
+        written.append(page())
+    say(len(pages), len(pages), "document")
     return [w for w in written if w]
 
 
@@ -356,7 +373,8 @@ def _tree_list(tree: dict, depth: int = 0) -> str:
     return "\n".join(out)
 
 
-def _flows(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
+def _flows(store: Store, out: Path, program: str, stamp: Stamp,
+           tick: Callable[[int, int], None] | None = None) -> Path:
     ranked = ways_in(store)
 
     lines = [header(program, "Flows", stamp)]
@@ -372,7 +390,10 @@ def _flows(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     # front door of that application, and a Flows page that mentions none of its four
     # would read as a program with nothing to trace.
     unbound = [d for d in ranked if not d["roots"]]
-    for d in [d for d in ranked if d["roots"]]:
+    rooted = [d for d in ranked if d["roots"]]
+    for n, d in enumerate(rooted):
+        if tick is not None:
+            tick(n, len(rooted))
         flow = trace_flow(store, d["roots"][0], d["name"], d["kind"])
         if not flow.nodes:
             continue

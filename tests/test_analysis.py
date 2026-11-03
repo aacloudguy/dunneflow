@@ -432,10 +432,14 @@ def test_a_report_that_outlived_its_process_is_a_stale_lock_and_is_cleared() -> 
     assert lv.analysis["program"] == "next"
 
 
-def test_stopping_when_nothing_runs_says_so_rather_than_pretending() -> None:
-    """`started: false` and a reason, like every other refusal on this server."""
+def test_stopping_when_nothing_runs_says_so_rather_than_pretending(tmp_path: Path) -> None:
+    """`started: false` and a reason, like every other refusal on this server.
+
+    An empty root, so no other process's sidecar can be found either (see `runstate`)."""
     lv = serve_mod._Live.__new__(serve_mod._Live)
     import threading
+    lv.out_root = tmp_path
+    lv.terminal_dir = None
     lv.analysis_lock = threading.Lock()
     lv.analysis = {"state": "idle"}
     lv.analysis_claimed = False
@@ -443,7 +447,7 @@ def test_stopping_when_nothing_runs_says_so_rather_than_pretending() -> None:
     assert lv.stop_analysis() == (False, "no analysis is running")
 
 
-def test_the_analysis_report_is_replaced_whole_except_its_clock() -> None:
+def test_the_analysis_report_is_replaced_whole_except_its_clock(tmp_path: Path) -> None:
     """`note`'s rule, one slot over: a half-updated report is a state a reader can see.
 
     **Two fields are carried on purpose and everything else is replaced**, which is a
@@ -455,6 +459,8 @@ def test_the_analysis_report_is_replaced_whole_except_its_clock() -> None:
     """
     lv = serve_mod._Live.__new__(serve_mod._Live)
     import threading
+    lv.out_root = tmp_path
+    lv.terminal_dir = None
     lv.analysis_lock = threading.Lock()
     lv.analysis_claimed = False
     lv.analysis_proc = None

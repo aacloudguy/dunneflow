@@ -66,7 +66,7 @@ def _star(path: Path, *, docstring: str = "said", file_hash: str = "h") -> Store
 
 @pytest.fixture(scope="module")
 def star(tmp_path_factory) -> Iterator[Store]:
-    assert N > _limit(), f"N={N} no longer exceeds SQLite's limit of {_limit()}"
+    assert _limit() < N, f"N={N} no longer exceeds SQLite's limit of {_limit()}"
     store = _star(tmp_path_factory.mktemp("star") / "graph.db")
     yield store
     store.close()

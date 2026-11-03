@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import ingest, revisions
+from . import ingest, revisions, runstate
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
 from .ingest.contract import PluginRefused
@@ -305,8 +305,16 @@ class _Progress:
         # nothing to record into, and a fallback that wrote somewhere plausible instead
         # would hide exactly the run this exists for (rule 49).
         self.mark: Callable[[str, str], None] | None = None
+        # **And where every object is also written down**, for whoever is not this run's
+        # parent: the `analysis.json` sidecar (`runstate`). Called whether or not
+        # `--progress-json` is on, because the run nobody is reading the stdout of -- one
+        # started from a terminal -- is exactly the one a dashboard needs to see.
+        self.record: Callable[[dict[str, object]], None] | None = None
+        self._ticked = 0.0
 
     def _say(self, **fields: object) -> None:
+        if self.record is not None:
+            self.record(fields)
         if not self.on:
             return
         print(json.dumps(fields), flush=True)
@@ -346,10 +354,29 @@ class _Progress:
         """
         return round((time.perf_counter() - self._t0) * 1000)
 
-    def detail(self, done: int, total: int) -> None:
-        """Restate the current step with a count. The step is unchanged; only the inside."""
+    def detail(self, done: int, total: int, what: str = "") -> None:
+        """Restate the current step with a count. The step is unchanged; only the inside.
+
+        `what` names the thing being counted when the step counts more than one kind of
+        thing -- writing the map counts documents, and inside the flows document, ways in.
+        """
+        count = f"{done:,}/{total:,}"
         self._say(state="working", step=self.label, done_steps=self.i,
-                  steps=len(self.steps), detail=f"{done:,}/{total:,}", ms=self.ms())
+                  steps=len(self.steps), detail=f"{what} {count}" if what else count,
+                  ms=self.ms())
+
+    def tick(self, done: int, total: int, what: str = "") -> None:
+        """`detail`, at most twice a second, and always for the last of a count.
+
+        For the phases that count in thousands -- 5,705 ways in on one flows page -- where a
+        line per item is a stream the dashboard parses for nothing. The first and the last
+        of every count always go out, so a phase is never silently entered or left.
+        """
+        now = time.perf_counter()
+        if done not in (0, 1, total) and now - self._ticked < 0.5:
+            return
+        self._ticked = now
+        self.detail(done, total, what)
 
     def residue(self, lines: list[str]) -> None:
         """What the walk left out, once, as its own object on the machine channel.
@@ -575,6 +602,29 @@ def _settled(target: Path, pkg_root: Path, found: list[Path], *, docs_moved: boo
 
 
 def cmd_analyze(args: argparse.Namespace) -> int:
+    """`dunneflow analyze`, with its run-state sidecar closed on every way out.
+
+    The sidecar is opened inside `_analyze`, once there is a graph to name, and it must be
+    given its last word however the run leaves -- a refusal, a failure, Ctrl-C or success.
+    `_analyze` has a dozen returns after that point, and a `finally` here is the one place
+    all of them pass (rule 51). A run killed outright gets no last word at all, and that is
+    what the sidecar's heartbeat is for: see `runstate`.
+    """
+    run: list[runstate.RunState] = []
+    code = 1
+    try:
+        code = _analyze(args, run)
+        return code
+    except KeyboardInterrupt:
+        code = 130
+        raise
+    finally:
+        if run:
+            run[0].finish("done" if code == 0 else ("stopped" if code == 130 else "failed"),
+                          code=code)
+
+
+def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     target = Path(args.path).resolve()
     if not target.exists():
         _emit(f"error: {target} does not exist")
@@ -727,6 +777,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # spot: an uncommitted marker is lost by exactly the `kill -9` it exists for.
     store.set_meta_now("complete", "")
     prog.mark = store.set_meta_now
+    # **And the report for whoever is not reading this run's stdout** -- see `runstate`.
+    # Opened here, the moment there is a graph to name, and closed by `cmd_analyze`.
+    run.append(runstate.RunState(out_dir, program=program, revision=revision, graph=db_path,
+                                 argv=sys.argv[1:], source=target).start())
+    prog.record = run[0].note
 
     # -- what read this map, and whether anything was guessed ---------------- #
     #
@@ -1119,7 +1174,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # either way, which is what it has always done.
     prog.step(STEP_ANOMALIES)
     store.warm()
-    rep = detect(store, include_tests=args.include_tests)
+    rep = detect(store, include_tests=args.include_tests, tick=prog.tick)
     ac = rep.counts()
     if not args.quiet and any(ac.values()):
         _emit(
@@ -1143,7 +1198,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         map_out = revisions.map_dir(out_dir, revision)
         files = render_all(store, map_out, program,
                            include_tests=args.include_tests,
-                           docs=doc_store, standards=standards_store, report=rep)
+                           docs=doc_store, standards=standards_store, report=rep,
+                           tick=prog.tick)
         # And the listing that says which map is which. Written every time, because a
         # revision's *state* changes underneath it -- sealing one makes every earlier
         # listing wrong about which snapshot is the working one.
@@ -1163,19 +1219,21 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # machine channel and these four lines would arrive in the middle of it; without it,
     # they are the summary the terminal has always printed. The counts are the same either
     # way -- one is the sentence and one is the object (rule 13).
-    if prog.on:
-        prog.done(program=program, revision=revision, graph=str(db_path),
-                  routines=c["routines"], calls=c["resolved_calls"],
-                  boundaries=c["boundaries"], structures=c["structures"],
-                  entrypoints=c["entrypoints"],
-                  files=stats.found, documents=doc_stats.found if doc_stats else 0,
-                  # The machine channel says the same things the sentence does, per
-                  # language and per unclaimed suffix -- rule 13, across two channels.
-                  languages=dict(sorted(stats.by_lang.items())),
-                  unread=dict(sorted(stats.unclaimed.items())),
-                  no_toolchain=dict(sorted(stats.no_toolchain.items())),
-                  settled=settled)
-    else:
+    # **Said either way**: `done` reaches the sidecar whether or not stdout is the machine
+    # channel, because a run started from a terminal is the one whose ending the dashboard
+    # can only learn from the sidecar. `_say` prints only when `--progress-json` is on.
+    prog.done(program=program, revision=revision, graph=str(db_path),
+              routines=c["routines"], calls=c["resolved_calls"],
+              boundaries=c["boundaries"], structures=c["structures"],
+              entrypoints=c["entrypoints"],
+              files=stats.found, documents=doc_stats.found if doc_stats else 0,
+              # The machine channel says the same things the sentence does, per
+              # language and per unclaimed suffix -- rule 13, across two channels.
+              languages=dict(sorted(stats.by_lang.items())),
+              unread=dict(sorted(stats.unclaimed.items())),
+              no_toolchain=dict(sorted(stats.no_toolchain.items())),
+              settled=settled)
+    if not prog.on:
         print(
             f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal "
             f"calls · {c['boundaries']:,} boundary touches · {c['structures']:,} "

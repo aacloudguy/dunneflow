@@ -30,13 +30,14 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .. import revisions
+from .. import revisions, runstate
 from ..runtime import self_argv
 
 # The tail of the child's stderr kept for a failure's reason. A traceback is a few dozen
@@ -133,6 +134,14 @@ def check(path: str, name: str, out_root: Path, serving: Path | None) -> Verdict
         # is for can act on.
         return Verdict(refusal=f"a file called {wanted} is already sitting where that "
                                "program's directory would go")
+    elsewhere = runstate.read(target) if target.is_dir() else None
+    if elsewhere is not None and elsewhere["running"]:
+        # **Started somewhere else and still going** -- a terminal, or another server. Two
+        # analyses writing one program's directory collide on its graph and its sidecar,
+        # and the panel above already shows this one, so the answer is to watch it.
+        return Verdict(refusal=f"{wanted} is being analysed already, from a terminal "
+                               f"(process {elsewhere.get('pid')}). Its progress is in the "
+                               f"panel; stop it there first to start another.")
     if revisions.newest(target, revisions.GRAPH) is not None:
         # Allowed, and **said out loud**. `analyze` reuses the working revision, so this
         # replaces that snapshot rather than adding one beside it.
@@ -203,6 +212,26 @@ def own_group() -> dict[str, Any]:
 UNDELIVERABLE = (OSError, SystemError, AttributeError, TypeError, ValueError)
 
 
+def _group_of(proc: Any) -> int | None:
+    """The process group a stop may address, or `None` when only the process itself may be.
+
+    **A run this server started is a group of its own** (`own_group`), and addressing the
+    group is how its pool workers are reached. A run started from a terminal is not: it is a
+    member of the shell's job, and that job's group can be the one this server is in -- a
+    script that starts both with `&`. Signalling it would stop the dashboard along with the
+    analysis. So the group is addressed only when it is not ours, and `PidHandle` says up
+    front that it is not a group leader, which is what Windows needs to know (a console break
+    reaches a group *leader* and nothing else).
+    """
+    if sys.platform == "win32":
+        return None             # no process groups to address; see `_interrupt_group`
+    try:
+        group = os.getpgid(proc.pid)
+    except UNDELIVERABLE:
+        return None
+    return None if group == os.getpgrp() else group
+
+
 def _interrupt_group(proc: Any) -> bool:
     """Ask the child **and everything it started** to stop, and let it close what it holds.
 
@@ -236,13 +265,18 @@ def _interrupt_group(proc: Any) -> bool:
     anything (rule 42), and the wrong class here was the plausible one.
     """
     if sys.platform == "win32":
+        if not getattr(proc, "own_group", True):
+            return False        # not a group leader: a break would reach nothing, or more
         try:
             os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
             return True
         except UNDELIVERABLE:
             return False
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        group = _group_of(proc)
+        if group is None:
+            raise ProcessLookupError(proc.pid)
+        os.killpg(group, signal.SIGTERM)
         return True
     except UNDELIVERABLE:
         try:
@@ -276,7 +310,10 @@ def _kill_group(proc: Any) -> bool:
         except (*UNDELIVERABLE, subprocess.TimeoutExpired):
             return False
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        group = _group_of(proc)
+        if group is None:
+            raise ProcessLookupError(proc.pid)
+        os.killpg(group, signal.SIGKILL)
         return True
     except UNDELIVERABLE:
         try:
@@ -390,6 +427,43 @@ def stop(proc: Any, *, grace: float = 3.0) -> str:
     except subprocess.TimeoutExpired:
         return "it would not stop, even when killed"
 
+
+
+class PidHandle:
+    """A run this process did not start, addressed by its pid, in the shape `stop` takes.
+
+    `stop` was written against a `Popen` -- `pid`, `poll`, `wait`, `send_signal` -- and the
+    rungs, the forced-kill note and the sentences are the part worth keeping. A run started
+    from a terminal and found through its `analysis.json` sidecar has only a pid, so this
+    answers those four from the pid. `own_group` is false: see `_group_of`.
+
+    `poll` cannot learn an exit code it is not the parent of, so it says `0` for *gone*,
+    which `stop` reads only as *it has ended*.
+    """
+
+    own_group = False
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+    def poll(self) -> int | None:
+        return None if runstate.alive(self.pid) else 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        end = None if timeout is None else time.monotonic() + timeout
+        while self.poll() is None:
+            if end is not None and time.monotonic() >= end:
+                raise subprocess.TimeoutExpired(f"pid {self.pid}", timeout or 0)
+            time.sleep(0.1)
+        return 0
+
+    def send_signal(self, sig: int) -> None:
+        os.kill(self.pid, sig)
+
+
+def stop_pid(pid: int, *, grace: float = 3.0) -> str:
+    """`stop`, for a run found by its sidecar rather than started here."""
+    return stop(PidHandle(pid), grace=grace)
 
 def run(source: Path, name: str, out_root: Path, docs: bool,
         note: Callable[..., None], *,

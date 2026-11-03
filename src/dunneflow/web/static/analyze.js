@@ -82,6 +82,7 @@
      slots on the server for the reason stated there, and sharing one here would put an
      analysis behind the switch scrim after all. */
   let ANALYSIS = null;
+  let RESUME_TIMER = 0;
 
   /* **A run outlives the page that started it, so the page has to ask.**
    *
@@ -458,7 +459,13 @@
       /* Three endings, not one. `stopped` settles like `failed` does -- the run is over and
          polling a finished slot for ever is a request every 600 ms that can never say
          anything new. */
-      if (a.state === "failed" || a.state === "stopped") return;
+      if (a.state === "failed" || a.state === "stopped") {
+        /* **The list changed too**: a stopped run leaves a program that never finished, and
+           a terminal run's row said "being analysed" until the page was reloaded -- found in
+           the browser, stopping one from here. */
+        await HOST.changed();
+        return;
+      }
       window.setTimeout(tick, 600);
     };
     window.setTimeout(tick, 400);
@@ -578,6 +585,11 @@
            are quiet for a while — resolving a large program says nothing until it is
            done — so this may be working. It may also be stuck.</p>` : ""}
         ${residueBlock(a)}
+        ${/* A run found by its sidecar rather than started here: said, because the reader
+             did not press anything to make this panel appear, and Stop reaches a process
+             in somebody's terminal. */
+          a.origin === "terminal" ? `<p class="hint">Started from a terminal (process
+             ${esc(String(a.pid || "?"))}), not from here. Stop ends it there too.</p>` : ""}
         <p class="hint">The map on screen is untouched. Keep reading.</p>
         <div class="an-foot">
           <button class="linkbtn" data-anstop>Stop it</button>
@@ -679,7 +691,19 @@
     wire(host) { Object.assign(HOST, host || {}); },
     open(prefill) { openAnalyze(prefill); },
     close() { closeAnalyze(); },
-    resume() { return resumeAnalysis(); },
+    resume() {
+      /* **And asked again while nothing is shown**, because a run this page did not start
+         -- one begun in a terminal, found by its sidecar -- can begin at any moment, and a
+         reader who opened the dashboard to check on a two-hour run must not have to know to
+         reload. Every ten seconds, only while the tab is visible and no panel is up: one
+         small GET, against a run that would otherwise be invisible for its whole length. */
+      if (!RESUME_TIMER) {
+        RESUME_TIMER = setInterval(() => {
+          if (!ANALYSIS && !document.hidden) resumeAnalysis();
+        }, 10000);
+      }
+      return resumeAnalysis();
+    },
     isOpen() { return !!ANALYZE; },
     running() { return ANALYSIS; },
   };

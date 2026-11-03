@@ -359,3 +359,113 @@ def test_a_call_outside_the_tree_says_where_it_went(edges):
     # The inline namespace a standard library hides in is not part of what anybody wrote.
     assert by[("src/app.cpp", "std.getline")].frontier == "std.getline"
     assert any(n.startswith("edges: 3 files parsed by libclang") for n in said), said
+
+
+# ------------------------------------------- rule 98, on tmux, git and nmap --- #
+#
+# Each of these was found by reading `dunneflow check` and the map against the source of
+# a real C tree (chunk 4), and each is the smallest tree that shows it.
+
+def _tree(root: Path, files: dict[str, str]):
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    paths = sorted(root / rel for rel in files)
+    assert PLUGIN is not None
+    PLUGIN.open(root, paths)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(paths, root)}
+        return facts, list(PLUGIN.edges()), list(PLUGIN.opened_notes) + list(PLUGIN.edges_said)
+    finally:
+        PLUGIN.close()
+
+
+@needs_clang
+def test_an_inactive_arm_and_a_directive_line_are_not_code(tmp_path):
+    """`clang_tokenize` lexes the raw text, so both were in the token scan: an inactive arm's
+    calls were recorded beside the active one's, and nmap's `#if !defined(LINUX)` was a
+    control point with four calls to `defined` in it."""
+    facts, _, _ = _tree(tmp_path, {"a.c": (
+        "int on(void) { return 1; }\n"
+        "int off(void) { return 0; }\n"
+        "int f(void) {\n"
+        "#if defined(NOT_HERE) && \\\n"
+        "    !defined(NOR_HERE)\n"
+        "    if (off()) return off();\n"
+        "#else\n"
+        "    if (on()) return on();\n"
+        "#endif\n"
+        "    return 0;\n"
+        "}\n")})
+    ff = facts["a.c"]
+    assert [c.callee_expr for c in ff.calls] == ["on", "on"]
+    assert [(p.line_start, p.header) for p in ff.control] == [(8, "if (on())")]
+
+
+@needs_clang
+def test_a_call_a_macro_writes_is_the_call_it_expands_to(tmp_path):
+    """git's `skip_prefix(...)` is `skip_prefix_impl(...)` written in `git-compat-util.h`.
+    The walk judged a cursor by where it was *spelled*, so it never entered one, and 22,348
+    of git's calls had nothing to say where they went. A macro that expands to no call says
+    that instead (Rust's word for its own `macro_rules!`)."""
+    facts, got, _ = _tree(tmp_path, {
+        "m.h": "int sp_impl(int);\nint g(int);\n#define SP(x) sp_impl((x))\n"
+               "#define ID(x) (x)\n#define N_(s) (s)\n",
+        "m.c": '#include "m.h"\nint sp_impl(int x) { return x; }\nint g(int x) { return x; }\n'
+               'const char *u(void) { SP(1); ID(g(2)); return N_("text"); }\n'})
+    by = _by_expr(facts, got)
+    assert (by[("m.c", "SP")].name, by[("m.c", "SP")].line) == ("sp_impl", 2)
+    assert by[("m.c", "g")].name == "g"
+    n = by[("m.c", "N_")]
+    assert (n.reason, n.frontier, n.file) == ("unfollowed", "N_", "")
+
+
+@needs_clang
+def test_of_several_definitions_the_one_a_file_can_see_is_the_one_it_gets(tmp_path):
+    """C has one definition of an external function per program, so a file that defines
+    what it calls links its own: tmux's `osdep-freebsd.c` and its `cmp_procs`, which two
+    other platforms' files define too. A caller that sees none stays without an edge."""
+    facts, got, _ = _tree(tmp_path, {
+        "a.c": "int dup(void) { return 1; }\nint fa(void) { return dup(); }\n",
+        "b.c": "int dup(void) { return 2; }\n",
+        "c.c": "int dup(void);\nint fc(void) { return dup(); }\n"})
+    by = _by_expr(facts, got)
+    assert (by[("a.c", "dup")].file, by[("a.c", "dup")].line) == ("a.c", 1)
+    assert (by[("c.c", "dup")].file, by[("c.c", "dup")].candidates) == ("", 2)
+
+
+@needs_clang
+def test_a_redefinition_clang_refused_loses_a_tie(tmp_path):
+    """git's `compat/precompose_utf8.c` redefines what `git-compat-util.h` defines `static
+    inline` when `PRECOMPOSE_UNICODE` is unset; the build compiles one or the other."""
+    facts, got, _ = _tree(tmp_path, {
+        "h.h": "static inline int pre(int x) { return x; }\n",
+        "p.c": '#include "h.h"\nint pre(int x) { return x + 1; }\n',
+        "u.c": '#include "h.h"\nint use(void) { return pre(1); }\n'})
+    e = _by_expr(facts, got)[("u.c", "pre")]
+    assert (e.file, e.line, e.candidates) == ("h.h", 1, 0)
+
+
+@needs_clang
+def test_an_inferred_directory_never_shadows_the_system_s_own_headers(tmp_path):
+    """nmap's libssh2 carries an OS/400 `stdio.h`: the one file in the tree to answer
+    `<stdio.h>`, so its directory was inferred, and as `-I` it shadowed the system's own —
+    300 of nmap's files went looking for OS/400's `qadrt.h`."""
+    _, got, said = _tree(tmp_path, {
+        "os400/include/stdio.h": "#include <qadrt.h>\n",
+        "main.c": '#include <stdio.h>\nint main(void) { printf("hi\\n"); return 0; }\n'})
+    # The OS/400 header's own parse misses `qadrt.h`, and only that one: `main.c` gets the
+    # system's `stdio.h`.
+    assert "  1x 'qadrt.h' file not found" in said, said
+    assert [(e.reason, e.frontier) for e in got] == [("outside", "printf")]
+
+
+@needs_clang
+def test_a_nameless_record_a_macro_writes_is_not_a_structure(tmp_path):
+    """Every `TAILQ_ENTRY(window) entry;` is a `struct { ... }`: tmux had 190 structures
+    called `<anonymous>`. One written by hand is still read."""
+    facts, _, _ = _tree(tmp_path, {"q.c": (
+        "#define ENTRY(t) struct { struct t *next; }\n"
+        "struct node { ENTRY(node) link; int v; };\n"
+        "struct { int a; } g;\n")})
+    assert sorted(s.name for s in facts["q.c"].structures) == ["<anonymous>", "node"]

@@ -20,6 +20,9 @@
 //   - `untyped`: the call is written and clang kept nothing to say what it reaches — a
 //     statement it could not make sense of, usually for want of a header (rule 1).
 //   - `bound`: a call through a function pointer, a `std::function` or a member holding one.
+//   - `unfollowed`, with the macro's name as the frontier: a function-like macro that
+//     expands to no call (`N_("x")`, `OPT_BOOL(...)`), which is Rust's word for its own
+//     `macro_rules!`. One that expands to a call is that call's edge.
 
 #pragma once
 
@@ -45,12 +48,16 @@ struct Tree {
     std::vector<extract::Over> overs;
     std::vector<std::pair<std::string, std::string>> bases;
     std::vector<std::string> read_beyond;
-    long fatal_files = 0, files = 0, skipped_lines = 0;
+    long fatal_files = 0, missing_files = 0, files = 0, skipped_lines = 0;
     std::map<std::string, long> missing;  // first missing include, per file that had one
 
     void add(extract::Result& r) {
         files++;
         if (r.fatal) fatal_files++;
+        // Counted by what clang said, not by its severity: under `KeepGoing` an include not
+        // found is an error in one file and a fatal error in the next, and a count of
+        // fatals alone said nothing of nmap's 300 files missing OS/400's `qadrt.h`.
+        if (!r.first_missing.empty()) missing_files++;
         skipped_lines += r.skipped_lines;
         if (!r.first_missing.empty()) missing[r.first_missing]++;
         for (auto& s : r.sites) sites.push_back(std::move(s));
@@ -63,6 +70,7 @@ struct Tree {
 struct Where {
     std::string file, name;
     long line = 0;
+    bool invalid = false;
     bool operator<(const Where& o) const {
         return std::tie(file, line, name) < std::tie(o.file, o.line, o.name);
     }
@@ -82,12 +90,24 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
             if (it == records.end() || std::tie(d.file, d.line) < std::tie(it->second->file, it->second->line))
                 records[d.usr] = &d;
         } else {
-            Where w{d.file, d.name, d.line};
+            Where w{d.file, d.name, d.line, d.invalid};
             auto& v = bodies[d.usr];
             if (std::find(v.begin(), v.end(), w) == v.end()) v.push_back(w);
         }
     }
-    for (auto& [u, v] : bodies) std::sort(v.begin(), v.end());
+    // **A definition clang refused loses a tie, and only a tie.** git's
+    // `compat/precompose_utf8.c` defines what `git-compat-util.h` already defines `static
+    // inline` when `PRECOMPOSE_UNICODE` is unset: the build compiles one or the other, and
+    // under this configuration the file's is a redefinition. Offered beside the valid one, it
+    // made every call ambiguous. But a definition alone is kept even when refused: tmux's
+    // `server_start` conflicts with its own prototype only because libevent's `event.h` is
+    // missing on the machine, and dropping it would send a call inside the tree outside it.
+    for (auto& [u, v] : bodies) {
+        std::sort(v.begin(), v.end());
+        size_t valid = std::count_if(v.begin(), v.end(), [](const Where& w) { return !w.invalid; });
+        if (valid > 0 && valid < v.size())
+            v.erase(std::remove_if(v.begin(), v.end(), [](const Where& w) { return w.invalid; }), v.end());
+    }
 
     // Who overrides whom, transitively, and who derives from whom.
     std::map<std::string, std::set<std::string>> overridden_by;  // method -> its overriders
@@ -136,7 +156,8 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         return std::tie(a.caller_id, a.site_id) < std::tie(b.caller_id, b.site_id);
     });
 
-    long supplied = 0, outside = 0, unknown = 0, dynamic = 0, ambiguous = 0, untyped = 0, bound = 0, constructs = 0;
+    long supplied = 0, outside = 0, unknown = 0, dynamic = 0, ambiguous = 0, untyped = 0, bound = 0, constructs = 0,
+         macros = 0;
     for (const auto& s : t.sites) {
         facts::SuppliedEdge e;
         e.site_id = s.site_id;
@@ -147,7 +168,13 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
             e.name = w.name;
             e.how = how;
         };
-        if (s.untyped || (s.usr.empty() && !s.bound)) {
+        if (!s.macro.empty()) {
+            e.reason = "unfollowed";
+            e.frontier = s.macro;
+            e.how = "clang · a macro that expands to no call";
+            macros++;
+            unknown++;
+        } else if (s.untyped || (s.usr.empty() && !s.bound)) {
             e.reason = "untyped";
             untyped++;
             unknown++;
@@ -158,7 +185,24 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         } else {
             auto found = bodies.find(s.usr);
             bool has = found != bodies.end();
-            if (has && found->second.size() > 1) {
+            // **Where several definitions share a USR, the one the caller's translation unit
+            // can see is the one it gets.** A program has one definition of an external
+            // function (C11 6.9p5, C++'s one-definition rule), so a file that holds one and is
+            // linked links that one: tmux's `osdep-freebsd.c` calling its own `cmp_procs`,
+            // which `osdep-netbsd.c` and `osdep-dragonfly.c` also define. And an inline
+            // definition is the one its header gives: zlib's `contrib/iostream` and
+            // `contrib/iostream3` each have a `gzfilebuf` with an inline `is_open`, and each
+            // `zfstream.cpp` includes its own `zfstream.h`. A caller that sees no definition
+            // has no such answer and stays without an edge (rule 1).
+            const Where* own = nullptr;
+            int owns = 0;
+            if (has && found->second.size() > 1 && !s.seen.empty())
+                for (const auto& w : found->second)
+                    if (w.file == s.seen && ++owns == 1) own = &w;
+            if (owns != 1) own = nullptr;
+            if (own) {
+                to(*own, "clang · the definition this file can see");
+            } else if (has && found->second.size() > 1) {
                 e.candidates = static_cast<int64_t>(found->second.size());
                 e.frontier = s.qualified;
                 ambiguous++;
@@ -225,16 +269,20 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                     std::to_string(supplied) + " calls given a definition in this tree, " + std::to_string(outside) +
                     " reaching outside it, " + std::to_string(dynamic) + " dispatched, " + std::to_string(untyped) +
                     " that clang could not resolve, " + std::to_string(bound) + " through a function value, " +
-                    std::to_string(ambiguous) + " with two definitions to choose between");
+                    std::to_string(ambiguous) + " with two definitions to choose between, " + std::to_string(macros) +
+                    " written as a macro that expands to no call");
     if (constructs) notes.push_back("edges: " + std::to_string(constructs) + " constructions of this tree's classes by a constructor nobody wrote");
-    if (t.fatal_files) {
-        notes.push_back("edges: " + std::to_string(t.fatal_files) + " of " + std::to_string(t.files) +
-                        " files hit a fatal error (most often an #include not found), and clang read on past it");
+    if (t.missing_files) {
+        notes.push_back("edges: " + std::to_string(t.missing_files) + " of " + std::to_string(t.files) +
+                        " files have an #include that was not found, and clang read on past it");
         std::vector<std::pair<long, std::string>> top;
         for (const auto& [m, n] : t.missing) top.push_back({-n, m});
         std::sort(top.begin(), top.end());
         for (size_t i = 0; i < top.size() && i < 6; i++) notes.push_back("  " + std::to_string(-top[i].first) + "x " + top[i].second);
     }
+    if (t.fatal_files)
+        notes.push_back("edges: " + std::to_string(t.fatal_files) + " of " + std::to_string(t.files) +
+                        " files hit a fatal error, and clang read on past it");
     if (t.skipped_lines)
         notes.push_back("edges: " + std::to_string(t.skipped_lines) +
                         " lines are in #if arms this configuration does not take, and were not read");

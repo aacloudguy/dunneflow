@@ -54,6 +54,8 @@ boundaries:
   - kind: FILE
     direction: IN
     exact: [fopen, fopen_s, freopen, fread, fgets, fgetc, getline, open, read, mmap,
+            fdopen, openat, pread, readv, readlink, fscanf, opendir, fdopendir, readdir,
+            scandir, glob,
             std.ifstream, std.wifstream, ifstream,
             FFileHelper.LoadFileToString, FFileHelper.LoadFileToStringArray,
             FFileHelper.LoadFileToArray, FFileHelper.LoadANSITextFileToStrings,
@@ -63,12 +65,21 @@ boundaries:
   - kind: FILE
     direction: OUT
     exact: [fwrite, fputs, fputc, fprintf, write, ftruncate, remove, rename, unlink,
+            creat, pwrite, writev, truncate, mkdir, rmdir, chmod, link, symlink,
             std.ofstream, std.wofstream, ofstream,
             FFileHelper.SaveStringToFile, FFileHelper.SaveStringArrayToFile,
             FFileHelper.SaveArrayToFile,
             IFileManager.Get.CreateFileWriter, IFileManager.Get.Delete,
             IFileManager.Get.Move, IPlatformFile.OpenWrite]
     method: [SaveStringToFile, SaveArrayToFile, CreateFileWriter, OpenWrite]
+    target_arg: 0
+  # Whether a file is there, and what it is: Python's `os.path.exists` and `Path.stat`, at
+  # the same low salience, because a reader looking for what the program reads is not
+  # looking for every check that it could.
+  - kind: FILE
+    direction: IN
+    salience: low
+    exact: [stat, lstat, fstat, fstatat, access, faccessat, realpath]
     target_arg: 0
   - kind: FILE
     direction: BOTH
@@ -81,8 +92,9 @@ boundaries:
   # --------------------------------------------------------------------- network ---
   - kind: NETWORK
     direction: BOTH
-    exact: [socket, connect, bind, listen, accept, send, sendto, recv, recvfrom,
-            getaddrinfo, gethostbyname,
+    exact: [socket, connect, bind, listen, accept, accept4, send, sendto, sendmsg, recv,
+            recvfrom, recvmsg, getaddrinfo, getnameinfo, gethostbyname, gethostbyaddr,
+            SSL_connect, SSL_accept, SSL_read, SSL_write, SSL_read_ex, SSL_write_ex,
             FHttpModule.Get.CreateRequest, FTcpSocketBuilder, FUdpSocketBuilder]
     prefix: [curl_easy_, curl_multi_, curl_global_, FHttpModule., ISocketSubsystem.]
     method: [ProcessRequest, SetURL, CreateRequest]
@@ -98,7 +110,9 @@ boundaries:
   # --------------------------------------------------------------------- process ---
   - kind: PROCESS
     direction: BOTH
-    exact: [system, popen, _popen, fork, execv, execvp, execl, execlp, posix_spawn,
+    exact: [system, popen, _popen, fork, vfork, execv, execvp, execve, execvpe, execl,
+            execlp, execle, posix_spawn, posix_spawnp, kill, _execv, _execvp, _spawnv,
+            _spawnvp,
             CreateProcessA, CreateProcessW, ShellExecuteA, ShellExecuteW,
             FPlatformProcess.CreateProc, FPlatformProcess.ExecProcess,
             FPlatformProcess.LaunchURL]

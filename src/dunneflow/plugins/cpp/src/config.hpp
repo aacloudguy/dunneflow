@@ -22,6 +22,14 @@
 // tree's own files: a spelling exactly one file's path ends with adds that file's prefix as
 // an include directory, and a spelling two files answer adds nothing and is counted (rule
 // 1: a guess between two headers is a wrong declaration as often as a right one).
+//
+// **An inferred directory is searched after the system's, never before** (`-idirafter`).
+// A tree carries look-alikes of system headers for platforms it is not being built for:
+// nmap's libssh2 has an OS/400 `stdio.h` and `sys/socket.h`, and git a win32 `alloca.h`.
+// Each was the one file in the tree to answer its spelling, so each was inferred, and as
+// `-I` it then shadowed the system's own: 300 of nmap's files went looking for OS/400's
+// `qadrt.h` and 653 of git's for `malloc.h`, and both lost a quarter of their calls.
+// A directory the tree's build really does put first is what `compile_commands.json` says.
 
 #pragma once
 
@@ -105,14 +113,22 @@ struct Session {
         } else {
             a = {"-x", c ? "c" : "c++"};
         }
+        // **No error limit.** clang stops a file at its twentieth error ("too many errors
+        // emitted, stopping now", a fatal), and a reader that reads on past a missing header
+        // meets twenty errors early: 210 of nmap's 766 files stopped there, and every call
+        // after the stop had nothing to say where it went. Last, so a database's own
+        // `-ferror-limit` does not put it back.
         auto db = database.find(path);
         if (db != database.end()) {
             a.insert(a.end(), db->second.begin(), db->second.end());
+            a.push_back("-ferror-limit=0");
             return a;
         }
+        a.push_back("-ferror-limit=0");
         a.push_back(c ? "-std=gnu17" : "-std=gnu++20");
         a.insert(a.end(), base.begin(), base.end());
-        for (const auto& d : include_dirs) a.push_back("-I" + d);
+        // After the system's own directories, never before them (see the header comment).
+        for (const auto& d : include_dirs) a.push_back("-idirafter" + d);
         return a;
     }
 };

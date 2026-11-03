@@ -37,6 +37,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <optional>
@@ -73,6 +74,7 @@ inline bool namey(const Tok& t) { return t.kind == IDENT || t.kind == KEYWORD; }
 // these for every call in the tree.
 struct Site {
     std::string site_id, caller_id, expr;
+    std::string seen;           // the file of the definition this translation unit sees, if any
     std::string usr;            // the referenced declaration's USR, or "" when clang named none
     std::string qualified;      // its qualified name, for a frontier
     std::string decl_file;      // where clang says the declaration is ("" when nowhere)
@@ -81,6 +83,7 @@ struct Site {
     bool construction = false;
     bool bound = false;         // a call through a function value
     bool untyped = false;       // an argument clang could not type, under an overload set
+    std::string macro;          // the function-like macro written here, when it expands to no call
     std::string construct_usr;  // a construction's record
     std::string receiver_usr;   // a member call's receiver type
 };
@@ -91,6 +94,7 @@ struct Def {
     long line = 0;
     bool has_body = true;
     bool is_record = false;
+    bool invalid = false;  // clang refused the declaration (a redefinition, conflicting types)
 };
 
 // A method that overrides another, by USR, with its class.
@@ -125,6 +129,7 @@ inline const std::set<std::string> EXITS = {"return", "throw", "continue", "brea
 
 struct Ctx {
     std::string rel, module, text;
+    std::string root;  // the analysed root, generic separators, with a trailing '/'
     std::vector<Tok> toks;
     std::vector<unsigned> line_starts;
     CXTranslationUnit tu = nullptr;
@@ -133,6 +138,27 @@ struct Ctx {
     Result* out = nullptr;
     std::vector<std::pair<unsigned, unsigned>> macro_spans;  // expansions in this file, by offset
     std::map<unsigned, std::string> macro_names;             // their names, by start offset
+    // What no scan may read as code, as (first token's offset, last token's offset), sorted
+    // and disjoint: every directive line with its continuations, and every inactive `#if`
+    // arm. `clang_tokenize` lexes the raw text, so both are in `toks`; read as code, an
+    // inactive arm's calls were recorded beside the active one's and `#if !defined(LINUX)`
+    // was a control point with four calls to `defined` in it (nmap's `NmapOps.cc`).
+    std::vector<std::pair<unsigned, unsigned>> pp_spans;
+    bool in_pp(unsigned off) const {
+        auto it = std::upper_bound(pp_spans.begin(), pp_spans.end(), std::make_pair(off, ~0u));
+        return it != pp_spans.begin() && std::prev(it)->second >= off;
+    }
+
+    // Is this offset inside a macro expansion written in this file?
+    bool in_macro(unsigned off) const {
+        auto it = std::upper_bound(macro_spans.begin(), macro_spans.end(), std::make_pair(off, ~0u));
+        while (it != macro_spans.begin()) {
+            --it;
+            if (it->second >= off) return true;
+            if (it->first + 4096 < off) break;  // spans are short; a long scan back finds nothing
+        }
+        return false;
+    }
 
     unsigned line_of(unsigned off) const {
         auto it = std::upper_bound(line_starts.begin(), line_starts.end(), off);
@@ -344,7 +370,20 @@ inline bool offset_of(CXSourceLocation loc, unsigned& off) {
     return f != nullptr;
 }
 
-inline bool in_main(CXCursor c) { return C().clang_Location_isFromMainFile(C().clang_getCursorLocation(c)) != 0; }
+// Is this cursor this file's, by where it was *expanded*? `clang_Location_isFromMainFile`
+// asks where it was spelled, and a call a macro writes is spelled in the macro's header:
+// git's `skip_prefix(s, p, &o)` is `skip_prefix_impl(...)` written in `git-compat-util.h`, and
+// even `assert(f(x))`'s `f(x)` sat under a cursor that test called somebody else's. The walk
+// stopped at each one, and 22,348 of git's calls had nothing to say where they went.
+inline CXFile& main_file() {
+    thread_local CXFile f = nullptr;
+    return f;
+}
+inline bool in_main(CXCursor c) {
+    CXFile f = nullptr;
+    C().clang_getExpansionLocation(C().clang_getCursorLocation(c), &f, nullptr, nullptr, nullptr);
+    return f && main_file() && C().clang_File_isEqual(f, main_file());
+}
 
 inline void extent(CXCursor c, unsigned& a, unsigned& b) {
     CXSourceRange r = C().clang_getCursorExtent(c);
@@ -727,6 +766,8 @@ private:
         d.file = x_.rel;
         d.line = f.line_start;
         d.name = name;
+        // Said, not decided here: an invalid definition only loses a tie (`edges.hpp`).
+        d.invalid = C().clang_isInvalidDeclaration(c) != 0;
         x_.out->defs.push_back(d);
         overrides(c, &f);
 
@@ -833,11 +874,23 @@ private:
     void record(CXCursor c, CXCursorKind k) {
         unsigned a, b;
         extent(c, a, b);
+        // Once, though the walk meets it twice: `struct { int a; } g;` is a declaration at
+        // file scope and again the child of `g`'s, and was two structures.
+        if (!records_read_.insert({a, b}).second) return;
         bool nested;
         std::string outer;
         auto parts = scope_parts(c, nested, outer);
         std::string name = spelling(c);
-        if (name.empty() || C().clang_Cursor_isAnonymous(c)) name = "<anonymous>";
+        if (name.empty() || C().clang_Cursor_isAnonymous(c)) {
+            // A nameless record a macro wrote is the macro's, not this file's: every
+            // `TAILQ_ENTRY(window) entry;` is a `struct { ... }`, and reading where they were
+            // expanded rather than spelled gave tmux 190 structures called `<anonymous>`.
+            // One written here by hand is still read, as it always was. Told apart by this
+            // file's own expansion spans: libclang's spelling location of a macro body is
+            // its expansion location, so it cannot say.
+            if (x_.in_macro(a)) return;
+            name = "<anonymous>";
+        }
         std::string qualname = join(parts, name);
         int n = ++seen_records_[qualname];
         facts::DataStructure s;
@@ -1011,6 +1064,7 @@ private:
     std::map<unsigned, std::pair<CXCursor, CXCursor>> resolved_;
     std::set<unsigned> constructions_;  // offsets where what is written constructs a type
     std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
+    std::set<std::pair<unsigned, unsigned>> records_read_;  // by extent, so each is read once
     std::map<const Routine*, std::vector<Pending>> pending_;
 
     // In a routine's body, during the walk: note what clang made of each call.
@@ -1229,6 +1283,10 @@ private:
         std::vector<std::pair<unsigned, unsigned>> out;
         for (const auto& o : routines_)
             if (o.get() != r && o->body_lo > r->body_lo && o->body_hi <= r->body_hi) out.push_back({o->body_lo, o->body_hi});
+        // Directives and inactive arms are stepped over as a nested routine is. A span's
+        // second offset is its *last token's*, which is what the scans' jump expects.
+        for (const auto& [a, b] : x_.pp_spans)
+            if (b > r->body_lo && a < r->body_hi && a < b) out.push_back({a, b});
         std::sort(out.begin(), out.end());
         return out;
     }
@@ -1318,7 +1376,14 @@ private:
             e.caller_id = *owner->r.id;
             e.expr = p.expr;
             e.construction = p.construction;
+            // A call written as a macro is what the macro's first call is, where it has one:
+            // git's `skip_prefix(...)` reaches `skip_prefix_impl`, which is what runs. Where
+            // it expands to no call at all (`N_("...")`, `OPT_BOOL(...)`, a struct literal)
+            // it is a macro and says so, not a call clang failed to resolve (rule 32).
+            // The two are different counts, and only one is a gap in what clang could read.
+            auto mac = x_.macro_names.find(p.off);
             if (p.resolved) resolve(e, p.call, p.ref);
+            else if (mac != x_.macro_names.end()) e.macro = mac->second;
             else e.untyped = true;  // written, and clang kept nothing to say what it reaches
             x_.out->sites.push_back(std::move(e));
         }
@@ -1358,6 +1423,18 @@ private:
             if (e.receiver_usr.empty()) e.receiver_usr = usr(C().clang_getCursorSemanticParent(ref));
         }
         if (e.is_ctor) e.construct_usr = usr(C().clang_getCursorSemanticParent(ref));
+        // The definition this translation unit can see, where it sees one: the one that is
+        // linked when several share a USR (`edges.hpp`).
+        CXCursor def = C().clang_getCursorDefinition(ref);
+        if (!C().clang_Cursor_isNull(def)) {
+            CXFile f = nullptr;
+            C().clang_getExpansionLocation(C().clang_getCursorLocation(def), &f, nullptr, nullptr, nullptr);
+            if (f) {
+                std::string g =
+                    std::filesystem::path(clang::str(C().clang_getFileName(f))).lexically_normal().generic_string();
+                if (!x_.root.empty() && g.rfind(x_.root, 0) == 0) e.seen = g.substr(x_.root.size());
+            }
+        }
     }
 
     static bool callee_is_value(CXCursor call) {
@@ -1721,11 +1798,9 @@ private:
         std::sort(by_width.begin(), by_width.end(), [](const Routine* p, const Routine* q) {
             return (p->body_hi - p->body_lo) > (q->body_hi - q->body_lo);
         });
-        unsigned directive_line = 0;
         for (size_t i = 0; i < x_.toks.size(); i++) {
             const Tok& t = x_.toks[i];
-            if (t.text == "#" && (i == 0 || x_.toks[i - 1].line != t.line)) directive_line = t.line;
-            if (t.kind != LITERAL || t.line == directive_line) continue;
+            if (t.kind != LITERAL || x_.in_pp(t.off)) continue;
             size_t q = t.text.find('"');
             if (q == std::string::npos) continue;  // a number or a character
             std::string body;
@@ -1775,6 +1850,10 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
     out.hash = ids::hash_source(text);
     Ctx x;
     x.rel = rel;
+    {
+        std::string g = std::filesystem::path(abs).lexically_normal().generic_string();
+        if (g.size() >= rel.size()) x.root = g.substr(0, g.size() - rel.size());
+    }
     x.module = module_of(rel);
     x.text = text;
     x.rules = &rules;
@@ -1803,6 +1882,8 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
         out.facts_json = std::move(j);
         return;
     }
+
+    main_file() = C().clang_getFile(x.tu, abs.c_str());
 
     unsigned nd = C().clang_getNumDiagnostics(x.tu);
     for (unsigned i = 0; i < nd; i++) {
@@ -1848,9 +1929,36 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
                 offset_of(C().clang_getRangeStart(sk->ranges[i]), a);
                 offset_of(C().clang_getRangeEnd(sk->ranges[i]), b);
                 out.skipped_lines += static_cast<long>(x.line_of(b)) - static_cast<long>(x.line_of(a)) + 1;
+                size_t first = x.tok_at(a), last = x.tok_at(b + 1);
+                if (last > first) x.pp_spans.push_back({x.toks[first].off, x.toks[last - 1].off});
             }
             C().clang_disposeSourceRangeList(sk);
         }
+    }
+    // Every directive line, through its backslash continuations.
+    for (size_t i = 0; i < x.toks.size(); i++) {
+        if (x.toks[i].text != "#" || (i > 0 && x.toks[i - 1].line == x.toks[i].line)) continue;
+        unsigned line = x.toks[i].line;
+        for (;;) {  // does this line end with a backslash?
+            size_t eol = line < x.line_starts.size() ? x.line_starts[line] : x.text.size();
+            size_t k = eol;
+            while (k > 0 && (x.text[k - 1] == '\n' || x.text[k - 1] == '\r' || x.text[k - 1] == ' ' || x.text[k - 1] == '\t')) k--;
+            if (k > 0 && x.text[k - 1] == '\\' && eol < x.text.size()) line++;
+            else break;
+        }
+        size_t j = i;
+        while (j + 1 < x.toks.size() && x.toks[j + 1].line <= line) j++;
+        x.pp_spans.push_back({x.toks[i].off, x.toks[j].off});
+        i = j;
+    }
+    std::sort(x.pp_spans.begin(), x.pp_spans.end());
+    {  // disjoint, so a lookup needs only its predecessor
+        std::vector<std::pair<unsigned, unsigned>> merged;
+        for (const auto& sp : x.pp_spans) {
+            if (!merged.empty() && sp.first <= merged.back().second) merged.back().second = std::max(merged.back().second, sp.second);
+            else merged.push_back(sp);
+        }
+        x.pp_spans.swap(merged);
     }
 
     Reader(x).run();

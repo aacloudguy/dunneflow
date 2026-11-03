@@ -50,11 +50,11 @@
     X(clang_getSpellingLocation)                \
     X(clang_getExpansionLocation)               \
     X(clang_getFileLocation)                    \
-    X(clang_Location_isFromMainFile)            \
     X(clang_Location_isInSystemHeader)          \
     X(clang_getCursorReferenced)                \
     X(clang_getCursorDefinition)                \
     X(clang_isCursorDefinition)                 \
+    X(clang_isInvalidDeclaration)               \
     X(clang_getCanonicalCursor)                 \
     X(clang_getCursorSemanticParent)            \
     X(clang_getCursorLexicalParent)             \
@@ -97,6 +97,7 @@
     X(clang_disposeSourceRangeList)             \
     X(clang_getFile)                            \
     X(clang_getFileName)                        \
+    X(clang_File_isEqual)                       \
     X(clang_getIncludedFile)                    \
     X(clang_CompilationDatabase_fromDirectory)  \
     X(clang_CompilationDatabase_getCompileCommands) \

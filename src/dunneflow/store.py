@@ -1921,12 +1921,11 @@ class Store:
             # Seeded with the ids that are routines, as the query's seed is.
             known = self._routine_ids()
             return self._walk(graph, [r for r in routine_ids if r in known], max_depth)
-        ph = ",".join("?" * len(routine_ids))
         rows = self.conn.execute(
-            f"""
+            """
             WITH RECURSIVE seed(id) AS (SELECT value FROM (SELECT ? AS value)),
             reach(id, depth) AS (
-                SELECT id, 0 FROM routines WHERE id IN ({ph})
+                SELECT id, 0 FROM routines WHERE id IN (SELECT value FROM json_each(?))
                 UNION
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
@@ -1942,7 +1941,8 @@ class Store:
             )
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
             """,
-            (routine_ids[0], *routine_ids, max_depth, max_depth if cross else -1, max_depth),
+            (routine_ids[0], json.dumps(list(routine_ids)),
+             max_depth, max_depth if cross else -1, max_depth),
         )
         return {r["id"] for r in rows}
 
@@ -1979,11 +1979,10 @@ class Store:
 
     def _boundaries_reached_query(self, routine_ids: list[str],
                                   max_depth: int) -> Iterator[sqlite3.Row]:
-        ph = ",".join("?" * len(routine_ids))
         rows = self.conn.execute(
-            f"""
+            """
             WITH RECURSIVE reach(id, depth) AS (
-                SELECT id, 0 FROM routines WHERE id IN ({ph})
+                SELECT id, 0 FROM routines WHERE id IN (SELECT value FROM json_each(?))
                 UNION
                 SELECT c.callee_id, r.depth + 1
                   FROM calls c JOIN reach r ON c.caller_id = r.id
@@ -2000,7 +1999,7 @@ class Store:
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
             ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
-            (*routine_ids, max_depth, max_depth, max_depth),
+            (json.dumps(list(routine_ids)), max_depth, max_depth, max_depth),
         )
         yield from rows
 

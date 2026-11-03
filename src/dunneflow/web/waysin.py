@@ -38,6 +38,7 @@ instead -- a position invented to fill a column is rule 1's defect with a link o
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..resolve.flows import app_command_routines, ways_in
@@ -49,7 +50,6 @@ def _routines(store: Store, ids: list[str]) -> dict[str, dict[str, Any]]:
     real = [i for i in dict.fromkeys(ids) if i]
     if not real:
         return {}
-    marks = ",".join("?" * len(real))
     return {
         str(r["id"]): {
             "id": str(r["id"]), "qualname": str(r["qualname"]),
@@ -57,8 +57,9 @@ def _routines(store: Store, ids: list[str]) -> dict[str, dict[str, Any]]:
             "line": int(r["line_start"] or 0),
         }
         for r in store.query(
-            f"SELECT id, qualname, module, file, line_start FROM routines WHERE id IN ({marks})",
-            tuple(real),
+            "SELECT id, qualname, module, file, line_start FROM routines"
+            " WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps(real),),
         )
     }
 

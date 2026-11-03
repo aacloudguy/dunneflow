@@ -10,6 +10,7 @@ name and a type and never assumes a convention is obvious.
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -426,17 +427,18 @@ def _flow_inventory(store: Store, way_in: dict) -> str:
     reached = sorted(store.reachable_from_many(way_in["roots"]))
     if not reached:
         return ""
-    ph = ",".join("?" * len(reached))
+    ids = (json.dumps(reached),)
     rows = store.query(
-        f"SELECT id, qualname, module, file, line_start FROM routines"
-        f" WHERE id IN ({ph}) ORDER BY module, qualname, file, line_start",
-        tuple(reached),
+        "SELECT id, qualname, module, file, line_start FROM routines"
+        " WHERE id IN (SELECT value FROM json_each(?))"
+        " ORDER BY module, qualname, file, line_start",
+        ids,
     )
     bounds: dict[str, list[str]] = {}
     for b in store.query(
-        f"SELECT routine_id, kind, direction, target FROM boundaries"
-        f" WHERE routine_id IN ({ph}) ORDER BY kind, direction, target",
-        tuple(reached),
+        "SELECT routine_id, kind, direction, target FROM boundaries"
+        " WHERE routine_id IN (SELECT value FROM json_each(?)) ORDER BY kind, direction, target",
+        ids,
     ):
         label = f"{b['kind']}{'→' if b['direction'] == 'OUT' else '←'}{b['target'] or '?'}"
         entries = bounds.setdefault(b["routine_id"], [])

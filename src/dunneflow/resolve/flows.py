@@ -11,6 +11,7 @@ program is not more informative than a bounded one; it is less.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from ..schema import BoundaryHit, BoundaryKind, Direction
@@ -90,7 +91,6 @@ def trace_flow(
     for depth in range(max_depth):
         if not level:
             break
-        placeholders = ",".join("?" * len(level))
         rows = store.query(
             # **Ordered, and it was not** (rule 66) — and here an undefended order is not
             # cosmetic. The walk is breadth-first and `max_nodes` truncates it, so row
@@ -103,11 +103,11 @@ def trace_flow(
             # every build at every commit — where a join to `routines` for a readable
             # order would cost one per level on the cold read this query was batched to
             # avoid.
-            f"SELECT DISTINCT caller_id, callee_id FROM calls"
-            f" WHERE caller_id IN ({placeholders})"
-            f"   AND callee_id IS NOT NULL AND external = 0"
-            f" ORDER BY caller_id, callee_id",
-            tuple(level),
+            "SELECT DISTINCT caller_id, callee_id FROM calls"
+            " WHERE caller_id IN (SELECT value FROM json_each(?))"
+            "   AND callee_id IS NOT NULL AND external = 0"
+            " ORDER BY caller_id, callee_id",
+            (json.dumps(level),),
         )
         nxt: list[str] = []
         for r in rows:
@@ -142,18 +142,18 @@ def trace_flow(
     flow.edges = [(a, b) for a, b in flow.edges if a in kept and b in kept]
 
     ids = [rid for rid, _ in order]
-    ph = ",".join("?" * len(ids))
     meta = {
         r["id"]: r
         for r in store.query(
-            f"SELECT id, name, qualname, module FROM routines WHERE id IN ({ph})",
-            tuple(ids),
+            "SELECT id, name, qualname, module FROM routines"
+            " WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps(ids),),
         )
     }
     bounds_by: dict[str, list[BoundaryHit]] = {}
     for r in store.query(
-        f"SELECT * FROM boundaries WHERE routine_id IN ({ph})"
-        f" ORDER BY line, kind, direction, target, evidence", tuple(ids)
+        "SELECT * FROM boundaries WHERE routine_id IN (SELECT value FROM json_each(?))"
+        " ORDER BY line, kind, direction, target, evidence", (json.dumps(ids),)
     ):
         if r["salience"] not in allowed:
             continue
@@ -228,11 +228,11 @@ def ways_in_affected(store: Store, routine_ids: list[str]) -> list[dict]:
     """
     if not routine_ids:
         return []
-    holes = ",".join("?" * len(routine_ids))
     return [dict(r) for r in store.query(
-        f"SELECT DISTINCT name, kind FROM entrypoints WHERE routine_id IN ({holes})"
+        "SELECT DISTINCT name, kind FROM entrypoints"
+        " WHERE routine_id IN (SELECT value FROM json_each(?))"
         " ORDER BY name",
-        tuple(routine_ids),
+        (json.dumps(list(routine_ids)),),
     )]
 
 
@@ -244,12 +244,12 @@ def governance_over(store: Store, routine_ids: list[str]) -> list[str]:
     """
     if not routine_ids:
         return []
-    holes = ",".join("?" * len(routine_ids))
     kinds = ",".join("?" * len(GOVERNANCE_KINDS))
     return [r["value"] for r in store.query(
-        f"SELECT DISTINCT value FROM annotations WHERE owner_id IN ({holes})"
+        "SELECT DISTINCT value FROM annotations"
+        " WHERE owner_id IN (SELECT value FROM json_each(?))"
         f" AND kind IN ({kinds}) ORDER BY value",
-        (*routine_ids, *GOVERNANCE_KINDS),
+        (json.dumps(list(routine_ids)), *GOVERNANCE_KINDS),
     )]
 
 

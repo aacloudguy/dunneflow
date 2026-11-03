@@ -37,6 +37,7 @@ of that rule is a second answer to which ids match (rule 51).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..docstore import DocStore
@@ -88,15 +89,14 @@ def documents_for(store: Store, docs: DocStore | None, node_id: str) -> dict[str
         return {"found": True, "ids": ids, "full": [], "partial": [], "total": 0,
                 "reason": "No document in this corpus names any of the ids it carries"}
 
-    marks = ",".join("?" * len(wanted_raw))
     # Duplicates are excluded, and design rule 1 says the filter is never silent -- the count
     # the page prints is of canonical documents, and `documents.duplicate_of` is what folds
     # a worktree copy of the project's own research into the original.
     rows = docs.query(
         "SELECT a.value AS value, a.doc AS doc, d.title AS title, d.doc_class AS doc_class"
         "  FROM doc_annotations a JOIN documents d ON d.path = a.doc"
-        f" WHERE d.duplicate_of = '' AND a.value IN ({marks})",
-        tuple(wanted_raw),
+        " WHERE d.duplicate_of = '' AND a.value IN (SELECT value FROM json_each(?))",
+        (json.dumps(wanted_raw),),
     )
     per: dict[str, dict[str, Any]] = {}
     for r in rows:

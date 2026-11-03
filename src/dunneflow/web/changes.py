@@ -50,6 +50,7 @@ to `graph.db`. Neither snapshot is copied, moved or rewritten to be compared.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -169,7 +170,7 @@ SELECT path FROM (SELECT path, content_hash FROM {A}.files
 COMMENTS_IN = """
 SELECT c.routine_id, c.text
   FROM {db}.comments c JOIN {db}.routines r ON r.id = c.routine_id
- WHERE r.file IN ({q})
+ WHERE r.file IN (SELECT value FROM json_each(?))
  ORDER BY c.routine_id, c.line
 """
 
@@ -182,7 +183,7 @@ SELECT c.routine_id, c.text
 DOCSTRINGS_IN = """
 SELECT r.id, r.docstring
   FROM {db}.routines r
- WHERE r.file IN ({q}) AND r.docstring IS NOT NULL AND r.docstring <> ''
+ WHERE r.file IN (SELECT value FROM json_each(?)) AND r.docstring IS NOT NULL AND r.docstring <> ''
 """
 
 # What a **module** says it is. `files.doc` and not a routine's column, because it is not a
@@ -195,7 +196,7 @@ SELECT r.id, r.docstring
 # stated by the file lane, and saying it twice is rule 40's defect in a diff.
 MODULE_DOCS = """
 SELECT f.path, f.module, f.doc FROM {db}.files f
- WHERE f.path IN ({q}) AND f.doc IS NOT NULL AND f.doc <> ''
+ WHERE f.path IN (SELECT value FROM json_each(?)) AND f.doc IS NOT NULL AND f.doc <> ''
 """
 
 # --------------------------------------------------------------------------- #
@@ -270,7 +271,7 @@ SELECT structure_id, name, COALESCE(type, ''), COALESCE(dflt, '') FROM {db}.fiel
 STRUCT_DOCS_IN = """
 SELECT s.id, s.docstring
   FROM {db}.structures s
- WHERE s.file IN ({q}) AND s.docstring IS NOT NULL AND s.docstring <> ''
+ WHERE s.file IN (SELECT value FROM json_each(?)) AND s.docstring IS NOT NULL AND s.docstring <> ''
 """
 
 # A constant present in both versions, holding something different.
@@ -525,13 +526,13 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
     files = _changed_files(conn, A, B)
     if not files:
         return set()
-    q = ",".join("?" * len(files))
+    q = (json.dumps(files),)
 
     def side(db: str) -> dict[str, str]:
         cur = conn.cursor()
         cur.row_factory = None
         out: dict[str, list[str]] = {}
-        for rid, text in cur.execute(COMMENTS_IN.format(db=db, q=q), files):
+        for rid, text in cur.execute(COMMENTS_IN.format(db=db), q):
             out.setdefault(rid, []).append(text)
         return {k: " ".join(v) for k, v in out.items()}
 
@@ -635,11 +636,11 @@ def _module_docs_moved(conn: sqlite3.Connection, A: str,
     files = _changed_files(conn, A, B)
     if not files:
         return []
-    q = ",".join("?" * len(files))
+    q = (json.dumps(files),)
 
     def side(db: str) -> dict[str, tuple[str, str]]:
         return {str(r[0]): (str(r[1] or ""), str(r[2]))
-                for r in conn.execute(MODULE_DOCS.format(db=db, q=q), files)}
+                for r in conn.execute(MODULE_DOCS.format(db=db), q)}
 
     here, there = side(A), side(B)
     return [{"path": path, "module": there.get(path, here.get(path, ("", "")))[0]}
@@ -760,13 +761,13 @@ def _moved_prose(conn: sqlite3.Connection, A: str, B: str, sql: str) -> set[str]
     files = _changed_files(conn, A, B)
     if not files:
         return set()
-    q = ",".join("?" * len(files))
+    q = (json.dumps(files),)
 
     def side(db: str) -> dict[str, str]:
         cur = conn.cursor()
         cur.row_factory = None
         return {str(k): str(v or "") for k, v in cur.execute(
-            sql.format(db=db, q=q), files)}
+            sql.format(db=db), q)}
 
     here, there = side(A), side(B)
     return {k for k in here.keys() | there.keys()

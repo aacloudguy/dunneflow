@@ -18,6 +18,7 @@ apart again.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import socket
@@ -37,6 +38,7 @@ from urllib.parse import parse_qs
 
 from .. import macapp, revisions, runstate, runtime
 from ..docstore import DocStore
+from ..estimate import WARN_AFTER_DEFAULT, WARN_AFTER_MAX, WARN_AFTER_MIN
 from ..resolve import languages
 from ..resolve import version as version_order
 from ..runtime import resource_root
@@ -320,6 +322,17 @@ def build_payload(store: Store, program: str,
     payload["program"] = program
     return payload
 
+
+def _warn_after(q: dict[str, list[str]]) -> int:
+    """The reader's threshold in minutes, clamped as the terminal's is (`cli._warn_minutes`).
+
+    An unreadable value is the default rather than an error: it came from a field in a
+    dialog, and the clamp there already says what the range is."""
+    try:
+        n = int((q.get("warn_after") or [str(WARN_AFTER_DEFAULT)])[0])
+    except ValueError:
+        return WARN_AFTER_DEFAULT
+    return min(WARN_AFTER_MAX, max(WARN_AFTER_MIN, n))
 
 def _analysing(d: Path) -> dict[str, Any] | None:
     """The live run another process is making of this program, in the panel's shape, or `None`.
@@ -3495,6 +3508,15 @@ class _Handler(BaseHTTPRequestHandler):
         # `0` and only `0` is off. An absent parameter means the caller did not say, and
         # documentation is an input this tool reads by default (design rule 11).
         docs = (q.get("docs") or ["1"])[0] != "0"
+        # **Asked before it starts, and only asked once.** `any_size=1` is the reader's yes
+        # to the confirm box below; without it, a run estimated past the reader's own
+        # threshold -- or past the largest tree known to finish -- is put to them first.
+        if (q.get("any_size") or ["0"])[0] != "1":
+            cost = analysis.estimate_for(source, out_root, name)
+            if cost.over_bound or cost.high_s > _warn_after(q) * 60:
+                self._json({"started": False, "reason": "", "steps": [],
+                            "confirm": dataclasses.asdict(cost)})
+                return
         if not self._live.start_analysis(name, source=source, out_root=out_root,
                                          docs=docs):
             # **The refusal carries the running job, so the reader can act on it.** It used

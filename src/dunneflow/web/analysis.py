@@ -165,11 +165,48 @@ def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
     stderr holds a failure and nothing else, which is the whole of why there are two.
     """
     out = [*self_argv("analyze", str(source)),
-           "--name", name, "--output", str(out_root), "--progress-json", "--quiet"]
+           "--name", name, "--output", str(out_root), "--progress-json", "--quiet",
+           # **The reader has been asked already**, in the dialog, by `estimate_for` -- and
+           # the child has no terminal to ask, so without this its own gate would refuse the
+           # run the reader just confirmed (`cli._size_verdict`).
+           "--any-size"]
     if not docs:
         out.append("--no-docs")
     return out
 
+
+
+@dataclass(frozen=True)
+class Cost:
+    """What reading a directory is estimated to cost, for the dialog to put to the reader."""
+
+    words: str
+    basis: str
+    files: int
+    low_s: float
+    high_s: float
+    #: Past `walk.TOO_BIG`, the largest tree known to finish in one go.
+    over_bound: bool
+    parts: int
+
+
+def estimate_for(source: Path, out_root: Path, name: str) -> Cost:
+    """The estimate `cli._size_verdict` would act on, for the same directory and program.
+
+    Asked when the reader presses Analyse rather than while they type, because it walks the
+    tree -- seconds on a large one, and `check` answers on every keystroke. The same walk,
+    the same prior run and the same cache test as the terminal's gate, so the dialog and a
+    terminal never disagree about how long one tree will take (rule 41).
+    """
+    from ..estimate import estimate
+    from ..walk import parts_under
+
+    cut = parts_under(source)
+    out_dir = out_root / name
+    est = estimate(cut.by_lang, prior=runstate.read(out_dir),
+                   cached_possible=(out_dir / "source.db").exists())
+    return Cost(words=est.words(), basis=est.basis, files=cut.total, low_s=est.low_s,
+                high_s=est.high_s, over_bound=not cut.whole, parts=len(cut.parts))
 
 # **What a stopped child's own exit code is, on each platform.** POSIX reports a death by
 # signal as a negative return code; Windows has no such thing, and a process broken out of

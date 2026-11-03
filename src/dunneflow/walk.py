@@ -533,6 +533,9 @@ class Breakdown:
     total: int
     parts: list[tuple[Path, int]]
     uncovered: list[tuple[Path, int]]
+    #: The same files by the reader that owns them -- what `estimate` prices a run from,
+    #: counted off the one walk rather than a second (the docstring's "one walk" bargain).
+    by_lang: dict[str, int] = field(default_factory=dict)
 
     @property
     def whole(self) -> bool:
@@ -572,9 +575,14 @@ def parts_under(root: Path, bound: int = TOO_BIG,
     printed. It is asked here and nowhere else in this function -- the bucketing below is
     over paths relative to `root`, because those are what name a part.
     """
-    files = [p.relative_to(root) for p in discover(root, rules=rules, judge_root=judge_root)]
+    found = list(discover(root, rules=rules, judge_root=judge_root))
+    by_lang: dict[str, int] = {}
+    for p in found:
+        lang = ingest.language_of(p) or p.suffix
+        by_lang[lang] = by_lang.get(lang, 0) + 1
+    files = [p.relative_to(root) for p in found]
     if len(files) <= bound:
-        return Breakdown(len(files), [], [])
+        return Breakdown(len(files), [], [], by_lang)
 
     # **A directory under a name a reader skips is a part again**, and the counts here are
     # already the right ones: `members` came out of the single `discover(root)` above, so
@@ -611,6 +619,7 @@ def parts_under(root: Path, bound: int = TOO_BIG,
         len(files),
         sorted(parts, key=lambda kv: (-kv[1], str(kv[0]))),
         sorted(left, key=lambda kv: (-kv[1], str(kv[0]))),
+        by_lang,
     )
 
 

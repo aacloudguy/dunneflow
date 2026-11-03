@@ -3083,6 +3083,10 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .analyze {
   position: fixed; z-index: 93; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: min(40rem, 94vw); padding: 1.1rem 1.3rem;
+  /* **Bounded, and it scrolls itself** (design rule 31). Centred by a transform, a dialog
+     taller than the window loses its top and its bottom -- and the bottom is Analyse. The
+     estimate's confirm box made it taller than a 578-px window, found in the browser. */
+  max-height: calc(100vh - 2rem); overflow-y: auto; box-sizing: border-box;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: .4rem; box-shadow: var(--shadow);
 }
@@ -3162,6 +3166,10 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .analyze-blocked p { font-size: .82rem; margin: 0 0 .5rem; }
 .analyze-blocked .an-foot { display: flex; gap: .5rem; align-items: center; }
 .analyze-blocked .hint { font-size: .72rem; color: var(--text-muted); }
+/* The threshold sits on one line with its unit, and the number field is sized for four
+   digits rather than stretched to the dialog's width like the path above it. */
+.analyze-warnrow { display: flex; gap: .4rem; align-items: center; font-size: .82rem; }
+.analyze-warnrow input { width: 5rem; }
 
 /* == about this map == */
 /* A fifth pair, between the analyse dialog (92/93) and the base switch (96/97). Above the

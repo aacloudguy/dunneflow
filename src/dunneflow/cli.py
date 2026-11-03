@@ -26,6 +26,8 @@ from typing import Any
 from . import ingest, revisions, runstate
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
+from .estimate import WARN_AFTER_DEFAULT, WARN_AFTER_MAX, WARN_AFTER_MIN
+from .estimate import estimate as estimate_run
 from .ingest.contract import PluginRefused
 from .lookup import find_routine, search_said
 from .migrate import MigrationRefused, migrate_program
@@ -406,6 +408,14 @@ class _Progress:
         self._say(state="done", step="", done_steps=len(self.steps),
                   steps=len(self.steps), ms=self.ms(), **fields)
 
+    def phases(self) -> list[tuple[str, int]]:
+        """Every phase so far with what it cost in ms, **the one still running included**.
+
+        `timings` prints this and the run-state sidecar records it, so the next estimate of
+        this program is scaled from what this run actually cost (`estimate`).
+        """
+        return [*self.spent, (self.label, round((time.perf_counter() - self._at) * 1000))]
+
     def timings(self) -> list[str]:
         """The phase table, in the order the run took them.
 
@@ -428,7 +438,7 @@ class _Progress:
         # is a table with its last phase missing, and the last phase is the anomalies.
         # Rule 32: a count must say what it counts, and a row that is simply absent says
         # nothing at all.
-        rows = [*self.spent, (self.label, round((now - self._at) * 1000))]
+        rows = self.phases()
         width = max(len(n) for n, _ in rows)
         lines = [f"  {name:<{width}}  {took / 1000:7.1f}s  {took / 10 / total:5.1f}%"
                  for name, took in rows]
@@ -502,9 +512,38 @@ def _shell_quote(s: str) -> str:
     return s if all(c not in s for c in ' \t"\'\\') else "'" + s.replace("'", "'\\''") + "'"
 
 
+def _warn_minutes(text: str) -> int:
+    try:
+        n = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number of minutes") from None
+    if not WARN_AFTER_MIN <= n <= WARN_AFTER_MAX:
+        raise argparse.ArgumentTypeError(
+            f"{n} is outside {WARN_AFTER_MIN}-{WARN_AFTER_MAX} minutes: under one, every run "
+            f"would ask; over {WARN_AFTER_MAX}, no run measured here has come near it")
+    return n
+
+
+def _interactive(args: argparse.Namespace) -> bool:
+    """Is there somebody at a terminal to ask? Never on the machine channel."""
+    return (not getattr(args, "progress_json", False)
+            and sys.stdin is not None and sys.stdin.isatty() and sys.stderr.isatty())
+
+
 def _size_verdict(root: Path, args: argparse.Namespace,
-                  part_of: Path | None = None) -> int | None:
-    """Refuse a tree too big to finish, and say what to read instead. `None` means carry on.
+                  part_of: Path | None = None, out_dir: Path | None = None) -> int | None:
+    """Say how long this will take, and let the reader choose. `None` means carry on.
+
+    **What it decides on is time, not files.** It was a file count alone -- `walk.TOO_BIG`
+    -- and Unreal's `Runtime` is 18,263 files, under it, so a 2 h 19 m extraction started
+    without a word. The count is still the edge of what this tool is known to finish and is
+    still said when a tree passes it, with the parts to read instead; what decides whether
+    to ask is the estimate (`estimate`), against `--warn-after`.
+
+    **A terminal is asked; anything else is refused**, naming `--any-size`. `dunneflow
+    serve` runs its child with no terminal and asks the reader itself, in the dialog, before
+    it starts one -- so a child that reaches this with no `--any-size` is a caller that
+    skipped the question, and refusing is the answer that cannot spend two hours by accident.
 
     **What the number means matters more than the number.** `walk.TOO_BIG` is the edge of
     what this tool is known to read rather than a limit somebody liked the look of, so the
@@ -539,25 +578,46 @@ def _size_verdict(root: Path, args: argparse.Namespace,
         _emit_uncovered(cut, tree)
         return 0
 
-    if cut.whole:
+    prior = runstate.read(out_dir) if out_dir is not None else None
+    est = estimate_run(cut.by_lang, prior=prior,
+                       cached_possible=out_dir is not None and (out_dir / "source.db").exists())
+    limit = args.warn_after * 60
+    if cut.whole and est.high_s <= limit:
         return None
 
-    _emit(
-        f"error: {root} is {total:,} files the walk would read, and the largest tree this "
-        f"tool is known to read in one go is {TOO_BIG:,}.\n"
-        f"\nThat is not a setting. Past it a run has never been finished here — the last "
-        f"attempt at a tree this size reached 0.1% CPU after an hour and three quarters and "
-        f"was stopped — so what follows is the tree cut into parts that are each within it, "
-        f"every one into the same output root so they can be read side by side:"
-    )
-    for line in _part_lines(parts, tree, args, PARTS_SHOWN):
-        _emit(line)
-    if len(parts) > PARTS_SHOWN:
-        rest = parts[PARTS_SHOWN:]
-        _emit(f"  … and {len(rest):,} more parts, {sum(n for _, n in rest):,} files — "
-              f"`dunneflow analyze {_shell_quote(str(root))} --parts` prints all of them.")
-    _emit_uncovered(cut, tree)
-    _emit("\nOr `--any-size` to read it whole anyway, however long it takes.")
+    if not cut.whole:
+        _emit(
+            f"{root} is {total:,} files the walk would read, and the largest tree this "
+            f"tool is known to read in one go is {TOO_BIG:,}.\n"
+            f"\nPast it a run has never been finished here — the last attempt at a tree "
+            f"this size reached 0.1% CPU after an hour and three quarters and was stopped — "
+            f"so here is the tree cut into parts that are each within it, every one into the "
+            f"same output root so they can be read side by side:"
+        )
+        for line in _part_lines(parts, tree, args, PARTS_SHOWN):
+            _emit(line)
+        if len(parts) > PARTS_SHOWN:
+            rest = parts[PARTS_SHOWN:]
+            _emit(f"  … and {len(rest):,} more parts, {sum(n for _, n in rest):,} files — "
+                  f"`dunneflow analyze {_shell_quote(str(root))} --parts` prints all of them.")
+        _emit_uncovered(cut, tree)
+        _emit("")
+    _emit(f"Reading {root} whole is estimated at {est.words()} ({total:,} files; based on "
+          f"{est.basis}). It is an estimate, not a promise: one tree has been measured five "
+          f"times slower on an external volume than on the internal disk.")
+    if est.high_s > limit:
+        _emit(f"That is over the {args.warn_after}-minute warning (`--warn-after`). Progress "
+              f"is reported throughout, and the dashboard can watch and stop it.")
+    if _interactive(args):
+        sys.stderr.write("Read it whole now? [y/N] ")
+        sys.stderr.flush()
+        answer = sys.stdin.readline().strip().lower()
+        if answer in ("y", "yes"):
+            return None
+        _emit("Not started.")
+        return 2
+    _emit("Not started: there is no terminal to ask. Run it with `--any-size` to read it "
+          "whole anyway.")
     return 2
 
 
@@ -666,7 +726,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # 52 s on a tree of 88,356 files -- and that is the trade being made and is said out
     # loud, because a minute spent here is the alternative to an hour spent finding out.
     if args.parts or not args.any_size:
-        verdict = _size_verdict(source_root, args, part_of)
+        verdict = _size_verdict(source_root, args, part_of, out_dir)
         if verdict is not None:
             return verdict
     # What this run will do, decided before it starts doing it: the dashboard draws a bar
@@ -1219,6 +1279,9 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # machine channel and these four lines would arrive in the middle of it; without it,
     # they are the summary the terminal has always printed. The counts are the same either
     # way -- one is the sentence and one is the object (rule 13).
+    # What this run cost, for the next estimate of this program (see `estimate`).
+    run[0].result(timings=prog.phases(), files=dict(sorted(stats.by_lang.items())),
+                  parsed=stats.parsed, cached=stats.cached)
     # **Said either way**: `done` reaches the sidecar whether or not stdout is the machine
     # channel, because a run started from a terminal is the one whose ending the dashboard
     # can only learn from the sidecar. `_say` prints only when `--progress-json` is on.
@@ -1845,7 +1908,11 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--parts", action="store_true",
                    help="print the tree cut into parts small enough to read, and stop")
     a.add_argument("--any-size", action="store_true",
-                   help="read a tree larger than the guard allows, however long it takes")
+                   help="start without asking, however long the estimate says it will take")
+    a.add_argument("--warn-after", type=_warn_minutes, default=WARN_AFTER_DEFAULT,
+                   metavar="MINUTES",
+                   help=f"ask before a run estimated to take longer than this "
+                        f"(default {WARN_AFTER_DEFAULT}; {WARN_AFTER_MIN}-{WARN_AFTER_MAX})")
     # **The third half, and it is what makes a part a piece of its tree.** Every
     # path-shaped discovery rule -- a reader's `skip_dirs`, and `is_test`'s `test_dirs` --
     # is matched against the path relative to the analysed root, so a directory read as a

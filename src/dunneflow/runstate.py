@@ -113,6 +113,11 @@ class RunState:
             self._last_note = now
         self._write()
 
+    def result(self, **fields: Any) -> None:
+        """What the run cost and read, kept for the next estimate (`estimate._from_prior`)."""
+        with self._lock:
+            self.body.update(fields)
+
     def finish(self, state: str, *, code: int) -> None:
         """The last word: `done`, `failed` or `stopped`, and the exit code it is leaving with."""
         self._stop.set()

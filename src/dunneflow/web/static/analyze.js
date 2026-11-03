@@ -82,6 +82,22 @@
      slots on the server for the reason stated there, and sharing one here would put an
      analysis behind the switch scrim after all. */
   let ANALYSIS = null;
+  /* **How long a run may take before the reader is asked first**, in minutes. The terminal's
+     `--warn-after`, and the same clamp (`estimate.WARN_AFTER_*`): kept in this browser, not
+     per program, because it is about the reader's patience rather than about any one tree.
+     Read and written through try/catch: storage can be refused, and the default stands. */
+  const WARN = { min: 1, max: 600, def: 10, key: "dunneflow:analysis:warnAfter" };
+  function warnAfter() {
+    let n = WARN.def;
+    try { n = parseInt(localStorage.getItem(WARN.key) || "", 10); } catch { n = WARN.def; }
+    return Number.isFinite(n) ? Math.min(WARN.max, Math.max(WARN.min, n)) : WARN.def;
+  }
+  function keepWarnAfter(v) {
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n)) return;
+    try { localStorage.setItem(WARN.key, String(Math.min(WARN.max, Math.max(WARN.min, n)))); }
+    catch { /* not kept; the default applies next time */ }
+  }
   let RESUME_TIMER = 0;
 
   /* **A run outlives the page that started it, so the page has to ask.**
@@ -112,7 +128,8 @@
 
   function openAnalyze(prefill) {
     ANALYZE = Object.assign({ path: "", name: "", docs: true, busy: false, blocked: null,
-                             picking: false, pickfail: "" }, prefill || {});
+                             picking: false, pickfail: "", confirm: null,
+                             warnAfter: warnAfter() }, prefill || {});
     ANALYZE_CHECK = null;
     paintAnalyze();
     askAnalyzeCheck();
@@ -160,6 +177,24 @@
   function analyzeLeaf(path) {
     const parts = String(path || "").replace(/[/\\]+$/, "").split(/[/\\]/);
     return parts[parts.length - 1] || "";
+  }
+
+  /* **The reader's choice, with the cost in front of them.** The server estimated the run
+     and it is over their threshold, or past the largest tree known to finish in one go.
+     Nothing has started; Yes starts it, and says it was asked. */
+  function confirmBlock(k) {
+    const files = Number(k.files || 0).toLocaleString();
+    return `<div class="analyze-blocked analyze-confirm" role="alertdialog">
+        <p>Reading this is estimated at <b>${esc(k.words || "")}</b> &mdash; ${files} files,
+           based on ${esc(k.basis || "")}. It is an estimate, not a promise.</p>
+        ${k.over_bound ? `<p>It is also more files than the largest tree this tool is known
+           to have read in one go${k.parts ? `; a terminal's <code>--parts</code> would cut it
+           into ${Number(k.parts).toLocaleString()} parts that each are` : ""}.</p>` : ""}
+        <p>Progress is shown the whole time, and Stop ends it whenever you like.</p>
+        <div class="an-foot">
+          <button class="linkbtn" data-anconfirm>Yes &mdash; read it now</button>
+          <button class="linkbtn" data-anconfirmno>Not now</button>
+        </div></div>`;
   }
 
   function analyzeDialog() {
@@ -217,6 +252,17 @@
         <span>Read the documentation too</span>
       </label>
 
+      <label class="analyze-field analyze-warn">
+        <span>Ask me first if it may take longer than</span>
+        <span class="analyze-warnrow"><input type="number" data-anfield="warnAfter"
+               min="${WARN.min}" max="${WARN.max}" step="1" value="${esc(String(a.warnAfter))}">
+          minutes</span>
+        <p class="hint">${WARN.min}&ndash;${WARN.max}: under a minute every run would ask, and
+           over ten hours is past any run measured here. The estimate is taken when you press
+           Analyse, because it has to walk the tree.</p>
+      </label>
+
+      ${a.confirm ? confirmBlock(a.confirm) : ""}
       ${c && c.refusal ? `<p class="analyze-refusal">${esc(c.refusal)}</p>` : ""}
       ${c && c.note ? `<p class="analyze-note">${esc(c.note)}</p>` : ""}
       ${a.blocked ? `<div class="analyze-blocked">
@@ -309,20 +355,30 @@
   }
 
   /* Start it, and hand over to the panel. */
-  async function startAnalyze() {
+  async function startAnalyze(confirmed) {
     if (!ANALYZE || ANALYZE.busy) return;
     const { path, name, docs } = ANALYZE;
     ANALYZE.busy = true;
+    ANALYZE.confirm = null;
     paintAnalyze();
     let d;
     try {
       d = await fetch("/api/analyze?path=" + encodeURIComponent(path) +
                       "&name=" + encodeURIComponent(name) +
-                      "&docs=" + (docs ? "1" : "0"), { method: "POST" }).then(r => r.json());
+                      "&docs=" + (docs ? "1" : "0") +
+                      "&warn_after=" + encodeURIComponent(String(ANALYZE.warnAfter)) +
+                      (confirmed ? "&any_size=1" : ""),
+                      { method: "POST" }).then(r => r.json());
     } catch (err) {
       ANALYZE.busy = false;
       ANALYZE_CHECK = { ok: false, refusal: "the server could not be asked: " + err.message,
                         note: "" };
+      paintAnalyze();
+      return;
+    }
+    if (!d.started && d.confirm) {
+      ANALYZE.busy = false;
+      ANALYZE.confirm = d.confirm;
       paintAnalyze();
       return;
     }
@@ -626,6 +682,15 @@
       if (!start.disabled) { HOST.used("program:analyze"); startAnalyze(); }
       return;
     }
+    if (t.closest("[data-anconfirm]")) {
+      HOST.used("program:analyze:confirm");
+      startAnalyze(true);
+      return;
+    }
+    if (t.closest("[data-anconfirmno]")) {
+      if (ANALYZE) { ANALYZE.confirm = null; paintAnalyze(); }
+      return;
+    }
     if (t.closest("[data-andismiss]")) { ANALYSIS = null; paintAnalysis(); return; }
     if (t.closest("[data-anstop]")) { HOST.used("program:analyze:stop"); stopAnalysis(); return; }
     const again = t.closest("[data-anagain]");
@@ -661,7 +726,16 @@
     if (!ANALYZE || !t || !t.dataset || !t.dataset.anfield) return;
     const f = t.dataset.anfield;
     if (f === "docs") return;              // a checkbox answers on `change`, below
+    if (f === "warnAfter") {
+      /* Kept as typed while typing; clamped when it is used and when it is stored. A new
+         threshold invalidates a confirm box asked against the old one. */
+      ANALYZE.warnAfter = t.value;
+      keepWarnAfter(t.value);
+      ANALYZE.confirm = null;
+      return;
+    }
     ANALYZE[f] = t.value;
+    ANALYZE.confirm = null;
     askAnalyzeCheck();
   });
 

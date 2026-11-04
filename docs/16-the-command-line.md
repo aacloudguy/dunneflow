@@ -60,9 +60,11 @@ uv run dunneflow analyze <path> --name <program>
 | `--part-of <tree>` | this is a part of `<tree>`, so judge what to skip and what is a test from there. A directory read on its own is judged by a path that no longer contains the component that hid something — see [when it refuses](15-when-it-refuses.md) |
 | `--parts` | print the tree cut into parts small enough to read, and stop |
 | `--any-size` | read a tree larger than the guard allows, however long it takes |
+| `--allow-unfinished` | on `check`, `touches`, `impact`, `glossary`, `naming`, `mirror`, `serve` and `mcp`: read a map whose analysis never finished, with a warning — see [when it refuses](15-when-it-refuses.md#was-never-finished) |
 | `--jobs <n>` | parallel workers |
 | `--timings` | print what each phase of the run cost |
 | `--no-render` | build the graph, write no Markdown |
+| `--flow-inventory full\|omitted\|count` | how the flows page lists what each way in reaches: every routine (the default), only what its diagram leaves out, or how many. The page says which was written and what the other two would have taken. Left unchosen and over 256 MB, a terminal is asked. `render` takes it too |
 | `--no-source` / `--no-doc-source` | do not keep the bodies of the code / the documents |
 | `--quiet` | say nothing but failures |
 | `--progress-json` | one JSON object per line on stdout instead of the summary |

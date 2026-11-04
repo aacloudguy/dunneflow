@@ -216,7 +216,15 @@ cannot be opened to change its own.
 `map@<rev>.unfinished/`, rewriting `UNFINISHED.md` before each page, and `os.replace`s it to
 `map@<rev>/` after the last; `revisions.known_maps` skips the staging name, so `mapless`
 offers the revision again and `dunneflow render` repairs it, and `render_index` links the
-folder's note, never its pages. `unfinished_sentence` is the one place
+folder's note, never its pages.
+
+**The flows inventory is the reader's choice** (`--flow-inventory full|omitted|count`, the
+dialog's *Under each flow diagram, list*). `render_all` builds every inventory once in each
+mode to size it (`inventory_costs`, sharing the render's `_Inventory` row cache), asks
+`choose` with the sizes, and states the choice and the other two sizes over `02-flows.md` and
+in the README; one builder (`_flow_inventory`) makes both the measured block and the written
+one, so the stated size is the page's (rule 13). The sizes go into the run's sidecar as
+`inventory_bytes`, and `/api/analysis` words them for the dialog (`analysis.inventory_for`). `unfinished_sentence` is the one place
 those words live, and `serve.why()` strips the class name from the two exceptions written to
 be read.
 

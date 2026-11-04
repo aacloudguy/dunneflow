@@ -13,7 +13,8 @@ from __future__ import annotations
 import os
 import shutil
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from ..detectors import rules_document
 from ..docstore import DocStore
 from ..resolve.cli import command_tree
 from ..resolve.entrypoints import binding_note
-from ..resolve.flows import boundary_index, trace_flow, ways_in
+from ..resolve.flows import Flow, boundary_index, trace_flow, ways_in
 from ..schema import StructureKind
 from ..store import Store
 from .anomalies import render_anomalies
@@ -36,6 +37,10 @@ from .naming import render_naming
 from .network import render_network
 from .page import Stamp, biggest_first, header
 from .traceability import render_traceability
+
+# How the flows page lists what each way in reaches -- the reader's choice, `--flow-inventory`.
+FULL, OMITTED, COUNT = "full", "omitted", "count"
+INVENTORY_MODES = (FULL, OMITTED, COUNT)
 
 # Diagrams are bounded because a picture of 4,500 nodes conveys nothing; every
 # routine a diagram omits is listed in full beneath it. Reference lists are never
@@ -84,8 +89,18 @@ def render_all(store: Store, out_dir: Path, program: str,
                standards: DocStore | None = None,
                standards_note: str = "",
                report: Report | None = None,
-               tick: Callable[[int, int, str], None] | None = None) -> list[Path]:
+               tick: Callable[[int, int, str], None] | None = None,
+               inventory: str = FULL,
+               choose: Callable[[InventoryCost], str] | None = None) -> list[Path]:
     """Write the whole map. Returns the files written.
+
+    **`inventory` is the reader's choice of how the flows page lists what each way in
+    reaches** -- `full`, `omitted` or `count` (`INVENTORY_MODES`) -- and `choose`, when
+    given, is asked with what each would cost before anything is written, and its answer
+    wins. The cost is measured, not estimated: every inventory is built once to be sized,
+    in the same function that builds it for the page, so the figure stated in the README
+    and over the flows page is the number of bytes the page holds (rule 13). On Unreal's
+    Runtime the full one is 1.14 GB of a 1.14 GB page.
 
     `tick(done, total, what)` is called before each document and, inside the flows
     document, per way in -- the document that is 5,705 sections on Unreal's `Runtime`, and
@@ -138,13 +153,26 @@ def render_all(store: Store, out_dir: Path, program: str,
     # flows and the network. Each asked for itself, and on Unreal's Runtime one asking is
     # 7.5 s warm and 19.6 s cold: the same 5,730 reach walks, three times (rule 51).
     ranked = ways_in(store)
+    index = _Inventory(store)
+    cost = inventory_costs(store, ranked, index,
+                           tick=lambda i, n: say(i, n, "measuring the flows inventory"))
+    if choose is not None:
+        inventory = choose(cost)
+    if inventory not in INVENTORY_MODES:
+        # Refused rather than defaulted: a page written in a mode nobody chose would state
+        # a choice nobody made (rule 49).
+        raise ValueError(f"no flows inventory called {inventory!r}; "
+                         f"the choices are {', '.join(INVENTORY_MODES)}")
+    chosen = InventoryChoice(inventory, cost)
 
     def flows() -> Path:
         return _flows(store, out_dir, program, stamp, ranked=ranked,
-                      tick=lambda i, n: say(i, n, "02-flows.md, way in"))
+                      tick=lambda i, n: say(i, n, "02-flows.md, way in"),
+                      index=index, choice=chosen)
 
     pages: list[Callable[[], Path | None]] = [
-        lambda: _overview(store, out_dir, program, stamp, report, ranked=ranked),
+        lambda: _overview(store, out_dir, program, stamp, report, ranked=ranked,
+                          choice=chosen),
         lambda: _entrypoints(store, out_dir, program, stamp),
         flows,
         lambda: _routines(store, out_dir, program, stamp),
@@ -215,7 +243,8 @@ def _mark_unfinished(staging: Path, final: Path, i: int, n: int, page: str) -> N
 
 
 def _overview(store: Store, out: Path, program: str, stamp: Stamp,
-              rep: Report, ranked: list[dict] | None = None) -> Path:
+              rep: Report, ranked: list[dict] | None = None,
+              choice: InventoryChoice | None = None) -> Path:
     c = store.counts()
     bi = boundary_index(store)
 
@@ -279,7 +308,8 @@ def _overview(store: Store, out: Path, program: str, stamp: Stamp,
     lines.append("## The rest of the map\n")
     for name, desc in [
         ("01-entrypoints.md", "Every way in, including the full command tree."),
-        ("02-flows.md", "What happens after each way in, as diagrams."),
+        ("02-flows.md", "What happens after each way in, as diagrams"
+                        + (f"; {choice.short()}." if choice else ".")),
         ("03-routines.md", "Every routine, with typed signatures and its comments."),
         ("04-data.md", "The shapes that move between routines."),
         ("05-boundaries.md", "Every point where the program touches the outside world."),
@@ -436,14 +466,20 @@ def _tree_list(tree: dict, depth: int = 0) -> str:
 
 def _flows(store: Store, out: Path, program: str, stamp: Stamp,
            tick: Callable[[int, int], None] | None = None,
-           ranked: list[dict] | None = None) -> Path:
+           ranked: list[dict] | None = None,
+           index: _Inventory | None = None,
+           choice: InventoryChoice | None = None) -> Path:
     if ranked is None:
         ranked = ways_in(store)
+    if index is None:
+        index = _Inventory(store)
+    if choice is None:
+        choice = InventoryChoice(FULL, inventory_costs(store, ranked, index))
 
     path = out / "02-flows.md"
     lines = _Stream(path)
     try:
-        _flows_into(lines, store, program, stamp, ranked, tick)
+        _flows_into(lines, store, program, stamp, ranked, tick, index, choice)
     finally:
         lines.close()
     return path
@@ -472,13 +508,15 @@ class _Stream:
 
 
 def _flows_into(lines: _Stream, store: Store, program: str, stamp: Stamp,
-                ranked: list[dict], tick: Callable[[int, int], None] | None) -> None:
+                ranked: list[dict], tick: Callable[[int, int], None] | None,
+                index: _Inventory, choice: InventoryChoice) -> None:
     lines.append(header(program, "Flows", stamp))
     lines.append(
         "What each way in sets in motion. Solid arrows are calls; dotted arrows are "
         "the program reading from or writing to the world outside itself. Diagrams are "
         "capped so they stay readable — the caption says what was left out.\n"
     )
+    lines.append(choice.statement())
 
     # **A declared way in that bound nothing sets nothing in motion here**, so there is no
     # flow to draw -- and that is a different page's subject, not a silence (design
@@ -487,13 +525,9 @@ def _flows_into(lines: _Stream, store: Store, program: str, stamp: Stamp,
     # would read as a program with nothing to trace.
     unbound = [d for d in ranked if not d["roots"]]
     rooted = [d for d in ranked if d["roots"]]
-    index = _Inventory(store) if rooted else None
-    for n, d in enumerate(rooted):
+    for n, (d, flow) in enumerate(_traced(store, rooted)):
         if tick is not None:
             tick(n, len(rooted))
-        flow = trace_flow(store, d["roots"][0], d["name"], d["kind"])
-        if not flow.nodes:
-            continue
         lines.append(f"## {d['name']}\n")
         summary = ", ".join(f"{k} ×{v}" for k, v in flow.boundary_summary().items())
         lines.append(
@@ -506,17 +540,27 @@ def _flows_into(lines: _Stream, store: Store, program: str, stamp: Stamp,
                 f"diagram follows the first.\n"
             )
         if flow.truncated:
+            # What is said about the list depends on which list was written (rule 13):
+            # "listed in full below" over a count would be a sentence the page breaks.
+            below = {
+                FULL: "**Every routine this way in reaches is listed in full below the "
+                      "diagram** — nothing is omitted from the record, only from the "
+                      "drawing.",
+                OMITTED: "**Every routine the drawing leaves out is listed below it**, so "
+                         "the diagram and the list together are the whole of what this "
+                         "way in reaches.",
+                COUNT: "The routines it reaches are counted below rather than listed, by "
+                       "the choice this map was written with.",
+            }[choice.mode]
             lines.append(
                 f"> The diagram shows the first {len(flow.nodes)} routines by call "
                 f"depth, because a picture of {d['reach']:,} nodes conveys nothing. "
-                f"**Every routine this way in reaches is listed in full below the "
-                f"diagram** — nothing is omitted from the record, only from the "
-                f"drawing.\n"
+                f"{below}\n"
             )
         lines.append("```mermaid")
         lines.append(flow_diagram(flow))
         lines.append("```\n")
-        lines.append(_flow_inventory(store, d, index))
+        lines.append(_flow_inventory(store, d, index, choice.mode, flow))
 
 
     if unbound:
@@ -579,25 +623,124 @@ class _Inventory:
         return out
 
 
-def _flow_inventory(store: Store, way_in: dict, index: _Inventory | None = None) -> str:
-    """Every routine one way in reaches, and every boundary it ends up touching.
+def _flow_inventory(store: Store, way_in: dict, index: _Inventory | None = None,
+                    mode: str = "full", flow: Flow | None = None) -> str:
+    """What one way in reaches, as the reader chose to have it listed.
 
-    The diagram above is bounded; this is not. A reader who wants the complete answer
-    to "what does starting this actually run?" finds it here. `index` is the render's
-    one `_Inventory`; without it, one is read for this call.
+    * `full` -- every routine it reaches, and every boundary each one touches. The diagram
+      above is bounded; this is not, and it is the complete answer to "what does starting
+      this actually run?".
+    * `omitted` -- only the routines the diagram leaves out, which is rule 8 read
+      literally: the drawing is bounded, so the record of what it bounded off is owed and
+      nothing else is.
+    * `count` -- how many it reaches, and where the list can be had.
+
+    **One function builds the block for the page and for `inventory_costs`**, so a stated
+    size is the size of what is written (rule 13). `index` is the render's one
+    `_Inventory`; without it, one is read for this call.
     """
     reached = store.reachable_from_many(way_in["roots"])
     if not reached:
         return ""
-    rows = (index or _Inventory(store)).rows(set(reached))
+    index = index or _Inventory(store)
+    name = way_in["name"]
+    if mode == COUNT:
+        n = len(index.rows(set(reached)))
+        return (f"<details><summary>Every routine reachable from <code>{name}</code>"
+                f" ({n:,}) — counted, not listed</summary>\n\n"
+                "Not listed, because this map was written with `--flow-inventory count`. "
+                "Open this way in in the dashboard to walk what it reaches, or write the "
+                "map again with `--flow-inventory full`.\n\n</details>\n")
+    if mode == OMITTED:
+        drawn = {node.routine_id for node in flow.nodes} if flow is not None else set()
+        rows = index.rows(set(reached) - drawn)
+        if not rows:
+            return (f"<details><summary>Every routine reachable from <code>{name}</code>"
+                    " is in the diagram</summary>\n\nNothing was left out of the "
+                    "drawing, so there is nothing to list.\n\n</details>\n")
+        summary = (f"What the diagram of <code>{name}</code> leaves out "
+                   f"({len(rows):,} of {len(reached):,})")
+    else:
+        rows = index.rows(set(reached))
+        summary = f"Every routine reachable from <code>{name}</code> ({len(rows):,})"
     out = [
-        f"<details><summary>Every routine reachable from <code>{way_in['name']}</code>"
-        f" ({len(rows):,})</summary>\n",
+        f"<details><summary>{summary}</summary>\n",
         "| Routine | Touches | Where |\n|---|---|---|",
         *rows,
         "\n</details>\n",
     ]
     return "\n".join(out)
+
+
+def _traced(store: Store, rooted: list[dict]) -> Iterator[tuple[dict, Flow]]:
+    """Every way in that has a flow to draw, with its flow -- one walk, for the page and
+    for its measurement, so both see the same ways in in the same order."""
+    for d in rooted:
+        flow = trace_flow(store, d["roots"][0], d["name"], d["kind"])
+        if flow.nodes:
+            yield d, flow
+
+
+_SAYS = {FULL: "every routine each way in reaches",
+         OMITTED: "only what each diagram leaves out",
+         COUNT: "how many each reaches, not which"}
+
+
+@dataclass(frozen=True)
+class InventoryCost:
+    """The bytes the flows page's inventories take in each mode, measured by building them."""
+
+    bytes: dict[str, int]
+
+    def words(self, mode: str) -> str:
+        return f"`{mode}` ({_SAYS[mode]}), {human_bytes(self.bytes[mode])}"
+
+
+@dataclass(frozen=True)
+class InventoryChoice:
+    mode: str
+    cost: InventoryCost
+
+    def short(self) -> str:
+        return (f"its inventories list {_SAYS[self.mode]} "
+                f"({human_bytes(self.cost.bytes[self.mode])})")
+
+    def statement(self) -> str:
+        """The paragraph over the flows page: which choice, and what the others cost."""
+        others = "; ".join(self.cost.words(m) for m in INVENTORY_MODES if m != self.mode)
+        return (f"> **Under each diagram: {_SAYS[self.mode]}** — `--flow-inventory "
+                f"{self.mode}`, {human_bytes(self.cost.bytes[self.mode])} of this page. "
+                f"The other choices would have taken {others}.\n")
+
+
+def human_bytes(n: int) -> str:
+    """`1.14 GB`, `830 KB`, `412 bytes` -- decimal units, as a file manager shows them."""
+    if n < 1000:
+        return f"{n:,} bytes"
+    for unit, size in (("GB", 1e9), ("MB", 1e6), ("KB", 1e3)):
+        if n >= size:
+            return f"{n / size:.3g} {unit}" if n < size * 100 else f"{n / size:,.0f} {unit}"
+    return f"{n:,} bytes"
+
+
+def inventory_costs(store: Store, ranked: list[dict], index: _Inventory | None = None,
+                    tick: Callable[[int, int], None] | None = None) -> InventoryCost:
+    """What the flows page's inventories take in each mode, in bytes, before one is written.
+
+    Built and measured rather than estimated, because the figure is printed beside the
+    choice and a claim must be what is printed (rule 13). It costs one more reach walk and
+    trace per way in; the rows themselves are cached in `index`, so the page that follows
+    builds no row twice.
+    """
+    index = index or _Inventory(store)
+    rooted = [d for d in ranked if d["roots"]]
+    total = dict.fromkeys(INVENTORY_MODES, 0)
+    for n, (d, flow) in enumerate(_traced(store, rooted)):
+        if tick is not None:
+            tick(n, len(rooted))
+        for m in INVENTORY_MODES:
+            total[m] += len(_flow_inventory(store, d, index, m, flow).encode("utf-8"))
+    return InventoryCost(total)
 
 
 def _routines(store: Store, out: Path, program: str, stamp: Stamp) -> Path:

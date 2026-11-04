@@ -39,6 +39,7 @@ from urllib.parse import parse_qs
 from .. import macapp, revisions, runstate, runtime
 from ..docstore import DocStore
 from ..estimate import WARN_AFTER_DEFAULT, WARN_AFTER_MAX, WARN_AFTER_MIN
+from ..render.markdown import INVENTORY_MODES, human_bytes
 from ..resolve import languages
 from ..resolve import version as version_order
 from ..runtime import resource_root
@@ -1293,7 +1294,7 @@ class _Live:
             return True
 
     def start_analysis(self, name: str, *, source: Path, out_root: Path, docs: bool,
-                       run: Any = analysis.run) -> bool:
+                       run: Any = analysis.run, inventory: str | None = None) -> bool:
         """Claim the slot and start the run. `False` means the slot was taken.
 
         **One place, because there were two and they were the same eleven lines** -- the
@@ -1323,7 +1324,7 @@ class _Live:
         def work() -> None:
             try:
                 run(source=source, name=name, out_root=out_root, docs=docs,
-                    note=self.note_analysis, on_start=hold)
+                    note=self.note_analysis, on_start=hold, inventory=inventory)
             finally:
                 with self.analysis_lock:
                     self.analysis_claimed = False
@@ -3421,6 +3422,16 @@ class _Handler(BaseHTTPRequestHandler):
             v = analysis.check(asked, (q.get("name") or [""])[0],
                                self._live.out_root, self._serving_dir())
             body["check"] = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
+            # What each flows inventory took the last time this name was analysed, for the
+            # choice under it. Only a name that is a program here is asked (rule 30).
+            name = ((q.get("name") or [""])[0]
+                    or Path(asked.strip()).expanduser().name).strip()
+            here = {d.name: d for d in revisions.program_dirs(self._live.out_root)}
+            last = analysis.inventory_for(here[name]) if name in here else None
+            # Worded here, by the function the map's own pages use, so the dialog and the
+            # page say one size in one spelling (rule 51).
+            body["inventory"] = ({m: human_bytes(n) for m, n in last.items()}
+                                 if last else None)
         self._json(body)
 
     def _serving_dir(self) -> Path | None:
@@ -3557,8 +3568,12 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"started": False, "reason": "", "steps": [],
                             "confirm": dataclasses.asdict(cost)})
                 return
+        # The flows page's inventory, as the dialog chose it. A word it does not offer is
+        # the dialog not having said, which leaves the child's own default (rule 49).
+        said = (q.get("inventory") or [""])[0]
+        inventory = said if said in INVENTORY_MODES else None
         if not self._live.start_analysis(name, source=source, out_root=out_root,
-                                         docs=docs):
+                                         docs=docs, inventory=inventory):
             # **The refusal carries the running job, so the reader can act on it.** It used
             # to be a sentence and nothing else -- true, and a dead end: the one thing they
             # might want to do about it is stop it, and nothing on the page offered that.

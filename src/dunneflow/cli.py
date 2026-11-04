@@ -32,7 +32,13 @@ from .ingest.contract import PluginRefused
 from .lookup import find_routine, search_said
 from .migrate import MigrationRefused, migrate_program
 from .render.index import legacy_map_files, render_index
-from .render.markdown import render_all
+from .render.markdown import (
+    FULL,
+    INVENTORY_MODES,
+    InventoryCost,
+    human_bytes,
+    render_all,
+)
 from .render.snapshot import mapless, render_maps
 from .resolve import languages, manifests
 from .resolve import supplied as supplied_edges
@@ -619,6 +625,44 @@ def _size_verdict(root: Path, args: argparse.Namespace,
     _emit("Not started: there is no terminal to ask. Run it with `--any-size` to read it "
           "whole anyway.")
     return 2
+
+
+#: Bytes of flows-page inventory above which a terminal is asked which to write. The
+#: largest measured is Unreal's Runtime, 1.14 GB; a map of a few thousand files is a few MB.
+INVENTORY_ASK_ABOVE = 256 * 10**6
+
+
+def _inventory_chooser(args: argparse.Namespace,
+                       seen: dict[str, int]) -> Callable[[InventoryCost], str]:
+    """How the flows page lists what each way in reaches, decided with its cost in hand.
+
+    The reader's own `--flow-inventory` wins and nothing is asked. Otherwise `full`, which
+    is what every map has always held -- unless it is large, and then a terminal is shown
+    what each choice costs and asked (Tom, 2026-11-03: a costly output is the reader's
+    choice, and the cost goes in front of them). With no terminal it stays `full` and the
+    costs are still said. `seen` receives the measured sizes for the run's sidecar, so the
+    dashboard can state them before the next run of this program.
+    """
+    def choose(cost: InventoryCost) -> str:
+        seen.update(cost.bytes)
+        if args.flow_inventory is not None:
+            return str(args.flow_inventory)
+        if cost.bytes[FULL] <= INVENTORY_ASK_ABOVE:
+            return FULL
+        _emit(f"The flows page would list every routine each way in reaches: "
+              f"{human_bytes(cost.bytes[FULL])}. The choices are "
+              + "; ".join(cost.words(m) for m in INVENTORY_MODES) + ".")
+        if _interactive(args):
+            sys.stderr.write("Which? [full/omitted/count] (full) ")
+            sys.stderr.flush()
+            answer = sys.stdin.readline().strip().lower()
+            for m in INVENTORY_MODES:
+                if answer and m.startswith(answer):
+                    return m
+            return FULL
+        _emit("No terminal to ask, so it is written in full; `--flow-inventory` chooses.")
+        return FULL
+    return choose
 
 
 def _emit_uncovered(cut: Breakdown, root: Path) -> None:
@@ -1242,6 +1286,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
             f"{ac.get(INFO, 0)} informational"
         )
 
+    inventory_bytes: dict[str, int] = {}
     if not args.no_render:
         prog.step(STEP_RENDER)
         t2 = time.perf_counter()
@@ -1259,7 +1304,8 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
         files = render_all(store, map_out, program,
                            include_tests=args.include_tests,
                            docs=doc_store, standards=standards_store, report=rep,
-                           tick=prog.tick)
+                           tick=prog.tick,
+                           choose=_inventory_chooser(args, inventory_bytes))
         # And the listing that says which map is which. Written every time, because a
         # revision's *state* changes underneath it -- sealing one makes every earlier
         # listing wrong about which snapshot is the working one.
@@ -1281,7 +1327,10 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # way -- one is the sentence and one is the object (rule 13).
     # What this run cost, for the next estimate of this program (see `estimate`).
     run[0].result(timings=prog.phases(), files=dict(sorted(stats.by_lang.items())),
-                  parsed=stats.parsed, cached=stats.cached)
+                  parsed=stats.parsed, cached=stats.cached,
+                  # What each flows inventory took, for the dialog to say before the next
+                  # run of this program (`analysis.inventory_for`).
+                  inventory_bytes=inventory_bytes)
     # **Said either way**: `done` reaches the sidecar whether or not stdout is the machine
     # channel, because a run started from a terminal is the one whose ending the dashboard
     # can only learn from the sidecar. `_say` prints only when `--progress-json` is on.
@@ -1865,6 +1914,13 @@ def build_parser() -> argparse.ArgumentParser:
                              f"{platform_output_root()} in a packaged application)")
         sp.add_argument("--db", help="graph database path")
 
+    def flow_inventory(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument("--flow-inventory", choices=INVENTORY_MODES, default=None,
+                        help="how the flows page lists what each way in reaches: every "
+                             "routine (full, the default), only what its diagram leaves out "
+                             "(omitted), or how many (count). Unchosen and over "
+                             f"{human_bytes(INVENTORY_ASK_ABOVE)}, a terminal is asked")
+
     def unfinished(sp: argparse.ArgumentParser) -> None:
         # **The Setting, as a flag** (rule 80, and Tom's ruling of 2026-11-03 that
         # strictness is the reader's choice). Refusing stays the default because the
@@ -1937,6 +1993,7 @@ def build_parser() -> argparse.ArgumentParser:
     # total (`BACKLOG.md` item 9). On stderr with the prose, never on the machine channel.
     a.add_argument("--timings", action="store_true",
                    help="print what each phase of the run cost")
+    flow_inventory(a)
     a.set_defaults(func=cmd_analyze)
 
     t = sub.add_parser("touches", help="what does this routine reach?")
@@ -2016,6 +2073,7 @@ def build_parser() -> argparse.ArgumentParser:
                          "a map rewrites it.")
     rn.add_argument("--include-tests", action="store_true",
                     help="report anomalies in test code too, as `analyze` does")
+    flow_inventory(rn)
     rn.set_defaults(func=cmd_render)
 
     mg = sub.add_parser(
@@ -2227,7 +2285,8 @@ def cmd_render(args: argparse.Namespace) -> int:
             source.close()
 
     done = render_maps(out_dir, wanted, include_tests=args.include_tests,
-                       rows=rows, emit=_emit)
+                       rows=rows, emit=_emit,
+                       choose=_inventory_chooser(args, {}))
     # Non-zero on a refusal, so this can be scripted: a run that wrote nothing it was asked
     # for must not report success (rule 13's shape at the exit code).
     return 1 if any(r.refusal for r in done) else 0

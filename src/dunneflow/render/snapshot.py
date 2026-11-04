@@ -46,7 +46,7 @@ from .. import revisions
 from ..docstore import DocStore
 from ..store import StaleGraphError, Store, unfinished_sentence
 from .index import render_index
-from .markdown import render_all
+from .markdown import FULL, InventoryCost, render_all
 
 
 @dataclass
@@ -117,7 +117,9 @@ def _standard_for(out_dir: Path, revision: str) -> tuple[DocStore | None, str]:
 
 
 def render_snapshot(out_dir: Path, revision: str, *,
-                    include_tests: bool = False) -> Rendered:
+                    include_tests: bool = False,
+                    inventory: str = FULL,
+                    choose: Callable[[InventoryCost], str] | None = None) -> Rendered:
     """Write `map@<revision>/` from the stores this directory already holds.
 
     Everything is opened **read-only**. `Store` refuses a stale graph on open and that
@@ -176,7 +178,8 @@ def render_snapshot(out_dir: Path, revision: str, *,
         out.files = render_all(store, map_out, program,
                                include_tests=include_tests,
                                docs=doc_store, standards=standards,
-                               standards_note=note)
+                               standards_note=note,
+                               inventory=inventory, choose=choose)
         out.map_dir = map_out
     finally:
         store.close()
@@ -189,6 +192,8 @@ def render_snapshot(out_dir: Path, revision: str, *,
 
 def render_maps(out_dir: Path, wanted: Iterable[str] | None = None, *,
                 include_tests: bool = False,
+                inventory: str = FULL,
+                choose: Callable[[InventoryCost], str] | None = None,
                 rows: Iterable[dict] = (),
                 emit: Callable[[str], None] | None = None) -> list[Rendered]:
     """Render the named revisions, or every one that has a graph and no map.
@@ -209,7 +214,8 @@ def render_maps(out_dir: Path, wanted: Iterable[str] | None = None, *,
 
     done: list[Rendered] = []
     for rev in chosen:
-        r = render_snapshot(out_dir, rev, include_tests=include_tests)
+        r = render_snapshot(out_dir, rev, include_tests=include_tests,
+                            inventory=inventory, choose=choose)
         done.append(r)
         if r.refusal:
             say(f"{rev}: refused — {r.refusal}")

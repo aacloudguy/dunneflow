@@ -77,6 +77,9 @@
      guessed, so the sentence under the field and the sentence on the button cannot differ
      (rule 41). */
   let ANALYZE_CHECK = null;
+  /* What each flows inventory took the last time this name was analysed, worded by the
+     server (`/api/analysis`'s `inventory`), or null when there was no such run. */
+  let ANALYZE_INVENTORY = null;
   let ANALYZE_SEQ = 0;
   /* A run in flight, or the last one to finish. Its own state, not `REBUILD`: they are two
      slots on the server for the reason stated there, and sharing one here would put an
@@ -87,6 +90,11 @@
      per program, because it is about the reader's patience rather than about any one tree.
      Read and written through try/catch: storage can be refused, and the default stands. */
   const WARN = { min: 1, max: 600, def: 10, key: "dunneflow:analysis:warnAfter" };
+  /* The flows page's three inventories, as `--flow-inventory` names them. The words are the
+     reader's; the values are what the server accepts (`serve._p_analyze`) and nothing else. */
+  const INVENTORY = [["full", "every routine each way in reaches"],
+                     ["omitted", "only what each diagram leaves out"],
+                     ["count", "how many each reaches"]];
   function warnAfter() {
     let n = WARN.def;
     try { n = parseInt(localStorage.getItem(WARN.key) || "", 10); } catch { n = WARN.def; }
@@ -129,6 +137,7 @@
   function openAnalyze(prefill) {
     ANALYZE = Object.assign({ path: "", name: "", docs: true, busy: false, blocked: null,
                              picking: false, pickfail: "", confirm: null,
+                             inventory: "full",
                              warnAfter: warnAfter() }, prefill || {});
     ANALYZE_CHECK = null;
     paintAnalyze();
@@ -166,6 +175,7 @@
     }
     if (seq !== ANALYZE_SEQ || !ANALYZE) return;
     ANALYZE_CHECK = d.check || null;
+    ANALYZE_INVENTORY = d.inventory || null;
     paintAnalyze();
   }
 
@@ -250,6 +260,20 @@
       <label class="analyze-check">
         <input type="checkbox" data-anfield="docs"${a.docs ? " checked" : ""}>
         <span>Read the documentation too</span>
+      </label>
+
+      <label class="analyze-field">
+        <span>Under each flow diagram, list</span>
+        <select data-anfield="inventory">
+          ${INVENTORY.map(([v, l]) => `<option value="${v}"${a.inventory === v
+            ? " selected" : ""}>${l}${ANALYZE_INVENTORY && ANALYZE_INVENTORY[v]
+            ? ` — ${esc(ANALYZE_INVENTORY[v])} last time` : ""}</option>`).join("")}
+        </select>
+        <p class="hint">${ANALYZE_INVENTORY
+          ? "The sizes are what this program&rsquo;s last analysis measured for each."
+          : `Every routine is what every map has held. On a very large program it is the
+             largest page in the map &mdash; 1.14&nbsp;GB on one measured &mdash; and the
+             sizes appear here once this name has been analysed.`}</p>
       </label>
 
       <label class="analyze-field analyze-warn">
@@ -366,6 +390,7 @@
       d = await fetch("/api/analyze?path=" + encodeURIComponent(path) +
                       "&name=" + encodeURIComponent(name) +
                       "&docs=" + (docs ? "1" : "0") +
+                      "&inventory=" + encodeURIComponent(ANALYZE.inventory || "full") +
                       "&warn_after=" + encodeURIComponent(String(ANALYZE.warnAfter)) +
                       (confirmed ? "&any_size=1" : ""),
                       { method: "POST" }).then(r => r.json());
@@ -725,7 +750,7 @@
     const t = ev.target;
     if (!ANALYZE || !t || !t.dataset || !t.dataset.anfield) return;
     const f = t.dataset.anfield;
-    if (f === "docs") return;              // a checkbox answers on `change`, below
+    if (f === "docs" || f === "inventory") return;   // these answer on `change`, below
     if (f === "warnAfter") {
       /* Kept as typed while typing; clamped when it is used and when it is stored. A new
          threshold invalidates a confirm box asked against the old one. */
@@ -741,6 +766,10 @@
 
   document.addEventListener("change", (ev) => {
     const t = ev.target;
+    if (ANALYZE && t && t.dataset && t.dataset.anfield === "inventory") {
+      ANALYZE.inventory = t.value;
+      return;
+    }
     if (!ANALYZE || !t || !t.dataset || t.dataset.anfield !== "docs") return;
     /* The verdict is about the path and the name; the documentation switch changes nothing
        about whether this may run, so it does not ask again. */

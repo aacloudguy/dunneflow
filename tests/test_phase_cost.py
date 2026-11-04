@@ -79,7 +79,11 @@ def test_the_streamed_flows_page_is_the_page_the_join_wrote(analyzed, tmp_path: 
             pass
 
     held = Joined()
-    markdown._flows_into(held, analyzed, "sample", stamp, ranked, None)  # type: ignore[arg-type]
+    index = markdown._Inventory(analyzed)
+    choice = markdown.InventoryChoice(
+        markdown.FULL, markdown.inventory_costs(analyzed, ranked, index))
+    markdown._flows_into(held, analyzed, "sample", stamp, ranked, None,  # type: ignore[arg-type]
+                         index, choice)
     # As text: both the join's `write_text` and the stream translate newlines on Windows.
     assert path.read_text(encoding="utf-8") == "\n".join(held)
     assert len(held) > 3, "the sample program drew no flows, so this compared nothing"

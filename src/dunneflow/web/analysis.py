@@ -151,7 +151,8 @@ def check(path: str, name: str, out_root: Path, serving: Path | None) -> Verdict
     return Verdict()
 
 
-def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
+def argv(source: Path, name: str, out_root: Path, docs: bool,
+         inventory: str | None = None) -> list[str]:
     """What the subprocess is told. Named apart from `run` so a test can read it.
 
     **How to run this same DunneFlow again is `runtime.self_argv`'s question, not this
@@ -172,7 +173,25 @@ def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
            "--any-size"]
     if not docs:
         out.append("--no-docs")
+    # The dialog's choice for the flows page. Always passed when the reader made one: the
+    # child has no terminal, so its own ask would quietly write `full` (`cli._inventory_chooser`).
+    if inventory is not None:
+        out += ["--flow-inventory", inventory]
     return out
+
+
+def inventory_for(out_dir: Path) -> dict[str, int] | None:
+    """What each flows inventory took on this program's last finished run, or `None`.
+
+    Measured by that run (`cli._inventory_chooser` records it in the sidecar), so the dialog
+    can put the cost of each choice in front of the reader before they choose -- a
+    measurement of the same program, never a guess at a new one.
+    """
+    body = runstate.read(out_dir)
+    if not body or body.get("state") != "done":
+        return None
+    got = body.get("inventory_bytes")
+    return {k: int(v) for k, v in got.items()} if isinstance(got, dict) and got else None
 
 
 
@@ -504,6 +523,7 @@ def stop_pid(pid: int, *, grace: float = 3.0) -> str:
 
 def run(source: Path, name: str, out_root: Path, docs: bool,
         note: Callable[..., None], *,
+        inventory: str | None = None,
         popen: Any = subprocess.Popen,
         on_start: Callable[[Any], None] | None = None) -> None:
     """Read `source` into `out_root/name`, reporting every step through `note`.
@@ -524,7 +544,7 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
     def say(**fields: Any) -> None:
         note(**{**fields, "source": str(source)})
 
-    cmd = argv(source, name, out_root, docs)
+    cmd = argv(source, name, out_root, docs, inventory)
     tail: deque[str] = deque(maxlen=REASON_LINES)
     try:
         # **Its own group**, so stopping it can reach the pool workers it will start.

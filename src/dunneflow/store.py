@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from .detectors import core_fingerprint, lang_fingerprint
+from .detectors import core_fingerprint, frontier_words, lang_fingerprint
 from .migrate import (
     META_PATHS,
     PATHS_RELATIVE,
@@ -47,6 +47,7 @@ from .schema import (
     StructureKind,
     SuppliedBinding,
     SuppliedEdge,
+    SuppliedUse,
     TargetKind,
 )
 
@@ -204,6 +205,16 @@ CREATE TABLE IF NOT EXISTS supplied_bindings (
     line          INTEGER NOT NULL DEFAULT 0,
     name          TEXT NOT NULL DEFAULT '',
     why           TEXT NOT NULL DEFAULT ''
+);
+
+-- `schema.SuppliedUse`: a routine a reader saw named as a value -- a callback passed or
+-- stored. Whole per language. Read by `anomalies._dead_code`, which does not list a routine
+-- that is used even where nothing calls it by name.
+CREATE TABLE IF NOT EXISTS value_uses (
+    lang TEXT NOT NULL,
+    file TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    name TEXT NOT NULL
 );
 
 -- Names a file hands to an IPC dispatch (`schema.IpcRegistration`). Per file, like
@@ -496,6 +507,7 @@ CREATE INDEX IF NOT EXISTS ix_routines_name    ON routines(name);
 CREATE INDEX IF NOT EXISTS ix_routines_qual    ON routines(qualname);
 CREATE INDEX IF NOT EXISTS ix_calls_caller     ON calls(caller_id);
 CREATE INDEX IF NOT EXISTS ix_bindings_ep      ON supplied_bindings(entrypoint_id);
+CREATE INDEX IF NOT EXISTS ix_value_uses_at    ON value_uses(file, line, name);
 CREATE INDEX IF NOT EXISTS ix_calls_callee     ON calls(callee_id);
 CREATE INDEX IF NOT EXISTS ix_calls_file       ON calls(file);
 CREATE INDEX IF NOT EXISTS ix_calls_site       ON calls(site_id);
@@ -705,7 +717,13 @@ def refuse_missing(path: Path, what: str) -> None:
 
 
 def _frontier(rows: list[sqlite3.Row]) -> dict[str, Any]:
-    """Group frontier rows: outside by the far end's first segment, the rest by reason."""
+    """Group frontier rows: outside by the far end's first segment, the rest by why.
+
+    **By the sentence, not the reason.** A reason is a word each reader uses in its own
+    language's sense -- C's `untyped` is not Rust's -- so the rows are grouped by what each
+    one means in its language (`detectors.frontier_words`) and the key is that sentence.
+    Two languages that mean one thing by it share a row; two that do not, do not.
+    """
     outside: dict[str, int] = {}
     unresolved: dict[str, int] = {}
     unsaid = 0
@@ -714,7 +732,8 @@ def _frontier(rows: list[sqlite3.Row]) -> dict[str, Any]:
             head = str(r["frontier"]).split("::", 1)[0] or "?"
             outside[head] = outside.get(head, 0) + int(r["n"])
         elif r["reason"]:
-            unresolved[r["reason"]] = unresolved.get(r["reason"], 0) + int(r["n"])
+            said = frontier_words(str(r["lang"] or ""), str(r["reason"]))
+            unresolved[said] = unresolved.get(said, 0) + int(r["n"])
         else:
             unsaid += int(r["n"])
     by_count = lambda d: sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))  # noqa: E731
@@ -1235,6 +1254,14 @@ class Store:
         c.executemany(
             "INSERT INTO supplied_bindings(lang,entrypoint_id,file,line,name,why)"
             " VALUES(?,?,?,?,?,?)", rows)
+        return len(rows)
+
+    def replace_value_uses(self, lang: str, uses: Iterable[SuppliedUse]) -> int:
+        """Every routine this language's reader saw named as a value. Whole, like the edges."""
+        c = self.conn
+        c.execute("DELETE FROM value_uses WHERE lang = ?", (lang,))
+        rows = sorted({(lang, u.file, u.line, u.name) for u in uses})
+        c.executemany("INSERT INTO value_uses(lang,file,line,name) VALUES(?,?,?,?)", rows)
         return len(rows)
 
     # -- writes ------------------------------------------------------------ #
@@ -1813,10 +1840,11 @@ class Store:
                   FROM dispatch_links d JOIN reach r ON d.caller_id = r.id
                  WHERE r.depth < ?
             )
-            SELECT c.reason, c.frontier, COUNT(*) AS n
+            SELECT f.lang, c.reason, c.frontier, COUNT(*) AS n
               FROM calls c JOIN (SELECT DISTINCT id FROM reach) r ON c.caller_id = r.id
+              LEFT JOIN files f ON f.path = c.file
              WHERE c.callee_id IS NULL AND c.at_boundary = 0 AND c.constructs = ''
-             GROUP BY c.reason, c.frontier
+             GROUP BY f.lang, c.reason, c.frontier
             """,
             (routine_id, max_depth, max_depth, max_depth),
         ).fetchall()
@@ -1915,9 +1943,10 @@ class Store:
     def frontier_of_map(self) -> dict[str, Any]:
         """`frontier_reached` over every call in the map, for *About this map*."""
         rows = self.conn.execute(
-            "SELECT reason, frontier, COUNT(*) AS n FROM calls"
-            " WHERE callee_id IS NULL AND at_boundary = 0 AND constructs = ''"
-            " GROUP BY reason, frontier"
+            "SELECT f.lang, c.reason, c.frontier, COUNT(*) AS n FROM calls c"
+            " LEFT JOIN files f ON f.path = c.file"
+            " WHERE c.callee_id IS NULL AND c.at_boundary = 0 AND c.constructs = ''"
+            " GROUP BY f.lang, c.reason, c.frontier"
         ).fetchall()
         return _frontier(rows)
 

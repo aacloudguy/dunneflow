@@ -112,6 +112,17 @@ then bound by name, because a name cannot tell overloads apart. The C++ reader i
 one that sends them; what decides `_Implementation` is the Unreal preset in `cpp.yaml`, not
 the reader.
 
+**And uses, for a routine named as a value.** A C callback is handed to `event_set` or stored
+in a table's `.exec` and never called by name, so without this every one of them is dead code
+(714 of tmux's routines). `supplies_uses: true` and a `use` frame per routine named and not
+called (`schema.SuppliedUse`, counted by `edges_done.uses`), and `DEAD_CODE` leaves them out.
+A use is never made an edge: what calls a stored callback is somebody else's business.
+
+**A reason is worded in your language.** `untyped`, `bound` and the rest are the reader's
+words, and what each means is the language's: Rust's `untyped` is a receiver whose type is not
+written down, C's is a call clang could not resolve. Say it under `frontier_words` in your
+rules file; a reason you leave out is given the plain wording in `detectors.FRONTIER_WORDS`.
+
 **Nothing else is yours.** The resolver's boundary suppression, the missing-target
 bookkeeping, `stamp_lang`, the fingerprint, the walk's arithmetic and every surface above
 the graph are the host's. If you find yourself writing one of them, that is the signal the

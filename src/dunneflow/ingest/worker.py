@@ -327,6 +327,7 @@ class NdjsonWorker:
         caps = reply.get("capabilities") or {}
         for field, declared in (("supplies_edges", m.supplies_edges),
                                 ("supplies_bindings", m.supplies_bindings),
+                                ("supplies_uses", m.supplies_uses),
                                 ("reports_literals", m.reports_literals)):
             said = bool(caps.get(field, False))
             if said != declared:

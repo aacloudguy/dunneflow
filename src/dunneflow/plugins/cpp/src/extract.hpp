@@ -122,6 +122,7 @@ struct Result {
     std::vector<Over> overs;
     std::vector<std::pair<std::string, std::string>> bases;  // record USR -> base USR
     std::vector<Mark> marks;
+    std::set<std::string> uses;  // USRs of routines named here as a value, not called
     std::string failed;          // a parse clang refused outright
     int fatal = 0, errors = 0;   // diagnostics in this file's parse
     std::string first_missing;   // the first include it could not find
@@ -604,11 +605,31 @@ private:
             return;
         }
 
+        if (k == CXCursor_DeclRefExpr || k == CXCursor_MemberRefExpr) value_use(c);
         if (!stack_.empty()) {
             if (k == CXCursor_CallExpr) note_call(c, parent);
             else if (k == CXCursor_CXXNewExpr) note_new(c);
         }
         visit(c);
+    }
+
+    // **A routine named and not called is a value**: `event_set(&ev, fd, EV_READ,
+    // server_accept, NULL)`, `.exec = cmd_attach_session_exec`, `&UFoo::OnHit`. Told from a
+    // call by what is written after the name -- a call writes `(` and a value does not --
+    // and only where the name is the token written at this place, so a name a macro writes
+    // is not mistaken for one the program does (`SuppliedUse`).
+    void value_use(CXCursor c) {
+        CXCursor ref = C().clang_getCursorReferenced(c);
+        if (C().clang_Cursor_isNull(ref)) return;
+        CXCursorKind rk = C().clang_getCursorKind(ref);
+        if (rk != CXCursor_FunctionDecl && rk != CXCursor_CXXMethod && rk != CXCursor_FunctionTemplate) return;
+        unsigned at;
+        if (!offset_of(C().clang_getCursorLocation(c), at)) return;
+        size_t i = x_.tok_at(at);
+        if (i >= x_.toks.size() || x_.toks[i].off != at || x_.toks[i].text != spelling(ref)) return;
+        if (i + 1 < x_.toks.size() && x_.toks[i + 1].text == "(") return;
+        std::string u = usr(ref);
+        if (!u.empty()) x_.out->uses.insert(u);
     }
 
     // ------------------------------------------------------- the preprocessor --- //
@@ -783,6 +804,18 @@ private:
                     if (w.size() > 200) break;
                 }
                 if (w.compare(0, 8, "operator") == 0) name = w;
+            }
+        }
+        if (name.rfind("__builtin", 0) == 0) {
+            // **A program cannot define a builtin**, so a definition clang names
+            // `__builtin___strlcat_chk` was renamed by a macro: macOS's `<string.h>`, under
+            // `_FORTIFY_SOURCE`, has `#define strlcat(...) __builtin___strlcat_chk(...)`, and
+            // tmux's `compat/strlcat.c` defines `strlcat` through it. The name is the one
+            // written where the definition is.
+            unsigned at;
+            if (offset_of(C().clang_getCursorLocation(c), at)) {
+                size_t i = x_.tok_at(at);
+                if (i < x_.toks.size() && x_.toks[i].off == at && x_.toks[i].kind == IDENT) name = x_.toks[i].text;
             }
         }
         std::string qualname = join(parts, name);

@@ -246,3 +246,8 @@ ipc:
   command_attrs: ["tauri::command", "command"]
   registrars: ["tauri::generate_handler", "generate_handler"]
   foreign_prefixes: ["plugin:"]
+
+# **Why a call has no edge, in Rust's terms** (`detectors.frontier_words`). `untyped` is a
+# receiver whose type is not written down, or a value of a type parameter with no bound.
+frontier_words:
+  untyped: "the receiver's type is not written down, or is a type parameter with no bound"

@@ -249,7 +249,7 @@ std::string hello() {
     f += ",\"protocol\":" + std::to_string(PROTOCOL) + ",\"schema_version\":" +
          std::to_string(facts::SCHEMA_VERSION) +
          ",\"capabilities\":{\"supplies_edges\":" + std::string(edges::SUPPLIES ? "true" : "false") +
-         ",\"supplies_bindings\":true,\"reports_literals\":true}";
+         ",\"supplies_bindings\":true,\"supplies_uses\":true,\"reports_literals\":true}";
     return f;
 }
 
@@ -274,6 +274,7 @@ std::string open(const json::Value& f) {
     notes.push_back("libclang: " + clang::api().version + " (" + clang::api().path + ")");
     for (const auto& n : notes) note(n);
     s.tree.read_beyond = s.cfg.read_beyond;
+    s.tree.generated = s.cfg.generated;
     for (const auto& p : s.rules.presets)
         if (p.name == s.cfg.preset) s.tree.body_rules = p.bodies;
     s.start();
@@ -324,7 +325,8 @@ void edges_reply(const json::Value& id) {
         session->tree,
         [&](const std::string& edge) { send("{\"t\":\"edge\",\"id\":" + id_json(id) + ",\"edge\":" + edge + "}"); },
         [&](const std::string& done) { send("{\"t\":\"edges_done\",\"id\":" + id_json(id) + "," + done + "}"); },
-        [&](const std::string& b) { send("{\"t\":\"binding\",\"id\":" + id_json(id) + ",\"binding\":" + b + "}"); });
+        [&](const std::string& b) { send("{\"t\":\"binding\",\"id\":" + id_json(id) + ",\"binding\":" + b + "}"); },
+        [&](const std::string& u) { send("{\"t\":\"use\",\"id\":" + id_json(id) + ",\"use\":" + u + "}"); });
 }
 
 void handle(const std::string& line) {

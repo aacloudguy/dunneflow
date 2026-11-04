@@ -113,6 +113,10 @@ struct Session {
     // Each fragment's includers among the files read, canonical order first: the header of
     // the same stem, then by path (rule 66). A fragment nothing includes is not here.
     std::map<std::string, std::vector<std::string>> includers;
+    // Spellings no file answers whose header the build generates from a template beside the
+    // sources -- `pxr/pxr.h` from `pxr/pxr.h.in`, nmap's `nmap_config.h` from
+    // `nmap_config.h.in` -- by spelling, with the template's path relative to the root.
+    std::map<std::string, std::string> generated;
 
     // The arguments for one file. The language comes first, so a database entry that names
     // another is still parsed as the file's own suffix says.
@@ -357,6 +361,32 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
     }
     std::map<std::string, std::vector<std::string>> by_base;
     for (const auto& g : reach) by_base[g.substr(g.find_last_of('/') + 1)].push_back(g);
+    // **The headers a build generates, by their templates.** An unconfigured autoconf or
+    // CMake tree has `config.h.in` and no `config.h`, and every file that includes it is
+    // read without what it defines: 4,545 of OpenUSD's files missed `pxr/pxr.h`, and the
+    // map said so as a count with no word of why or what would mend it. Looked for only in
+    // the directories the read files are in -- where a template sits beside its sources --
+    // so this is a listing of each, never a walk of the tree.
+    std::map<std::string, std::vector<std::pair<std::string, std::string>>> templates;  // base -> (made, template)
+    {
+        std::set<std::string> dirs_read;
+        for (const auto& f : files) dirs_read.insert(generic(fs::path(f).parent_path()));
+        for (const auto& d : dirs_read) {
+            std::error_code ec;
+            for (const auto& e : fs::directory_iterator(d, fs::directory_options::skip_permission_denied, ec)) {
+                std::string name = e.path().filename().string();
+                if (name.size() < 4 || name.compare(name.size() - 3, 3, ".in") != 0) continue;
+                std::string made = name.substr(0, name.size() - 3);
+                if (made.size() > 6 && made.compare(made.size() - 6, 6, ".cmake") == 0) made.resize(made.size() - 6);
+                if (!HEADER_SUFFIXES.count(suffix(made))) continue;
+                std::string g = generic(e.path());
+                std::string rel_made = generic(fs::path(d) / made);
+                std::string rel_from = g.rfind(s.root + "/", 0) == 0 ? g.substr(s.root.size() + 1) : g;
+                templates[made].push_back({rel_made, rel_from});
+            }
+        }
+        for (auto& [b, v] : templates) std::sort(v.begin(), v.end());
+    }
     std::set<std::string> dirs, beyond;
     for (auto sp : spellings) {
         while (sp.rfind("./", 0) == 0) sp = sp.substr(2);
@@ -386,7 +416,31 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
             s.ambiguous++;
         } else {
             s.unanswered++;
+            auto t = templates.find(base);
+            if (t != templates.end())
+                for (const auto& [made, from] : t->second)
+                    if (made == sp || (made.size() > sp.size() && made.compare(made.size() - sp.size(), sp.size(), sp) == 0 &&
+                                       made[made.size() - sp.size() - 1] == '/')) {
+                        s.generated[sp] = from;
+                        break;
+                    }
         }
+    }
+    if (!s.generated.empty() && !s.has_database) {
+        std::string named;
+        size_t k = 0;
+        for (const auto& [sp, from] : s.generated) {
+            if (k++ == 4) {
+                named += ", and " + std::to_string(s.generated.size() - 4) + " more";
+                break;
+            }
+            named += (named.empty() ? "" : ", ") + sp + " (from " + from + ")";
+        }
+        s.notes.push_back("this tree is not configured: " + std::to_string(s.generated.size()) + " header" +
+                          (s.generated.size() == 1 ? "" : "s") + " its build generates " +
+                          (s.generated.size() == 1 ? "is" : "are") + " not here -- " + named +
+                          ". Configure it (./configure, or cmake), or put a compile_commands.json at its root, "
+                          "and the files that include them are read with what they define");
     }
     s.include_dirs.assign(dirs.begin(), dirs.end());
     s.read_beyond.assign(beyond.begin(), beyond.end());

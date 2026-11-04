@@ -1023,6 +1023,8 @@ def analyze_tree(
                 # sends none, so a binding never outlives the reader saying it.
                 store.replace_supplied_bindings(
                     lang, plugin.edge_bindings if plugin.manifest.supplies_bindings else [])
+                store.replace_value_uses(
+                    lang, plugin.edge_uses if plugin.manifest.supplies_uses else [])
                 if plugin.edges_outside:
                     stats.edges_outside[lang] = plugin.edges_outside
                 if plugin.edges_unknown:

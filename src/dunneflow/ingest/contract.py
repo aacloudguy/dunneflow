@@ -24,7 +24,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from ..schema import DataStructure, FileFacts, Routine, SuppliedBinding, SuppliedEdge
+from ..schema import (
+    DataStructure,
+    FileFacts,
+    Routine,
+    SuppliedBinding,
+    SuppliedEdge,
+    SuppliedUse,
+)
 
 ProgressFn = Callable[[str, int, int], None]
 
@@ -278,6 +285,8 @@ class PluginManifest:
     # **The reader binds the ways in it marks** (`SuppliedBinding`), in the edge pass. Only
     # meaningful with `supplies_edges`; a reader that declares it is never bound by name.
     supplies_bindings: bool = False
+    # **The reader says which routines are named as values** (`SuppliedUse`), in the edge pass.
+    supplies_uses: bool = False
     reports_literals: bool = False
     # Relative to the plugin's own directory. Never a glob — see above.
     fingerprint: tuple[str, ...] = ()
@@ -365,6 +374,8 @@ class IngestPlugin(Protocol):
     # frames of the last `edges` stream (`SuppliedBinding`). Empty unless the manifest
     # declares `supplies_bindings`.
     edge_bindings: list[SuppliedBinding]
+    # The routines named as values -- the `use` frames of the last `edges` stream.
+    edge_uses: list[SuppliedUse]
     # What the reader said when `open` built its session — how it divided the file set
     # into compilations, how long that took, whatever else it has to declare. Empty for a
     # reader that opens nothing, and the `opened` frame carried both fields for three

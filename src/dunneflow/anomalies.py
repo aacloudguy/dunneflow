@@ -623,6 +623,11 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         "   AND id NOT IN (SELECT callee_id FROM calls WHERE callee_id IS NOT NULL)"
         "   AND id NOT IN (SELECT routine_id FROM entrypoints"
         "                   WHERE routine_id IS NOT NULL)"
+        # **A routine named as a value is used**, whoever calls it: tmux's callbacks are
+        # handed to `event_set` and stored in command tables, and 714 of its routines read
+        # as dead code until its reader could say so (`SuppliedUse`).
+        "   AND NOT EXISTS (SELECT 1 FROM value_uses u WHERE u.file = routines.file"
+        "                   AND u.line = routines.line_start AND u.name = routines.name)"
         " ORDER BY qualname, file, line_start"
     )
     # **A call the reader could not type may be a call to this routine**, and the map has
@@ -656,7 +661,9 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         detail="; ".join(x["qualname"] for x in rows),
         blind_spot=f"{scope} Routines reached by name (plugin registries, "
                    f"`getattr`, entry-point groups) also appear here, because no "
-                   f"static analysis can see those calls."
+                   f"static analysis can see those calls. A routine passed or stored as "
+                   f"a value is left out where its reader reports such uses; where it "
+                   f"does not, a callback appears here too."
                    + (f" {plural(spared, 'routine')} {are(spared)} left out because a "
                       f"call the reader could not type uses the name, and may be a call "
                       f"to it." if spared else ""),

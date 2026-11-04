@@ -924,4 +924,22 @@ struct SuppliedBinding {
     }
 };
 
+// `schema.SuppliedUse`.
+struct SuppliedUse {
+    std::optional<std::string> file;
+    int64_t line = 0;
+    std::optional<std::string> name;
+
+    void write_json(std::string& out) const {
+        out += '{';
+        bool first = true;
+        if (!file) required("SuppliedUse.file");
+        json::field(out, first, "file", *file);
+        json::field(out, first, "line", line);
+        if (!name) required("SuppliedUse.name");
+        json::field(out, first, "name", *name);
+        out += '}';
+    }
+};
+
 }  // namespace facts

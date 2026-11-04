@@ -12007,7 +12007,11 @@ function jointed(name) {
 
 /* Where a call with no edge stops, and why, as its reader said (schema 17). Only a reader
    that says anything fills these, so a row with neither reads exactly as it always did:
-   an absence here is *nobody said*, never *nothing to say* (rule 32). */
+   an absence here is *nobody said*, never *nothing to say* (rule 32).
+
+   The server sends `why`, the reason in the call's own language's words
+   (`detectors.frontier_words`): C's `untyped` is not Rust's, and the sentence below was
+   printed for every one of tmux's. These are what a row says when the server does not. */
 const FRONTIER_WHY = {
   outside: "goes outside this program",
   untyped: "the receiver's type is not written down",
@@ -12022,11 +12026,11 @@ function frontierWords(c) {
     if (c.frontier.startsWith("?::")) return `${c.frontier.slice(3)} — a method no type here defines`;
     return `→ ${c.frontier}`;
   }
-  return FRONTIER_WHY[c.reason] || c.reason;
+  return c.why || FRONTIER_WHY[c.reason] || c.reason;
 }
 
 function frontierWhy(c) {
-  return [c.frontier, FRONTIER_WHY[c.reason]].filter(Boolean).join(" — ");
+  return [c.frontier, c.why || FRONTIER_WHY[c.reason]].filter(Boolean).join(" — ");
 }
 
 /* A command sent by name, in either direction (`in.by_name`, `out.by_name`): its own row,

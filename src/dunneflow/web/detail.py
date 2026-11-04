@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..detectors import frontier_words
 from ..schema import signature_parts
 from ..sourcedb import SourceStore
 from ..store import Store
@@ -39,6 +40,15 @@ SOURCE_MARGIN = 3
 
 def _rows(store: Store, sql: str, args: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(r) for r in store.query(sql, args)]
+
+
+def _worded(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each call with no edge, with why in its own language's words (`frontier_words`):
+    the reason is the reader's word, and C's `untyped` is not Rust's."""
+    for c in calls:
+        c["why"] = frontier_words(str(c.get("lang") or ""), str(c["reason"])) \
+            if c.get("reason") else ""
+    return calls
 
 
 def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
@@ -113,7 +123,7 @@ def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
             # Senders in another process that name this command (`resolve/ipc.py`).
             "by_name": _rows(store, queries.ROUTINE_SENT_TO, args),
         },
-        "out": {"calls": _rows(store, queries.ROUTINE_CALLEES, args),
+        "out": {"calls": _worded(_rows(store, queries.ROUTINE_CALLEES, args)),
                 # Commands this routine sends by name, and what answered each, if anything.
                 "by_name": _rows(store, queries.ROUTINE_SENDS, args)},
         "touches": {

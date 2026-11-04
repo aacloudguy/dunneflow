@@ -1539,10 +1539,8 @@ def frontier_lines(front: dict[str, Any]) -> list[str]:
         out.append(f"leaves the program by {plural(total, 'call')}: " + " · ".join(parts)
                    + (f" · {more} more" if more > 0 else ""))
     if front["unresolved"]:
-        words = {"untyped": "receiver's type not written down", "dynamic": "dispatch over "
-                 "several implementors", "bound": "a closure or function value",
-                 "unfollowed": "a path not followed"}
-        parts = [f"{n:,} {words.get(r, r)}" for r, n in front["unresolved"]]
+        # Already worded, per language (`store._frontier`).
+        parts = [f"{n:,} {said}" for said, n in front["unresolved"]]
         out.append("no edge, and why: " + " · ".join(parts))
     return out
 

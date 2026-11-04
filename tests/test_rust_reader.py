@@ -851,7 +851,10 @@ def test_touches_groups_the_frontier_by_crate_and_by_reason(frontier_store):
     [main] = frontier_store.query("SELECT id FROM routines WHERE qualname = 'app.src.main.main'")
     front = frontier_store.frontier_reached(main["id"])
     assert dict(front["outside"])["serde_json"] == 1
-    assert dict(front["unresolved"])["bound"] == 1
+    # Keyed by what the reason means in the call's language, not by the reader's word for
+    # it (`detectors.frontier_words`): C's `untyped` is not Rust's.
+    from dunneflow.detectors import frontier_words
+    assert dict(front["unresolved"])[frontier_words("rust", "bound")] == 1
     lines = frontier_lines(front)
     assert lines[0].startswith("leaves the program by ") and "serde_json 1" in lines[0]
     assert lines[1].startswith("no edge, and why: ")

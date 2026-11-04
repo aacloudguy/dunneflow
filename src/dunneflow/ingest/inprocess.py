@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from ..schema import FileFacts, SuppliedBinding, SuppliedEdge
+from ..schema import FileFacts, SuppliedBinding, SuppliedEdge, SuppliedUse
 from .contract import PluginManifest, ProgressFn, stamp_lang
 
 
@@ -67,6 +67,7 @@ class InProcessPlugin:
         self.edge_notes: list[str] = []
         self.edges_said: list[str] = []
         self.edge_bindings: list[SuppliedBinding] = []
+        self.edge_uses: list[SuppliedUse] = []
         # Nothing to say: this reader opens nothing, which `open` below states in words.
         self.opened_notes: list[str] = []
 

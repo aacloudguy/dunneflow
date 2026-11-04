@@ -198,9 +198,10 @@ def _parts(hint: Any) -> list[Any]:
 def generate() -> str:
     records: list[type] = []
     enums: list[type] = []
-    # The C++ reader also sends `SuppliedBinding` (`supplies_bindings`), which no other
-    # reader does, so it is a root here and not in the shared tuple.
-    for root in (*ts.ROOTS, schema.SuppliedBinding):
+    # The C++ reader also sends `SuppliedBinding` and `SuppliedUse` (`supplies_bindings`,
+    # `supplies_uses`), which no other reader does, so they are roots here and not in the
+    # shared tuple.
+    for root in (*ts.ROOTS, schema.SuppliedBinding, schema.SuppliedUse):
         found, found_enums = ts._reachable(root)  # noqa: SLF001
         records += [c for c in found if c not in records]
         enums += [e for e in found_enums if e not in enums]

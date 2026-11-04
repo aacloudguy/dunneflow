@@ -29,7 +29,14 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from ..runtime import host_interpreter, reader_cache_root
-from ..schema import FileFacts, SuppliedBinding, SuppliedEdge, hash_source, stored_path
+from ..schema import (
+    FileFacts,
+    SuppliedBinding,
+    SuppliedEdge,
+    SuppliedUse,
+    hash_source,
+    stored_path,
+)
 from .codec import CodecError, decode, decode_facts
 from .contract import (
     SOURCE_TEXT,
@@ -304,6 +311,7 @@ class OutOfProcessPlugin:
         # What the reader said about its edge pass (`edges_done.notes`). See the contract.
         self.edges_said: list[str] = []
         self.edge_bindings: list[SuppliedBinding] = []
+        self.edge_uses: list[SuppliedUse] = []
         # Fields an edge carried that this build does not read. Survivable by design — a
         # plugin built against a later schema knows about fields this one does not — but
         # never silent: a file can carry its dropped keys in `FileFacts.errors` and an
@@ -373,6 +381,7 @@ class OutOfProcessPlugin:
         self.edges_outside = 0
         self.edges_unknown = 0
         self.edge_bindings = []
+        self.edge_uses = []
         for frame in worker.stream({"t": "edges"}, "edges_done"):
             if frame["t"] == "edges_done":
                 said = frame.get("supplied")
@@ -397,6 +406,12 @@ class OutOfProcessPlugin:
                         f"{len(self.edge_bindings):,}. The same check as the edges', for the "
                         f"same reason."
                     )
+                used = frame.get("uses")
+                if isinstance(used, int) and used != len(self.edge_uses):
+                    raise ProtocolError(
+                        f"the {lang} plugin says it sent {used:,} uses and sent "
+                        f"{len(self.edge_uses):,}."
+                    )
                 self.edges_outside = int(frame.get("outside") or 0)
                 self.edges_unknown = int(frame.get("unknown") or 0)
                 self.edges_read_beyond = [str(x) for x in frame.get("read_beyond") or []]
@@ -414,11 +429,20 @@ class OutOfProcessPlugin:
                         f"Refused rather than dropped, as an edge is."
                     ) from exc
                 continue
+            if frame["t"] == "use" and self.manifest.supplies_uses:
+                try:
+                    self.edge_uses.append(decode(SuppliedUse, frame.get("use"), notes))
+                except CodecError as exc:
+                    raise ProtocolError(
+                        f"the {lang} plugin sent a use this build cannot read: {exc}. "
+                        f"Refused rather than dropped, as an edge is."
+                    ) from exc
+                continue
             if frame["t"] != "edge":
                 raise ProtocolError(
                     f"the {lang} plugin sent {frame['t']!r} during an `edges` stream; the "
                     f"frames of one are `edge`, `edges_done` and -- from a reader that "
-                    f"declares `supplies_bindings` -- `binding`."
+                    f"declares `supplies_bindings` or `supplies_uses` -- `binding` and `use`."
                 )
             try:
                 edge = decode(SuppliedEdge, frame.get("edge"), notes)

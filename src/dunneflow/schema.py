@@ -480,6 +480,27 @@ class SuppliedBinding:
     why: str = ""
 
 
+@dataclass
+class SuppliedUse:
+    """**A routine named as a value** -- passed, stored or taken the address of -- located as
+    a `SuppliedEdge`'s target is.
+
+    A C program's callbacks are never called by name: tmux hands `server_accept` to
+    `event_set` and stores `cmd_attach_session_exec` in a command table's `.exec`, and the
+    event loop calls them. With nothing to say they were used, 714 of tmux's routines read as
+    dead code, most of them exactly these. A reader whose checker resolves names knows which
+    routine a name refers to wherever it is written; this is the ones written without a call.
+
+    It is a use, not a call, and is never made an edge (rule 76: an echo is not an act) --
+    what calls a stored callback, and when, is the event loop's business, not this
+    routine's. Sent only by a reader declaring `supplies_uses`.
+    """
+
+    file: str
+    line: int
+    name: str
+
+
 class ControlKind(StrEnum):
     """The four shapes a routine's body takes, and nothing else.
 

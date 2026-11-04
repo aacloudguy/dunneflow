@@ -23,6 +23,7 @@ import yaml
 
 from ..runtime import resource_root
 from ..schema import (
+    UNRESOLVED_REASONS,
     Annotation,
     BoundaryKind,
     Confidence,
@@ -306,6 +307,13 @@ class RuleSet:
     # **Empty means the detector does not fire**, as above. A language nobody has answered
     # this for gets no claim made on its behalf.
     redefinition: str = ""
+    # **Why a call has no edge, in this language's words** -- by `SuppliedEdge.reason`. A
+    # reason is the reader's and so is what it means: Rust's and TypeScript's `untyped` is
+    # a receiver whose type is not written down, and C's is a call clang could not resolve
+    # because a header it needs was not found -- C has no receivers. *"receiver's type not
+    # written down"* was printed for all of tmux's. A reason a language does not word here
+    # is worded by `FRONTIER_WORDS`, which names no language.
+    frontier_words: dict[str, str] = field(default_factory=dict)
     # **What a file runs when a manifest says it is a program.** A `bin` in `package.json`
     # or a `[[bin]]` in `Cargo.toml` names a file, and for Python and TypeScript what runs
     # is that file's top level, so the way in is its module scope. A Rust file's top level
@@ -568,6 +576,7 @@ def load_rules(lang: str) -> RuleSet:
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
         private_means=_private_means(data.get("private_means", ""), lang, path),
         redefinition=_redefinition(data.get("redefinition", ""), lang, path),
+        frontier_words=_frontier_words(data.get("frontier_words"), lang, path),
         file_entry=_file_entry(data.get("file_entry", ""), lang, path),
         ipc_clients=_ipc_clients(data.get("ipc"), lang, path),
         ipc_foreign=_ipc_foreign(data.get("ipc"), lang, path),
@@ -659,6 +668,41 @@ def _redefinition(raw: Any, lang: str, path: Path) -> str:
             f"be one of {', '.join(_REDEFINITION)}, or be left out to say nobody has decided"
         )
     return raw
+
+
+# How a reason for a call with no edge reads where a language has not worded it. Plain
+# enough to be true of any reader that sends the reason.
+FRONTIER_WORDS: dict[str, str] = {
+    "outside": "goes outside this program",
+    "untyped": "the reader could not tell what it calls",
+    "dynamic": "dispatch over several implementors",
+    "bound": "a closure or function value the routine holds",
+    "unfollowed": "a path the reader could not follow",
+}
+
+
+def frontier_words(lang: str, reason: str) -> str:
+    """The sentence for one reason in one language: its rules file's, or the plain one."""
+    try:
+        said = load_rules(lang).frontier_words.get(reason) if lang else None
+    except RulesMissing:
+        said = None
+    return said or FRONTIER_WORDS.get(reason, reason)
+
+
+def _frontier_words(raw: Any, lang: str, path: Path) -> dict[str, str]:
+    """Words per reason, for reasons that exist. A key that is not a reason is refused: a
+    sentence for a reason no reader sends is a sentence nobody will ever see, and a typo'd
+    `untyed` would leave the plain wording in place with no sign anything was meant."""
+    if raw in (None, ""):
+        return {}
+    if not isinstance(raw, dict) or not all(
+            isinstance(k, str) and k in UNRESOLVED_REASONS and isinstance(v, str) and v
+            for k, v in raw.items()):
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `frontier_words` as {raw!r}; it has to map "
+            f"reasons ({', '.join(UNRESOLVED_REASONS)}) to sentences")
+    return dict(raw)
 
 
 def _file_entry(raw: Any, lang: str, path: Path) -> str:

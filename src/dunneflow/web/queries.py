@@ -331,9 +331,10 @@ ORDER BY kind, name
 ROUTINE_CALLEES = """
 SELECT c.callee_id AS id, c.callee_expr, c.line, c.confidence, c.external,
        c.at_boundary, c.ambiguous, c.constructs, c.frontier, c.reason,
-       r.name, r.qualname, r.module, r.file
+       r.name, r.qualname, r.module, r.file, cf.lang AS lang
 FROM calls c
 LEFT JOIN routines r ON r.id = c.callee_id
+LEFT JOIN files cf ON cf.path = c.file
 WHERE c.caller_id = :id
 -- Ordered on the line alone until 2026-09-18, and a line holds more than one call far
 -- more often than it looks: `name.strip.split(...)` is recorded as two, and `_segments`

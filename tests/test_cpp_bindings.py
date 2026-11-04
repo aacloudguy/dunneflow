@@ -16,9 +16,11 @@ from pathlib import Path
 import pytest
 
 from dunneflow.anomalies import detect
+from dunneflow.render import markdown
+from dunneflow.render.page import Stamp
 from dunneflow.resolve.calls import resolve_calls
 from dunneflow.resolve.cli import resolve_cli
-from dunneflow.resolve.flows import ways_in
+from dunneflow.resolve.flows import ways_in, ways_in_affected
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree
 from tests.test_cpp_reader import _WHY, needs_clang
@@ -157,5 +159,144 @@ def test_without_the_preset_a_native_event_is_not_guessed_by_name(tmp_path: Path
         bound = _bound(store)
         assert bound["OnHit"] == [(None, None)]
         assert bound["Add"] == [("AThing.Add", 2), ("AThing.Add", 3)]
+    finally:
+        store.close()
+
+
+SHAPES_H = """\
+#pragma once
+#define UFUNCTION(...)
+void touch_net();
+void touch_disk();
+class AShape {
+public:
+    UFUNCTION(BlueprintCallable)
+    virtual int Area() = 0;
+    UFUNCTION(BlueprintCallable)
+    virtual int Nobody() = 0;
+};
+class ABox : public AShape {
+public:
+    int Area() override;
+    int Nobody() override = 0;
+};
+class ACube : public ABox {        // an override of an override
+public:
+    int Area() override;
+};
+class ANotAShape {                 // the same name, and no relation
+public:
+    int Area();
+};
+class ADoor {                      // an ordinary way in, with a body of its own
+public:
+    UFUNCTION(BlueprintCallable)
+    int Open();
+};
+"""
+
+SHAPES_CPP = """\
+#include "Shapes.h"
+void touch_net() {}
+void touch_disk() {}
+int ABox::Area() { touch_net(); return 1; }
+int ACube::Area() { touch_disk(); return 2; }
+int ANotAShape::Area() { return 3; }
+int ADoor::Open() { return 4; }
+"""
+
+
+def _shapes(tmp_path: Path) -> Store:
+    if _WHY:
+        pytest.skip(_WHY)
+    top = tmp_path / "Runtime"
+    (top / "Core" / "Public" / "HAL").mkdir(parents=True)
+    (top / "Core" / "Public" / "HAL" / "Platform.h").write_text("", encoding="utf-8")
+    game = top / "Game"
+    game.mkdir(parents=True)
+    (game / "Shapes.h").write_text(SHAPES_H, encoding="utf-8")
+    (game / "Shapes.cpp").write_text(SHAPES_CPP, encoding="utf-8")
+    store = Store(tmp_path / "shapes.db")
+    analyze_tree(game, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    return store
+
+
+def _qualnames(store: Store, ids: list[str]) -> list[str]:
+    return sorted(
+        str(store.query("SELECT qualname FROM routines WHERE id = ?", (i,))[0]["qualname"])
+        for i in ids)
+
+
+def test_a_pure_virtual_way_in_starts_its_overriders_at_any_depth(tmp_path: Path) -> None:
+    store = _shapes(tmp_path)
+    try:
+        row = next(d for d in ways_in(store) if d["name"] == "Area")
+        names = _qualnames(store, row["roots"])
+        assert len(names) == 2 and all("NotAShape" not in n for n in names), names
+        assert any("ABox" in n for n in names) and any("ACube" in n for n in names), names
+        assert row["overriders"] is True and row["bound"] is True
+        assert row["why"] == "it is pure virtual, and implemented by 2 overriders in this tree"
+        # The reach is real: what each override touches is what this way in touches.
+        assert row["reach"] >= 4, row
+        # And the routine column keeps meaning one routine: this has none of its own.
+        ep = store.query("SELECT routine_id FROM entrypoints WHERE name = 'Area'")[0]
+        assert ep["routine_id"] is None
+    finally:
+        store.close()
+
+
+def test_a_pure_virtual_nothing_implements_stays_unbound_with_its_reason(tmp_path: Path) -> None:
+    store = _shapes(tmp_path)
+    try:
+        row = next(d for d in ways_in(store) if d["name"] == "Nobody")
+        assert row["roots"] == [] and row["bound"] is False and not row["overriders"]
+        assert "nothing in this tree implements it" in row["why"]
+    finally:
+        store.close()
+
+
+def test_changing_an_overrider_affects_the_way_in(tmp_path: Path) -> None:
+    store = _shapes(tmp_path)
+    try:
+        cube = store.query("SELECT id FROM routines WHERE qualname LIKE '%ACube%Area%'")[0]["id"]
+        assert [d["name"] for d in ways_in_affected(store, [str(cube)])] == ["Area"]
+    finally:
+        store.close()
+
+
+def test_the_flows_page_says_any_of_them_not_a_command_tree(tmp_path: Path) -> None:
+    store = _shapes(tmp_path)
+    try:
+        page = markdown._flows(store, tmp_path, "s",
+                               Stamp(generated="x", revision="", analysed="")
+                               ).read_text(encoding="utf-8")
+        assert "It has no body of its own" in page and "Any of the 2 may" in page
+        assert "command tree" not in page
+    finally:
+        store.close()
+
+
+def test_a_second_resolve_does_not_leave_old_roots(tmp_path: Path) -> None:
+    store = _shapes(tmp_path)
+    try:
+        before = store.query("SELECT count(*) AS n FROM entrypoint_roots")[0]["n"]
+        store.conn.execute("DELETE FROM supplied_bindings")
+        resolve_cli(store)
+        assert before == 2
+        assert store.query("SELECT count(*) AS n FROM entrypoint_roots")[0]["n"] == 0
+    finally:
+        store.close()
+
+
+def test_what_only_an_overrider_reaches_is_not_unreachable(tmp_path: Path) -> None:
+    store = _shapes(tmp_path)
+    try:
+        lost = [a for a in detect(store).items if a.kind == "UNREACHABLE"]
+        stranded = {o.label for a in lost for o in a.occurrences}
+        # Stranded for real, which is what makes the rest of this assertion mean something.
+        assert any("ANotAShape" in n for n in stranded), stranded
+        assert not [n for n in stranded if "touch_" in n or "ACube" in n], stranded
     finally:
         store.close()

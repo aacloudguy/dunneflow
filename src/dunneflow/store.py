@@ -206,7 +206,18 @@ CREATE TABLE IF NOT EXISTS supplied_bindings (
     file          TEXT NOT NULL DEFAULT '',
     line          INTEGER NOT NULL DEFAULT 0,
     name          TEXT NOT NULL DEFAULT '',
-    why           TEXT NOT NULL DEFAULT ''
+    why           TEXT NOT NULL DEFAULT '',
+    -- `SuppliedBinding.answers`, as JSON `[[file, line, name], …]`.
+    answers       TEXT NOT NULL DEFAULT '[]'
+);
+
+-- The routines a way in with no body of its own may start: any one of them, which is why this
+-- is not `entrypoints.routine_id` and that stays NULL. Written whole by
+-- `resolve/supplied.bind_ways_in`, from `supplied_bindings.answers`.
+CREATE TABLE IF NOT EXISTS entrypoint_roots (
+    entrypoint_id TEXT NOT NULL,
+    routine_id    TEXT NOT NULL,
+    PRIMARY KEY (entrypoint_id, routine_id)
 );
 
 -- `schema.SuppliedUse`: a routine a reader saw named as a value -- a callback passed or
@@ -1252,10 +1263,11 @@ class Store:
         """
         c = self.conn
         c.execute("DELETE FROM supplied_bindings WHERE lang = ?", (lang,))
-        rows = [(lang, b.entrypoint_id, b.file, b.line, b.name, b.why) for b in bindings]
+        rows = [(lang, b.entrypoint_id, b.file, b.line, b.name, b.why,
+                 json.dumps([[a.file, a.line, a.name] for a in b.answers])) for b in bindings]
         c.executemany(
-            "INSERT INTO supplied_bindings(lang,entrypoint_id,file,line,name,why)"
-            " VALUES(?,?,?,?,?,?)", rows)
+            "INSERT INTO supplied_bindings(lang,entrypoint_id,file,line,name,why,answers)"
+            " VALUES(?,?,?,?,?,?,?)", rows)
         return len(rows)
 
     def replace_value_uses(self, lang: str, uses: Iterable[SuppliedUse]) -> int:

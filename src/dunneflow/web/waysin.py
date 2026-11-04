@@ -129,6 +129,8 @@ def listing(store: Store) -> list[dict[str, Any]]:
             # on, so the panel and the worklist cannot disagree (rule 13).
             "bound": bool(w.get("bound", True)),
             "why": str(w.get("why", "")),
+            # Any one of `nodes` may be what runs: a different fact from a tree's many starts.
+            "overriders": bool(w.get("overriders", False)),
             # A command tree, not a routine (rule 30). Declared rather than inferred from
             # the length of `nodes`.
             "app": bool(app_id),

@@ -912,6 +912,7 @@ struct SuppliedBinding {
     int64_t line = 0;
     std::string name = "";
     std::string why = "";
+    std::vector<Answer> answers;
 
     void write_json(std::string& out) const {
         out += '{';
@@ -922,6 +923,7 @@ struct SuppliedBinding {
         if (line != 0) json::field(out, first, "line", line);
         if (name != "") json::field(out, first, "name", name);
         if (why != "") json::field(out, first, "why", why);
+        if (!answers.empty()) json::field(out, first, "answers", answers);
         out += '}';
     }
 };

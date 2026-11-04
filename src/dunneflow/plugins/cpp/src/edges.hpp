@@ -348,10 +348,23 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
             b.why = rule->why;
             explained++;
         } else if (m.pure) {
-            size_t n = 0;
-            auto ov = overridden_by.find(m.usr);
-            if (ov != overridden_by.end())
-                for (const auto& o : ov->second) n += bodies.count(o) ? 1 : 0;
+            // At any depth, and only a body one definition can answer for (rule 1). Sorted and
+            // unique as a dynamic call's are (rule 66).
+            std::vector<Where> over;
+            for (const auto& o : overriders(m.usr, "")) {
+                auto bo = bodies.find(o);
+                if (bo != bodies.end() && bo->second.size() == 1) over.push_back(bo->second[0]);
+            }
+            std::sort(over.begin(), over.end());
+            over.erase(std::unique(over.begin(), over.end()), over.end());
+            for (const auto& w : over) {
+                facts::Answer a;
+                a.file = w.file;
+                a.line = w.line;
+                a.name = w.name;
+                b.answers.push_back(a);
+            }
+            size_t n = over.size();
             b.why = n ? "it is pure virtual, and implemented by " + std::to_string(n) + " overrider" +
                             (n == 1 ? "" : "s") + " in this tree"
                       : "it is pure virtual, and nothing in this tree implements it";

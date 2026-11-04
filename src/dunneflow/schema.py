@@ -480,6 +480,11 @@ class SuppliedBinding:
     line: int = 0
     name: str = ""
     why: str = ""
+    # **The bodies that may start it, where it has none of its own.** A pure virtual marked as
+    # a way in has no body, and what runs is whichever override the object has. Named as a
+    # dispatched call's are, and for the same reason: an unbound way in with the count in a
+    # sentence hid every one of them from the walk. Any of these, never all of them at once.
+    answers: list[Answer] = field(default_factory=list)
 
 
 @dataclass

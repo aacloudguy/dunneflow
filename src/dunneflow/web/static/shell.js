@@ -4989,6 +4989,11 @@ function wayInWhat(e) {
   if (e.bound === false) {
     return `${esc(e.evidence || "")} · <span class="hint">not bound — ${esc(e.why || "")}</span>`;
   }
+  /* No body of its own, and any of these may be what runs. Not a tree's "starts N routines",
+     which are all of them at once. */
+  if (e.overriders) {
+    return `${esc(e.evidence || "")} · <span class="hint">${esc(e.why || "")}; any of them may be what runs</span>`;
+  }
   const where = e.where && e.where.file
     ? `<span class="mono">${esc(srcShort(e.where.file))}${e.where.line ? `:${e.where.line}` : ""}</span>`
     : (e.app ? `<span class="hint">starts ${Number(e.starts || 0).toLocaleString()} routines across ${Number(e.files || 0).toLocaleString()} files</span>` : "");

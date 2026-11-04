@@ -112,6 +112,11 @@ then bound by name, because a name cannot tell overloads apart. The C++ reader i
 one that sends them; what decides `_Implementation` is the Unreal preset in `cpp.yaml`, not
 the reader.
 
+**And a binding may name several bodies.** A marked pure virtual has none of its own, so its
+binding carries `answers`, shaped as a dispatched call's: the overriders, any of which may be
+what runs. They reach `entrypoint_roots`, `entrypoints.routine_id` stays NULL, and `why` stays
+as the sentence saying *any of these*. What a walk starts from is their union.
+
 **And uses, for a routine named as a value.** A C callback is handed to `event_set` or stored
 in a table's `.exec` and never called by name, so without this every one of them is dead code
 (714 of tmux's routines). `supplies_uses: true` and a `use` frame per routine named and not

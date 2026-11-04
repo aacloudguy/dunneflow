@@ -230,7 +230,9 @@ def ways_in_affected(store: Store, routine_ids: list[str]) -> list[dict]:
         return []
     return [dict(r) for r in store.query(
         "SELECT DISTINCT name, kind FROM entrypoints"
-        " WHERE routine_id IN (SELECT value FROM json_each(?))"
+        " WHERE routine_id IN (SELECT value FROM json_each(?1))"
+        "    OR id IN (SELECT entrypoint_id FROM entrypoint_roots"
+        "               WHERE routine_id IN (SELECT value FROM json_each(?1)))"
         " ORDER BY name",
         (json.dumps(list(routine_ids)),),
     )]
@@ -294,6 +296,11 @@ def ways_in(store: Store) -> list[dict]:
     rank = {"CLI": 0, "MCP_TOOL": 1, "HTTP_ROUTE": 1, "IPC_COMMAND": 1, "MAIN": 2}
     best: dict[str, dict] = {}
     said = supplied_whys(store)
+    # The bodies a way in with none of its own may start. See `entrypoint_roots`.
+    answering: dict[str, list[str]] = {}
+    for r in store.query("SELECT entrypoint_id, routine_id FROM entrypoint_roots"
+                         " ORDER BY entrypoint_id, routine_id"):
+        answering.setdefault(str(r["entrypoint_id"]), []).append(str(r["routine_id"]))
 
     for e in store.entrypoints():
         if e.group:  # a subcommand: reported inside its executable, not beside it
@@ -303,6 +310,8 @@ def ways_in(store: Store) -> list[dict]:
             roots.append(e.routine_id)
         if e.parent_id:
             roots.extend(r for r in app_command_routines(store, e.parent_id) if r)
+        overriders = answering.get(e.id, [])
+        roots.extend(overriders)
         # **A declaration that bound nothing is still a way in** (design rule 21). It was
         # dropped here, which was right while the only declarations were Python console
         # scripts -- one that reached no routine really was a broken `[project.scripts]`
@@ -348,7 +357,11 @@ def ways_in(store: Store) -> list[dict]:
                 # different facts and the second is the one a reader needs in front of a
                 # Rust binary (rule 32). `binding_note` words it in one place.
                 "bound": bool(roots),
-                "why": "" if roots else binding_note(store, e.id).sentence,
+                # Kept where there are overriders: *any of these* is the part of the answer
+                # the roots alone cannot say.
+                "why": (said.get(e.id, "") if overriders else
+                        "" if roots else binding_note(store, e.id).sentence),
+                "overriders": bool(overriders),
                 # **The app object, when this way in is a command tree rather than a
                 # routine.** `mensores` names `mensores.cli:app` -- a Typer object, which
                 # is not a routine and has no file to open -- and expands here to the 107

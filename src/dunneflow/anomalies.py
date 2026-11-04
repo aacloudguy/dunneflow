@@ -688,6 +688,7 @@ def _unreachable(store: Store, r: Report) -> None:
         row["routine_id"]
         for row in store.query(
             "SELECT DISTINCT routine_id FROM entrypoints WHERE routine_id IS NOT NULL"
+            " UNION SELECT routine_id FROM entrypoint_roots"
             " ORDER BY routine_id"
         )
     ]

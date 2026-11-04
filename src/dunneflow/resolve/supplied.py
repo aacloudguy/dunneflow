@@ -63,9 +63,11 @@ mismatch is counted.
 
 from __future__ import annotations
 
+import json
 from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from ..schema import Confidence
 from ..store import Store
@@ -313,30 +315,40 @@ def bind_ways_in(store: Store) -> set[str]:
     after that is the wrong binding rule 1 exists to refuse.
 
     The place is checked as an edge's target is: a routine starting on that line in that
-    file, and where two do, the one of that name (rule 5).
+    file, and where two do, the one of that name (rule 5). `answers` are checked the same way
+    and go to `entrypoint_roots`: the routines a body-less way in may start.
     """
     decided: set[str] = set()
     updates: list[tuple[str | None, str]] = []
+    roots: set[tuple[str, str]] = set()
+
+    def found(ix: Any, file: str, line: int, name: str) -> str | None:
+        at = ix.first.get((file, line), [])
+        named = [pair for pair in at if pair[1] == name]
+        if len(at) == 1 and at[0][1] == name:
+            return str(at[0][0])
+        return str(named[0][0]) if len(named) == 1 else None
+
     langs = [str(r["lang"]) for r in store.query(
         "SELECT DISTINCT lang FROM supplied_bindings ORDER BY lang")]
     for lang in langs:
         ix = _index(store, lang)
         for b in store.query(
-                "SELECT entrypoint_id, file, line, name FROM supplied_bindings"
+                "SELECT entrypoint_id, file, line, name, answers FROM supplied_bindings"
                 " WHERE lang = ? ORDER BY entrypoint_id", (lang,)):
             ep = str(b["entrypoint_id"])
             decided.add(ep)
-            rid: str | None = None
-            if b["file"]:
-                at = ix.first.get((str(b["file"]), int(b["line"])), [])
-                named = [pair for pair in at if pair[1] == b["name"]]
-                if len(at) == 1 and at[0][1] == b["name"]:
-                    rid = at[0][0]
-                elif len(named) == 1:
-                    rid = named[0][0]
+            rid = found(ix, str(b["file"]), int(b["line"]), str(b["name"])) if b["file"] else None
             updates.append((rid, ep))
-    if updates:
-        with store.batch():
+            for file, line, name in json.loads(b["answers"]):
+                one = found(ix, file, line, name)
+                if one:
+                    roots.add((ep, one))
+    with store.batch():
+        store.conn.execute("DELETE FROM entrypoint_roots")
+        store.conn.executemany(
+            "INSERT INTO entrypoint_roots(entrypoint_id, routine_id) VALUES(?,?)", sorted(roots))
+        if updates:
             store.conn.executemany(
                 "UPDATE entrypoints SET routine_id = ? WHERE id = ?", updates)
     return decided

@@ -534,7 +534,13 @@ def _flows_into(lines: _Stream, store: Store, program: str, stamp: Stamp,
             f"`{d['kind']}` · reaches **{d['reach']:,}** routines · "
             f"touches: {summary or 'nothing outside itself'}\n"
         )
-        if len(d["roots"]) > 1:
+        if d.get("overriders"):
+            lines.append(
+                f"> It has no body of its own: {d['why']}. Any of the {len(d['roots'])} may "
+                f"be what runs, the reach is theirs together, and the diagram follows the "
+                f"first.\n"
+            )
+        elif len(d["roots"]) > 1:
             lines.append(
                 f"> Built from a command tree of {len(d['roots'])} commands; the "
                 f"diagram follows the first.\n"

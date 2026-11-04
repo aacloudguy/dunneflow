@@ -107,6 +107,7 @@ struct Session {
     bool has_database = false;
     std::vector<std::string> notes;        // what the host is told in `opened`
     std::vector<std::string> read_beyond;  // include roots above the analysed root
+    std::vector<std::string> inputs;       // build files this decision read, or looked for
     int ambiguous = 0;                     // spellings two or more files answer
     int unanswered = 0;                    // spellings no file in reach answers
     int above = 0;                         // spellings whose directory would be above the ceiling
@@ -262,7 +263,9 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
     }
 #endif
 
-    // 1. A compilation database always wins, for the files it names.
+    // 1. A compilation database always wins, for the files it names. Named as an input whether
+    // or not it is there: the day one appears is the day every file's arguments change.
+    s.inputs.push_back(s.root + "/compile_commands.json");
     auto& c = clang::api();
     CXCompilationDatabase_Error err = CXCompilationDatabase_NoError;
     CXCompilationDatabase db = c.clang_CompilationDatabase_fromDirectory(s.root.c_str(), &err);
@@ -342,6 +345,7 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
             if (preset && !preset->module_file_suffix.empty() && name.size() > preset->module_file_suffix.size() &&
                 name.compare(name.size() - preset->module_file_suffix.size(), std::string::npos,
                              preset->module_file_suffix) == 0) {
+                s.inputs.push_back(generic(p));
                 std::string stem = name.substr(0, name.size() - preset->module_file_suffix.size());
                 std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char ch) { return std::toupper(ch); });
                 std::string d = preset->module_define;

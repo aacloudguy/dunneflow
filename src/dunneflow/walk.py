@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -225,6 +225,10 @@ class WalkStats:
 _TEST_MODULES = "test_modules:"
 # How many of a reader's `edges_done.notes` the summary prints before it says how many more.
 _EDGES_SAID_SHOWN = 12
+# `whole` or `rest`, committed before a reader is asked for anything and cleared after its
+# edge pass. See `_why_whole`.
+_READING = "reading:"
+_INPUTS = "inputs:"
 
 
 def _test_modules(store: Store) -> dict[str, dict[str, str]]:
@@ -873,6 +877,56 @@ def _runnable(files: list[Path], stats: WalkStats) -> list[Path]:
     return [p for p in files if ingest.language_of(p) not in gone]
 
 
+def _input_stat(path: str) -> list[int]:
+    """What an input is compared by. `[-1, -1]` is a real answer: a file looked for and not
+    found, which starts to matter the moment it exists (`compile_commands.json`)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return [-1, -1]
+    return [st.st_mtime_ns, st.st_size]
+
+
+def _named(paths: Sequence[str], what: str) -> str:
+    more = f" and {len(paths) - 1:,} more" if len(paths) > 1 else ""
+    return f"`{paths[0]}`{more} {what}"
+
+
+def _why_whole(lang: str, store: Store, owned: set[str], hashes: Mapping[str, str],
+               known: Mapping[str, str], languages: Mapping[str, str]) -> str:
+    """Why every file of a `facts_span_files` reader must be read, or `""` if none need be.
+
+    **The reader parses all of them whenever it is opened**, because its edge pass answers
+    about the whole compilation. So what this decides is whether their fresh facts are kept
+    or dropped, and not whether they are parsed. Dropping them is what wrote fresh edges
+    against stale facts (rule 81).
+
+    **The marker is what a killed run leaves, and it says which kind of run that was** (rule
+    80). `whole`: every hash may now match with half the facts old, so nothing else here could
+    notice, and the whole read starts again. `rest`: a cold read, whose missing files are not
+    additions to anything finished, so they do not re-read what it did finish. No marker and
+    no row means this language has never been read, and everything is unread anyway.
+    """
+    marker = store.get_meta(_READING + lang) or ""
+    if marker == "whole":
+        return "a read of all of them was interrupted"
+    changed = sorted(k for k in owned if k in known and hashes.get(k, known[k]) != known[k])
+    if changed:
+        return _named(changed, "changed")
+    removed = sorted(k for k, owner in languages.items() if owner == lang and k not in owned)
+    if removed:
+        return _named(removed, "was removed")
+    if not marker and any(owner == lang for owner in languages.values()):
+        added = sorted(k for k in owned if k not in known and k in hashes)
+        if added:
+            return _named(added, "was added")
+    held = json.loads(store.get_meta(_INPUTS + lang) or "{}")
+    moved = sorted(p for p, stat in held.items() if _input_stat(p) != stat)
+    if moved:
+        return _named(moved, "changed")
+    return ""
+
+
 def analyze_tree(
     root: Path,
     store: Store,
@@ -941,6 +995,27 @@ def analyze_tree(
         else:
             todo.append(p)
 
+    # Before the prune, which forgets the only thing a removed file can still say.
+    languages = store.known_langs()
+    whole: dict[str, str] = {}
+    owned = _by_language(files)
+    keys = {lang: {stored_path(p.relative_to(root)) for p in paths}
+            for lang, paths in owned.items()}
+    for lang in owned:
+        if ingest.PLUGINS[lang].manifest.facts_span_files:
+            why = _why_whole(lang, store, keys[lang], hashes, known, languages)
+            if why:
+                whole[lang] = why
+    if whole:
+        wanted_now = set(todo)
+        again = {p for lang in whole for p in owned[lang]
+                 if stored_path(p.relative_to(root)) in hashes}
+        stats.cached -= len(again - wanted_now)
+        todo = [p for p in files if p in wanted_now or p in again]
+        stats.reader_notes.extend(
+            f"{lang} all {len(owned[lang]):,} files were read, because {why}"
+            for lang, why in sorted(whole.items()))
+
     stats.removed = store.prune_missing(live)
     if not include_tests:
         # A run with --include-tests kept these files' facts; this one does not want them.
@@ -950,12 +1025,16 @@ def analyze_tree(
             if d:
                 stats.test_modules[lang] = len(d)
 
-    if not todo:
+    work = _by_language(todo)
+    # **A reader killed before its edge pass** still owes it, with every file written and so
+    # nothing above that looks like work. Asked for with no files.
+    for lang in owned:
+        if lang not in work and store.get_meta(_READING + lang):
+            work[lang] = []
+
+    if not work:
         store.conn.commit()
         return stats
-
-    owned = _by_language(files)
-    work = _by_language(todo)
 
     # The progress contract is the caller's and is unchanged: `i` counts from 1 to the
     # whole run's total, whichever reader is speaking. A plugin counts its own payload,
@@ -974,6 +1053,8 @@ def analyze_tree(
 
         if not plugin.manifest.reports_literals:
             stats.no_literals.append(lang)
+        if plugin.manifest.supplies_edges:
+            store.set_meta_now(_READING + lang, "whole" if lang in whole else "rest")
         plugin.open(root, owned.get(lang, []))
         stats.reader_notes.extend(f"{lang} {n}" for n in plugin.opened_notes)
         try:
@@ -1060,7 +1141,11 @@ def analyze_tree(
                     if back:
                         with store.batch():
                             write(plugin.extract([root / p for p in back], root, None, jobs))
+                if plugin.manifest.facts_span_files:
+                    store.set_meta(_INPUTS + lang, json.dumps(
+                        {p: _input_stat(p) for p in plugin.edges_inputs}, sort_keys=True))
                 store.conn.commit()
+                store.set_meta_now(_READING + lang, "")
         finally:
             plugin.close()
         # A file whose reader died never arrives at all, so the reader is the only thing

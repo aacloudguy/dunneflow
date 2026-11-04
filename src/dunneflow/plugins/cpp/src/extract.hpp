@@ -134,6 +134,7 @@ struct Result {
     bool not_included = false;
     bool fragment = false;       // a fragment, by suffix, however it ended up being read
     std::string rel;             // the file's own path, relative, for what the edge pass says of it
+    std::vector<std::string> included;  // what this parse included, absolute: see `inclusions`
 };
 
 // ------------------------------------------------------------------ folding --- //
@@ -2024,6 +2025,22 @@ inline bool includes(CXTranslationUnit tu, CXFile f) {
     return seen.hit;
 }
 
+// Every file this parse included, for `edges_done.inputs`. Each thread reports a spelling
+// once, because the answer is a union over the tree and Runtime asks 18,263 times.
+inline void inclusions(CXTranslationUnit tu, std::vector<std::string>& out) {
+    C().clang_getInclusions(
+        tu,
+        [](CXFile g, CXSourceLocation*, unsigned depth, CXClientData d) {
+            if (depth == 0) return;
+            thread_local std::set<std::string> reported;
+            std::string name = clang::str(C().clang_getFileName(g));
+            if (name.empty() || !reported.insert(name).second) return;
+            static_cast<std::vector<std::string>*>(d)->push_back(
+                std::filesystem::path(name).lexically_normal().generic_string());
+        },
+        &out);
+}
+
 // Parse one file and read everything this reader reports about it. With `via`, the file is a
 // fragment and the translation unit parsed is `via`'s, a file that includes it, with `args`
 // being `via`'s arguments: only what is expanded in the fragment is kept, so its routines
@@ -2071,6 +2088,7 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
         return;
     }
 
+    inclusions(x.tu, out.included);
     main_file() = C().clang_getFile(x.tu, abs.c_str());
     if (x.through) {
         if (!main_file() || !includes(x.tu, main_file())) {

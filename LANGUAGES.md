@@ -118,6 +118,14 @@ in a table's `.exec` and never called by name, so without this every one of them
 called (`schema.SuppliedUse`, counted by `edges_done.uses`), and `DEAD_CODE` leaves them out.
 A use is never made an edge: what calls a stored callback is somebody else's business.
 
+**A reader whose facts depend on other files says so, or its map goes stale without a word.**
+A C file's calls are whatever its headers expand to, so the file's own hash cannot decide
+whether it is read. `facts_span_files: true` makes any change to that language's files
+re-read all of them, and `edges_done.inputs` names what the reader read beyond its own files
+-- a system header, a `.def`, a build file, a file it looked for and did not find -- whose
+stats are compared on the next run. Rule 81. Every reader that supplies edges also gets the
+`reading:<lang>` marker for nothing: a run killed before its edge pass still owes one.
+
 **A reason is worded in your language.** `untyped`, `bound` and the rest are the reader's
 words, and what each means is the language's: Rust's `untyped` is a receiver whose type is not
 written down, C's is a call clang could not resolve. Say it under `frontier_words` in your

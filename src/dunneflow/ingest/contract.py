@@ -287,6 +287,10 @@ class PluginManifest:
     supplies_bindings: bool = False
     # **The reader says which routines are named as values** (`SuppliedUse`), in the edge pass.
     supplies_uses: bool = False
+    # **A file's facts depend on other files**, so its own hash cannot decide whether it is
+    # read (rule 81): a C file's calls are whatever its headers' macros expand to. Any change
+    # to this language's files, or to what `edges_inputs` named, re-reads all of them.
+    facts_span_files: bool = False
     reports_literals: bool = False
     # Relative to the plugin's own directory. Never a glob — see above.
     fingerprint: tuple[str, ...] = ()
@@ -370,6 +374,11 @@ class IngestPlugin(Protocol):
     # could not resolve" when the reader had said, to nobody, that javac had crashed
     # (rule 38). Empty for a reader with nothing to declare.
     edges_said: list[str]
+    # **What the reader read that is not one of its own files** -- absolute paths, sorted:
+    # a system header, a `.def`, a build file, and a file it looked for and did not find. The
+    # walk records each one's stat, so a change to something with no row in `files` is still
+    # a change. Only asked of a reader that declares `facts_span_files`.
+    edges_inputs: list[str]
     # **The ways in the reader bound, by the compiler's identity for them** -- the `binding`
     # frames of the last `edges` stream (`SuppliedBinding`). Empty unless the manifest
     # declares `supplies_bindings`.

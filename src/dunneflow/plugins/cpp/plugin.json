@@ -32,6 +32,7 @@
   "supplies_edges": true,
   "supplies_bindings": true,
   "supplies_uses": true,
+  "facts_span_files": true,
   "reports_literals": true,
   "discovery": {
     "suffixes": [

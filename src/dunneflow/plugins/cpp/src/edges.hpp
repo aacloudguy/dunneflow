@@ -48,6 +48,7 @@ struct Tree {
     std::vector<extract::Over> overs;
     std::vector<std::pair<std::string, std::string>> bases;
     std::vector<std::string> read_beyond;
+    std::set<std::string> inputs;  // read, and not among the files: `edges_done.inputs`
     long fatal_files = 0, missing_files = 0, files = 0, skipped_lines = 0;
     std::map<std::string, long> missing;  // first missing include, per file that had one
     std::vector<extract::Mark> marks;
@@ -439,6 +440,8 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     json::write(d, notes);
     d += ",\"read_beyond\":";
     json::write(d, t.read_beyond);
+    d += ",\"inputs\":";
+    json::write(d, std::vector<std::string>(t.inputs.begin(), t.inputs.end()));
     if (bind) d += ",\"bindings\":" + std::to_string(sent.size());
     if (use) d += ",\"uses\":" + std::to_string(used);
     done(d);

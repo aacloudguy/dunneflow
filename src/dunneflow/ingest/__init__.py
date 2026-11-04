@@ -278,6 +278,7 @@ def read_manifest(path: Path) -> PluginManifest:
         supplies_edges=bool(data.get("supplies_edges", False)),
         supplies_bindings=bool(data.get("supplies_bindings", False)),
         supplies_uses=bool(data.get("supplies_uses", False)),
+        facts_span_files=bool(data.get("facts_span_files", False)),
         reports_literals=bool(data.get("reports_literals", False)),
         fingerprint=fingerprint,
         build=build,

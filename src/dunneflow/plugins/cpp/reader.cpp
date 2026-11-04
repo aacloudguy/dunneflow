@@ -103,6 +103,9 @@ struct Session {
     size_t next = 0;                         // the next file a worker takes
     size_t done = 0;
     size_t window = 64;
+    // The latest file the host has asked for. A file behind it that finishes now is one the
+    // host passed over, and holding it fills a window nothing will ever empty.
+    size_t asked = 0;
     bool edges_wanted = false;               // no more facts will be asked for
     bool stopping = false;
     std::vector<std::thread> workers;
@@ -136,17 +139,23 @@ struct Session {
     // `#if`. Anything else is read alone, as it always was.
     void read_one(CXIndex index, const std::string& abs, const std::string& t, extract::Result& r) {
         auto it = cfg.includers.find(abs);
+        // An includer that did not reach the fragment still decided how it was read, and each
+        // thread reports a spelling once, so what it included is kept.
+        std::vector<std::string> included;
         if (it != cfg.includers.end()) {
             for (const auto& via : it->second) {
                 extract::Result tried;
                 extract::read(index, abs, rel(abs), t, cfg.args_for(via), rules, tried, via, rel(via));
+                included.insert(included.end(), tried.included.begin(), tried.included.end());
                 if (tried.not_included) continue;
                 r = std::move(tried);
+                r.included = std::move(included);
                 r.fragment = true;
                 return;
             }
         }
         extract::read(index, abs, rel(abs), t, cfg.args_for(abs), rules, r);
+        r.included.insert(r.included.end(), included.begin(), included.end());
         r.fragment = config::is_fragment(abs);
     }
 
@@ -165,9 +174,12 @@ struct Session {
             parse(index, i, r);
             {
                 std::lock_guard<std::mutex> g(mu);
+                for (const auto& f : r.included)
+                    if (!this->index.count(f)) tree.inputs.insert(f);
+                r.included.clear();
                 tree.add(r);
                 done++;
-                if (edges_wanted) {
+                if (edges_wanted || i < asked) {
                     state[i] = DROPPED;
                 } else {
                     r.sites.clear();
@@ -209,7 +221,9 @@ struct Session {
         {
             std::unique_lock<std::mutex> g(mu);
             // The host asks in `open` order, so every held file before this one was a file it
-            // does not want (a cache hit). Dropping them is what keeps the window moving.
+            // does not want (a cache hit). Dropping them is what keeps the window moving, and
+            // `asked` is what keeps it moving for the ones not finished yet.
+            asked = std::max(asked, i);
             for (auto it = held.begin(); it != held.end() && it->first < i;) {
                 state[it->first] = DROPPED;
                 it = held.erase(it);
@@ -274,6 +288,7 @@ std::string open(const json::Value& f) {
     notes.push_back("libclang: " + clang::api().version + " (" + clang::api().path + ")");
     for (const auto& n : notes) note(n);
     s.tree.read_beyond = s.cfg.read_beyond;
+    s.tree.inputs.insert(s.cfg.inputs.begin(), s.cfg.inputs.end());
     s.tree.generated = s.cfg.generated;
     for (const auto& p : s.rules.presets)
         if (p.name == s.cfg.preset) s.tree.body_rules = p.bodies;

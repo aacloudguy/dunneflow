@@ -310,6 +310,7 @@ class OutOfProcessPlugin:
         self.edges_test_only: list[str] = []
         # What the reader said about its edge pass (`edges_done.notes`). See the contract.
         self.edges_said: list[str] = []
+        self.edges_inputs: list[str] = []
         self.edge_bindings: list[SuppliedBinding] = []
         self.edge_uses: list[SuppliedUse] = []
         # Fields an edge carried that this build does not read. Survivable by design — a
@@ -418,6 +419,7 @@ class OutOfProcessPlugin:
                 self.edges_not_present = [str(x) for x in frame.get("not_present") or []]
                 self.edges_test_only = sorted(str(x) for x in frame.get("test_only") or [])
                 self.edges_said = [str(x) for x in frame.get("notes") or []]
+                self.edges_inputs = sorted(str(x) for x in frame.get("inputs") or [])
                 break
             if frame["t"] == "binding" and self.manifest.supplies_bindings:
                 try:

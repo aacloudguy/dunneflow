@@ -66,6 +66,7 @@ class InProcessPlugin:
         self.edges_test_only: list[str] = []
         self.edge_notes: list[str] = []
         self.edges_said: list[str] = []
+        self.edges_inputs: list[str] = []
         self.edge_bindings: list[SuppliedBinding] = []
         self.edge_uses: list[SuppliedUse] = []
         # Nothing to say: this reader opens nothing, which `open` below states in words.

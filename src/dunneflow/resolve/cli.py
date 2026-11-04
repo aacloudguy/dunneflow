@@ -19,6 +19,7 @@ from ..detectors import load_rules
 from ..store import Store
 from . import languages
 from .python.calls import _absolute
+from .supplied import bind_ways_in
 
 
 @dataclass(slots=True)
@@ -104,12 +105,18 @@ def resolve_cli(store: Store) -> CliStats:
             ep_updates.append((found, e["id"]))
             stats.commands_attached += 1
 
+    # A way in a reader bound by the compiler's identity is decided before any name is
+    # read, and is not offered to the name binder below (see `supplied.bind_ways_in`).
+    decided = bind_ways_in(store)
+
     # Commands registered by direct call name their handler by expression.
     routine_updates: list[tuple[str, str]] = []
     for e in store.query(
         "SELECT id, module, file, target_expr FROM entrypoints"
         " WHERE target_expr != '' AND routine_id IS NULL"
     ):
+        if e["id"] in decided:
+            continue
         rid = _resolve_routine(store, r, e["module"], e["file"], e["target_expr"])
         if rid:
             routine_updates.append((rid, e["id"]))

@@ -50,6 +50,8 @@ struct Tree {
     std::vector<std::string> read_beyond;
     long fatal_files = 0, missing_files = 0, files = 0, skipped_lines = 0;
     std::map<std::string, long> missing;  // first missing include, per file that had one
+    std::vector<extract::Mark> marks;
+    std::map<std::string, rules::Preset::Body> body_rules;  // the matched preset's, by marker
     long fragments_through = 0;
     std::vector<std::string> fragments_alone;  // read alone: nothing that is read reaches them
 
@@ -70,6 +72,7 @@ struct Tree {
         for (auto& d : r.defs) defs.push_back(std::move(d));
         for (auto& o : r.overs) overs.push_back(std::move(o));
         for (auto& b : r.bases) bases.push_back(std::move(b));
+        for (auto& m : r.marks) marks.push_back(std::move(m));
     }
 };
 
@@ -83,8 +86,20 @@ struct Where {
     bool operator==(const Where& o) const { return file == o.file && line == o.line && name == o.name; }
 };
 
+// The USR of the method `name` + `suffix` in the same class, with the same parameters:
+// `c:@S@AActor@F@ReceiveTick#F#` is `c:@S@AActor@F@ReceiveTick_Implementation#F#`. Empty when
+// the USR is not one this can rewrite -- a template, a free function -- and then nothing is
+// bound, rather than something guessed.
+inline std::string sibling_usr(const std::string& usr, const std::string& name, const std::string& suffix) {
+    std::string at = "@F@" + name + "#";
+    size_t p = usr.rfind(at);
+    if (p == std::string::npos || usr.compare(0, 4, "c:@S") != 0) return "";
+    return usr.substr(0, p) + "@F@" + name + suffix + usr.substr(p + at.size() - 1);
+}
+
 inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
-                 const std::function<void(const std::string&)>& done) {
+                 const std::function<void(const std::string&)>& done,
+                 const std::function<void(const std::string&)>& bind = nullptr) {
     // Definitions by USR. Two definitions of one USR in one tree is a choice nobody can make
     // from here (rule 1), and the call stays without an edge, counted.
     std::map<std::string, std::vector<Where>> bodies;
@@ -282,7 +297,78 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         edge(out);
     }
 
+    // The ways in marked on a declaration, bound by USR. In a fixed order (rule 66), and one
+    // binding per mark whatever it found: a mark sent with nothing in it is the reader
+    // saying it looked, which stops the host guessing by name.
+    std::sort(t.marks.begin(), t.marks.end(),
+              [](const extract::Mark& a, const extract::Mark& b) { return a.entrypoint_id < b.entrypoint_id; });
+    long by_usr = 0, by_suffix = 0, explained = 0, overridden = 0, two_bodies = 0, no_body = 0;
+    std::set<std::string> sent;
+    for (const auto& m : t.marks) {
+        if (!sent.insert(m.entrypoint_id).second) continue;  // a header read twice marks it twice
+        facts::SuppliedBinding b;
+        b.entrypoint_id = m.entrypoint_id;
+        auto at = [&](const std::vector<Where>& v) {
+            b.file = v[0].file;
+            b.line = v[0].line;
+            b.name = v[0].name;
+        };
+        auto own = bodies.find(m.usr);
+        const rules::Preset::Body* rule = nullptr;
+        for (const auto& w : m.markers) {
+            auto r = t.body_rules.find(w);
+            if (r != t.body_rules.end()) {
+                rule = &r->second;
+                break;
+            }
+        }
+        if (own != bodies.end() && own->second.size() == 1) {
+            at(own->second);
+            by_usr++;
+        } else if (own != bodies.end() && own->second.size() > 1) {
+            b.why = "it is defined " + std::to_string(own->second.size()) +
+                    " times in this tree, and which one is compiled is not decidable from here";
+            two_bodies++;
+        } else if (rule && !rule->suffix.empty()) {
+            std::string sib = sibling_usr(m.usr, m.name, rule->suffix);
+            auto it = sib.empty() ? bodies.end() : bodies.find(sib);
+            if (it != bodies.end() && it->second.size() == 1) {
+                at(it->second);
+                by_suffix++;
+            } else {
+                b.why = "its body is `" + m.name + rule->suffix + "`, and no single definition of that was read";
+                no_body++;
+            }
+        } else if (rule && !rule->why.empty()) {
+            b.why = rule->why;
+            explained++;
+        } else if (m.pure) {
+            size_t n = 0;
+            auto ov = overridden_by.find(m.usr);
+            if (ov != overridden_by.end())
+                for (const auto& o : ov->second) n += bodies.count(o) ? 1 : 0;
+            b.why = n ? "it is pure virtual, and implemented by " + std::to_string(n) + " overrider" +
+                            (n == 1 ? "" : "s") + " in this tree"
+                      : "it is pure virtual, and nothing in this tree implements it";
+            overridden++;
+        } else {
+            no_body++;
+        }
+        if (bind) {
+            std::string out;
+            b.write_json(out);
+            bind(out);
+        }
+    }
+
     std::vector<std::string> notes;
+    if (!sent.empty())
+        notes.push_back("edges: " + std::to_string(sent.size()) + " ways in marked on a declaration; " +
+                        std::to_string(by_usr) + " bound to their definition by USR, " + std::to_string(by_suffix) +
+                        " to the body their marker names, " + std::to_string(explained) +
+                        " with no body in C++ by their marker, " + std::to_string(overridden) + " pure virtual, " +
+                        std::to_string(two_bodies) + " defined more than once, and " + std::to_string(no_body) +
+                        " with no definition read");
     notes.push_back("edges: " + std::to_string(t.files) + " files parsed by libclang; " +
                     std::to_string(supplied) + " calls given a definition in this tree, " + std::to_string(outside) +
                     " reaching outside it, " + std::to_string(dynamic) + " dispatched, " + std::to_string(untyped) +
@@ -321,6 +407,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     json::write(d, notes);
     d += ",\"read_beyond\":";
     json::write(d, t.read_beyond);
+    if (bind) d += ",\"bindings\":" + std::to_string(sent.size());
     done(d);
 }
 

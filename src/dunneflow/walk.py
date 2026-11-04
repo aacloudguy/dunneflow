@@ -1019,6 +1019,10 @@ def analyze_tree(
             if plugin.manifest.supplies_edges:
                 n = store.replace_supplied_edges(lang, plugin.edges())
                 stats.supplied_edges[lang] = n
+                # After the stream, which is what fills them; cleared for a reader that
+                # sends none, so a binding never outlives the reader saying it.
+                store.replace_supplied_bindings(
+                    lang, plugin.edge_bindings if plugin.manifest.supplies_bindings else [])
                 if plugin.edges_outside:
                     stats.edges_outside[lang] = plugin.edges_outside
                 if plugin.edges_unknown:

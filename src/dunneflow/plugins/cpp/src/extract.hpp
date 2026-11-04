@@ -98,6 +98,14 @@ struct Def {
     bool invalid = false;  // clang refused the declaration (a redefinition, conflicting types)
 };
 
+// A way in marked on a declaration whose body is not here, for the edge pass to bind by
+// USR (`SuppliedBinding`).
+struct Mark {
+    std::string entrypoint_id, usr, name;
+    std::vector<std::string> markers;  // every word of the marking macro, as `decorators` read it
+    bool pure = false;                 // declared `= 0`
+};
+
 // A method that overrides another, by USR, with its class.
 struct Over {
     std::string usr, overridden, owner;
@@ -113,6 +121,7 @@ struct Result {
     std::vector<Def> defs;
     std::vector<Over> overs;
     std::vector<std::pair<std::string, std::string>> bases;  // record USR -> base USR
+    std::vector<Mark> marks;
     std::string failed;          // a parse clang refused outright
     int fatal = 0, errors = 0;   // diagnostics in this file's parse
     std::string first_missing;   // the first include it could not find
@@ -1091,13 +1100,27 @@ private:
             for (const auto& d : decs) hit = hit || rule.matches(d);
             if (!hit) continue;
             facts::Entrypoint e;
-            e.id = ids::entrypoint_id(x_.rel, {qualname, rule.kind});
+            // **The USR is in the id**: two overloads of one name, both marked, were one
+            // way in -- the second `INSERT OR REPLACE`d the first -- and 157 of Runtime's
+            // Blueprint ways in were overloads. A name is not an identity (rule 106).
+            std::string u = usr(c);
+            e.id = ids::entrypoint_id(x_.rel, {qualname, rule.kind, u});
             e.kind = rule.kind;
             e.name = spelling(c);
             if (C().clang_isCursorDefinition(c)) {
                 // The routine is minted after this, with the next ordinal of its name.
                 int n = seen_routines_.count(qualname) ? seen_routines_[qualname] + 1 : 1;
                 e.routine_id = ids::definition_id(x_.rel, qualname, n);
+            } else if (!u.empty()) {
+                // The body is elsewhere -- a `.cpp`, a fragment, or nowhere in C++ at all --
+                // and only the whole tree knows which: the edge pass binds it.
+                Mark m;
+                m.entrypoint_id = *e.id;
+                m.usr = u;
+                m.name = e.name ? *e.name : spelling(c);
+                m.markers = decs;
+                m.pure = C().clang_CXXMethod_isPureVirtual(c) != 0;
+                x_.out->marks.push_back(std::move(m));
             }
             e.module = x_.module;
             std::string ev = rule.evidence;

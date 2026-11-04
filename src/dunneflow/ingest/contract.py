@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from ..schema import DataStructure, FileFacts, Routine, SuppliedEdge
+from ..schema import DataStructure, FileFacts, Routine, SuppliedBinding, SuppliedEdge
 
 ProgressFn = Callable[[str, int, int], None]
 
@@ -275,6 +275,9 @@ class PluginManifest:
     reader: str = ""
     receiver_words: tuple[str, ...] = ()
     supplies_edges: bool = False
+    # **The reader binds the ways in it marks** (`SuppliedBinding`), in the edge pass. Only
+    # meaningful with `supplies_edges`; a reader that declares it is never bound by name.
+    supplies_bindings: bool = False
     reports_literals: bool = False
     # Relative to the plugin's own directory. Never a glob — see above.
     fingerprint: tuple[str, ...] = ()
@@ -358,6 +361,10 @@ class IngestPlugin(Protocol):
     # could not resolve" when the reader had said, to nobody, that javac had crashed
     # (rule 38). Empty for a reader with nothing to declare.
     edges_said: list[str]
+    # **The ways in the reader bound, by the compiler's identity for them** -- the `binding`
+    # frames of the last `edges` stream (`SuppliedBinding`). Empty unless the manifest
+    # declares `supplies_bindings`.
+    edge_bindings: list[SuppliedBinding]
     # What the reader said when `open` built its session — how it divided the file set
     # into compilations, how long that took, whatever else it has to declare. Empty for a
     # reader that opens nothing, and the `opened` frame carried both fields for three

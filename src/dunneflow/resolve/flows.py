@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from ..schema import BoundaryHit, BoundaryKind, Direction
 from ..store import Store
-from .entrypoints import binding_note
+from .entrypoints import binding_note, supplied_whys
 
 DEFAULT_DEPTH = 6
 DEFAULT_MAX_NODES = 45
@@ -293,6 +293,7 @@ def ways_in(store: Store) -> list[dict]:
     """
     rank = {"CLI": 0, "MCP_TOOL": 1, "HTTP_ROUTE": 1, "IPC_COMMAND": 1, "MAIN": 2}
     best: dict[str, dict] = {}
+    said = supplied_whys(store)
 
     for e in store.entrypoints():
         if e.group:  # a subcommand: reported inside its executable, not beside it
@@ -313,7 +314,10 @@ def ways_in(store: Store) -> list[dict]:
         # Only a **declared** one is kept. A conventional `main` that resolved to nothing
         # is the old case and still goes: nothing declared it, so there is nothing to
         # report but an absence.
-        if not roots and not e.declared:
+        # And one its reader said has no body, with the reason: a `UFUNCTION`
+        # `BlueprintImplementableEvent` is as real a way in as a manifest's, and its body
+        # being generated is a fact about it, not an absence.
+        if not roots and not e.declared and e.id not in said:
             continue
         # The id, where there are no roots to key on. Every unbound declaration would
         # otherwise collapse onto the empty string and the panel would hold one of them.

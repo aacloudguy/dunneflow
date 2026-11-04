@@ -79,6 +79,15 @@ struct Preset {
     // Unreal's `Core.Build.cs` is why `CORE_API` is defined. `{MODULE}` is the stem, upper-cased.
     std::string module_file_suffix;
     std::string module_define;
+    // **Where a marked declaration's body is, when it is not the declaration's own** -- by
+    // the marker word on it. A framework's code generator decides this, so the preset says
+    // it and no line of the reader does: Unreal's `BlueprintNativeEvent` is defined as
+    // `<Name>_Implementation`, and a `BlueprintImplementableEvent` has no C++ body at all.
+    struct Body {
+        std::string suffix;  // the body is the method of this name plus the suffix
+        std::string why;     // there is no body here, and this is why
+    };
+    std::map<std::string, Body> bodies;
 };
 
 struct Rules {
@@ -140,6 +149,7 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         }
         x.module_file_suffix = p["module_defines"]["file_suffix"].str();
         x.module_define = p["module_defines"]["define"].str();
+        for (const auto& [marker, b] : p["bodies"].map()) x.bodies[marker] = {b["suffix"].str(), b["why"].str()};
         if (x.name.empty() || x.marker.empty()) {
             notes.push_back("a preset in detectors/cpp.yaml has no name or no marker, and is not used");
             continue;

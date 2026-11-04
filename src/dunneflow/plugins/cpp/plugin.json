@@ -30,6 +30,7 @@
     "this"
   ],
   "supplies_edges": true,
+  "supplies_bindings": true,
   "reports_literals": true,
   "discovery": {
     "suffixes": [

@@ -102,6 +102,16 @@ answer: every call is left external and the run says so with a count. If your la
 checker that knows the far end, say so and send `edges` — the host turns a location into an
 id, and nothing about that passes through a name.
 
+**So are bindings, for a way in marked on a declaration.** Unreal's `UFUNCTION` sits on a
+declaration in a header and its body is in a `.cpp`, or is `<Name>_Implementation`, or is
+generated and in no C++ at all. A reader whose checker knows declarations by identity
+declares `supplies_bindings: true` and sends a `binding` frame per such way in during the
+`edges` stream (`schema.SuppliedBinding`): where its body is, or `why` it has none, and the
+`edges_done` frame's `bindings` is the count. A way in it sent a binding for is never
+then bound by name, because a name cannot tell overloads apart. The C++ reader is the only
+one that sends them; what decides `_Implementation` is the Unreal preset in `cpp.yaml`, not
+the reader.
+
 **Nothing else is yours.** The resolver's boundary suppression, the missing-target
 bookkeeping, `stamp_lang`, the fingerprint, the walk's arithmetic and every surface above
 the graph are the host's. If you find yourself writing one of them, that is the signal the

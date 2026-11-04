@@ -205,6 +205,21 @@ def _declaration(store: Store, ep_id: str) -> tuple[TargetKind, str, str]:
             str(row[0]["file"] or ""))
 
 
+def supplied_why(store: Store, ep_id: str) -> str:
+    """The reason a reader gave for a way in it marks having no body, or ``""``."""
+    row = store.query(
+        "SELECT why FROM supplied_bindings WHERE entrypoint_id = ? AND why != ''"
+        " ORDER BY lang LIMIT 1", (ep_id,))
+    return str(row[0]["why"]) if row else ""
+
+
+def supplied_whys(store: Store) -> dict[str, str]:
+    """Every reason a reader gave, by way in -- one read for a caller that walks them all."""
+    return {str(r["entrypoint_id"]): str(r["why"]) for r in store.query(
+        "SELECT entrypoint_id, why FROM supplied_bindings WHERE why != ''"
+        " ORDER BY lang DESC, entrypoint_id")}
+
+
 def binding_note(store: Store, ep_id: str) -> BindingNote:
     """Why this declaration reached no routine -- **five answers, and four are not faults**.
 
@@ -222,7 +237,17 @@ def binding_note(store: Store, ep_id: str) -> BindingNote:
 
     Only the fourth is a fault. A manifest naming a file the walk never found is a
     declaration that has gone stale, and that is worth a reader's attention.
+
+    **And first, what the reader said.** A reader that binds the ways in it marks
+    (`SuppliedBinding`) says why one has no body when it knows: Unreal's
+    `BlueprintImplementableEvent` is a declaration whose body UHT generates and Blueprint
+    implements, so no C++ in any tree holds it. That is the reader's knowledge of its
+    language, stated in its rules file and carried here as a sentence, and it is a known
+    limit by construction.
     """
+    why = supplied_why(store, ep_id)
+    if why:
+        return BindingNote(why, True)
     kind, target, where = _declaration(store, ep_id)
     if kind == TargetKind.NONE or not target:
         return BindingNote(

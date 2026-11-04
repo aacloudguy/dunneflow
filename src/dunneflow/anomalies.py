@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .detectors import load_rules
-from .resolve.entrypoints import binding_note
+from .resolve.entrypoints import binding_note, supplied_why
 from .schema import make_id
 from .store import Store
 from .words import are, plural
@@ -1115,7 +1115,11 @@ def _entrypoint_problems(store: Store, r: Report) -> None:
         # The **condition** is asked, never the sentence. `binding_note` returns the
         # wording and the judgement together so the two cannot disagree (rule 13), and
         # a guard that matched the wording would be rule 30 in the guard.
-        if row["declared"] and binding_note(store, str(row["id"])).known_limit:
+        #
+        # A reader's own reason counts the same way: a way in it marked and said has no body
+        # here -- generated, or implemented only by overriders -- is not leading nowhere.
+        if ((row["declared"] or supplied_why(store, str(row["id"])))
+                and binding_note(store, str(row["id"])).known_limit):
             continue
         r.add(Anomaly(
             kind="ENTRYPOINT_NO_TARGET", severity=SUSPECT, confidence=PROBABLE,

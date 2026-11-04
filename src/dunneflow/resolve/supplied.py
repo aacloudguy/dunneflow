@@ -301,3 +301,42 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> list[Decision]:
 
     REPORTS[lang] = report
     return out
+
+
+def bind_ways_in(store: Store) -> set[str]:
+    """Set `entrypoints.routine_id` from what the readers supplied, and return the ids.
+
+    Every way in a reader sent a binding for is decided **here and only here**: bound to the
+    routine at the place it named, or left unbound -- and the host's name binder
+    (`resolve/cli._resolve_routine`) is then never asked about it, because a reader that
+    looked by the compiler's identity and found no body has answered, and a guess by name
+    after that is the wrong binding rule 1 exists to refuse.
+
+    The place is checked as an edge's target is: a routine starting on that line in that
+    file, and where two do, the one of that name (rule 5).
+    """
+    decided: set[str] = set()
+    updates: list[tuple[str | None, str]] = []
+    langs = [str(r["lang"]) for r in store.query(
+        "SELECT DISTINCT lang FROM supplied_bindings ORDER BY lang")]
+    for lang in langs:
+        ix = _index(store, lang)
+        for b in store.query(
+                "SELECT entrypoint_id, file, line, name FROM supplied_bindings"
+                " WHERE lang = ? ORDER BY entrypoint_id", (lang,)):
+            ep = str(b["entrypoint_id"])
+            decided.add(ep)
+            rid: str | None = None
+            if b["file"]:
+                at = ix.first.get((str(b["file"]), int(b["line"])), [])
+                named = [pair for pair in at if pair[1] == b["name"]]
+                if len(at) == 1 and at[0][1] == b["name"]:
+                    rid = at[0][0]
+                elif len(named) == 1:
+                    rid = named[0][0]
+            updates.append((rid, ep))
+    if updates:
+        with store.batch():
+            store.conn.executemany(
+                "UPDATE entrypoints SET routine_id = ? WHERE id = ?", updates)
+    return decided

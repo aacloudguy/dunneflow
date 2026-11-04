@@ -29,7 +29,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from ..runtime import host_interpreter, reader_cache_root
-from ..schema import FileFacts, SuppliedEdge, hash_source, stored_path
+from ..schema import FileFacts, SuppliedBinding, SuppliedEdge, hash_source, stored_path
 from .codec import CodecError, decode, decode_facts
 from .contract import (
     SOURCE_TEXT,
@@ -303,6 +303,7 @@ class OutOfProcessPlugin:
         self.edges_test_only: list[str] = []
         # What the reader said about its edge pass (`edges_done.notes`). See the contract.
         self.edges_said: list[str] = []
+        self.edge_bindings: list[SuppliedBinding] = []
         # Fields an edge carried that this build does not read. Survivable by design — a
         # plugin built against a later schema knows about fields this one does not — but
         # never silent: a file can carry its dropped keys in `FileFacts.errors` and an
@@ -371,6 +372,7 @@ class OutOfProcessPlugin:
         self.edges_said = []
         self.edges_outside = 0
         self.edges_unknown = 0
+        self.edge_bindings = []
         for frame in worker.stream({"t": "edges"}, "edges_done"):
             if frame["t"] == "edges_done":
                 said = frame.get("supplied")
@@ -388,6 +390,13 @@ class OutOfProcessPlugin:
                 # dependencies reads exactly like a reader that has stopped resolving. A
                 # plugin that sends neither is not refused — the sum is the term of the
                 # protocol and these are the reader's own elaboration of it.
+                bound = frame.get("bindings")
+                if isinstance(bound, int) and bound != len(self.edge_bindings):
+                    raise ProtocolError(
+                        f"the {lang} plugin says it sent {bound:,} bindings and sent "
+                        f"{len(self.edge_bindings):,}. The same check as the edges', for the "
+                        f"same reason."
+                    )
                 self.edges_outside = int(frame.get("outside") or 0)
                 self.edges_unknown = int(frame.get("unknown") or 0)
                 self.edges_read_beyond = [str(x) for x in frame.get("read_beyond") or []]
@@ -395,10 +404,21 @@ class OutOfProcessPlugin:
                 self.edges_test_only = sorted(str(x) for x in frame.get("test_only") or [])
                 self.edges_said = [str(x) for x in frame.get("notes") or []]
                 break
+            if frame["t"] == "binding" and self.manifest.supplies_bindings:
+                try:
+                    self.edge_bindings.append(
+                        decode(SuppliedBinding, frame.get("binding"), notes))
+                except CodecError as exc:
+                    raise ProtocolError(
+                        f"the {lang} plugin sent a binding this build cannot read: {exc}. "
+                        f"Refused rather than dropped, as an edge is."
+                    ) from exc
+                continue
             if frame["t"] != "edge":
                 raise ProtocolError(
                     f"the {lang} plugin sent {frame['t']!r} during an `edges` stream; the "
-                    f"frames of one are `edge` and `edges_done`."
+                    f"frames of one are `edge`, `edges_done` and -- from a reader that "
+                    f"declares `supplies_bindings` -- `binding`."
                 )
             try:
                 edge = decode(SuppliedEdge, frame.get("edge"), notes)

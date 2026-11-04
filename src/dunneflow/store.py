@@ -45,6 +45,7 @@ from .schema import (
     Param,
     Routine,
     StructureKind,
+    SuppliedBinding,
     SuppliedEdge,
     TargetKind,
 )
@@ -190,6 +191,19 @@ CREATE TABLE IF NOT EXISTS supplied_edges (
     -- `SuppliedEdge.answers`, as JSON `[[file, line, name], …]`: the bodies a `dynamic`
     -- call may reach. Read by `resolve/dispatch.py` and by nothing else.
     answers    TEXT NOT NULL DEFAULT '[]'
+);
+
+-- `schema.SuppliedBinding`: the routine a way in starts, as the reader's toolchain knows it,
+-- or why none. Whole per language, like `supplied_edges`, and for the same reason: the edge
+-- pass answers about the whole compilation. Read by `resolve/supplied.bind_ways_in`, which
+-- sets `entrypoints.routine_id`, and by `resolve/entrypoints.binding_note` for `why`.
+CREATE TABLE IF NOT EXISTS supplied_bindings (
+    lang          TEXT NOT NULL,
+    entrypoint_id TEXT NOT NULL,
+    file          TEXT NOT NULL DEFAULT '',
+    line          INTEGER NOT NULL DEFAULT 0,
+    name          TEXT NOT NULL DEFAULT '',
+    why           TEXT NOT NULL DEFAULT ''
 );
 
 -- Names a file hands to an IPC dispatch (`schema.IpcRegistration`). Per file, like
@@ -481,6 +495,7 @@ CREATE INDEX IF NOT EXISTS ix_routines_modname ON routines(module, name);
 CREATE INDEX IF NOT EXISTS ix_routines_name    ON routines(name);
 CREATE INDEX IF NOT EXISTS ix_routines_qual    ON routines(qualname);
 CREATE INDEX IF NOT EXISTS ix_calls_caller     ON calls(caller_id);
+CREATE INDEX IF NOT EXISTS ix_bindings_ep      ON supplied_bindings(entrypoint_id);
 CREATE INDEX IF NOT EXISTS ix_calls_callee     ON calls(callee_id);
 CREATE INDEX IF NOT EXISTS ix_calls_file       ON calls(file);
 CREATE INDEX IF NOT EXISTS ix_calls_site       ON calls(site_id);
@@ -1204,6 +1219,22 @@ class Store:
             "constructs,frontier,reason,answers) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
+        return len(rows)
+
+    def replace_supplied_bindings(self, lang: str,
+                                  bindings: Iterable[SuppliedBinding]) -> int:
+        """Every way in this language's reader bound, or said why it could not. Whole.
+
+        Replaced whole for `replace_supplied_edges`' reason, and a reader that sends none
+        still clears its own: a binding kept from the last run would be a way in bound to a
+        body the reader no longer says it has.
+        """
+        c = self.conn
+        c.execute("DELETE FROM supplied_bindings WHERE lang = ?", (lang,))
+        rows = [(lang, b.entrypoint_id, b.file, b.line, b.name, b.why) for b in bindings]
+        c.executemany(
+            "INSERT INTO supplied_bindings(lang,entrypoint_id,file,line,name,why)"
+            " VALUES(?,?,?,?,?,?)", rows)
         return len(rows)
 
     # -- writes ------------------------------------------------------------ #

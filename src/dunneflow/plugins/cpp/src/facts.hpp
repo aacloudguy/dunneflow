@@ -903,4 +903,25 @@ struct SuppliedEdge {
     }
 };
 
+// `schema.SuppliedBinding`.
+struct SuppliedBinding {
+    std::optional<std::string> entrypoint_id;
+    std::string file = "";
+    int64_t line = 0;
+    std::string name = "";
+    std::string why = "";
+
+    void write_json(std::string& out) const {
+        out += '{';
+        bool first = true;
+        if (!entrypoint_id) required("SuppliedBinding.entrypoint_id");
+        json::field(out, first, "entrypoint_id", *entrypoint_id);
+        if (file != "") json::field(out, first, "file", file);
+        if (line != 0) json::field(out, first, "line", line);
+        if (name != "") json::field(out, first, "name", name);
+        if (why != "") json::field(out, first, "why", why);
+        out += '}';
+    }
+};
+
 }  // namespace facts

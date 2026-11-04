@@ -16,7 +16,7 @@ package main
 import "encoding/json"
 
 // SchemaVersion is `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-const SchemaVersion = 17
+const SchemaVersion = 18
 
 // List is a slice that encodes as `[]` when it is nil, because the codec refuses `null`
 // where it expects a list.
@@ -446,6 +446,7 @@ type FileFacts struct {
 	ModuleScope      *Routine              `json:"module_scope,omitempty"`
 	LiteralsDropped  int                   `json:"literals_dropped,omitempty"`
 	TestsDropped     int                   `json:"tests_dropped,omitempty"`
+	ReadThrough      string                `json:"read_through,omitempty"`
 	IpcRegistrations List[IpcRegistration] `json:"ipc_registrations,omitempty"`
 	Errors           List[string]          `json:"errors,omitempty"`
 }

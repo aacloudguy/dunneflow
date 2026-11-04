@@ -22,7 +22,7 @@
  */
 
 /** `schema.SCHEMA_VERSION`. A plugin declaring another number is refused by name. */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export type ArmKind = "if" | "elif" | "else" | "else if" | "case" | "default" | "try" | "except" | "catch" | "finally" | "for" | "while" | "do";
 
@@ -315,6 +315,7 @@ export interface FileFacts {
   module_scope?: Routine | null;
   literals_dropped?: number;
   tests_dropped?: number;
+  read_through?: string;
   ipc_registrations?: IpcRegistration[];
   errors?: string[];
 }

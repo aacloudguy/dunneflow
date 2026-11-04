@@ -26,7 +26,7 @@
 namespace facts {
 
 // `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-constexpr int64_t SCHEMA_VERSION = 17;
+constexpr int64_t SCHEMA_VERSION = 18;
 
 inline void required(const char* what) {
     throw std::logic_error(std::string(what) + " is required and was never set");
@@ -809,6 +809,7 @@ struct FileFacts {
     std::optional<Routine> module_scope;
     int64_t literals_dropped = 0;
     int64_t tests_dropped = 0;
+    std::string read_through = "";
     std::vector<IpcRegistration> ipc_registrations;
     std::vector<std::string> errors;
 
@@ -845,6 +846,7 @@ struct FileFacts {
         if (module_scope) json::field(out, first, "module_scope", *module_scope);
         if (literals_dropped != 0) json::field(out, first, "literals_dropped", literals_dropped);
         if (tests_dropped != 0) json::field(out, first, "tests_dropped", tests_dropped);
+        if (read_through != "") json::field(out, first, "read_through", read_through);
         if (!ipc_registrations.empty()) json::field(out, first, "ipc_registrations", ipc_registrations);
         if (!errors.empty()) json::field(out, first, "errors", errors);
         out += '}';

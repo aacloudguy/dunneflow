@@ -2097,6 +2097,7 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
             return;
         }
         out.through = via_rel;
+        x.ff.read_through = via_rel;
     }
 
     unsigned nd = C().clang_getNumDiagnostics(x.tu);

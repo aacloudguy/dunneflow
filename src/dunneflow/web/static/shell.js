@@ -8652,7 +8652,8 @@ function viewCode() {
         <div class="codeview-title mono">${esc(state.codeFile)}</div>
         <div class="codeview-sub">${f ? esc(f.module) + " · " : ""}${
           CODEFILE.lines.length.toLocaleString()} lines · ${
-          CODEFILE.defs.length} definitions · ${CODEFILE.marks.length.toLocaleString()} marks</div>
+          CODEFILE.defs.length} definitions · ${CODEFILE.marks.length.toLocaleString()} marks${
+          readThroughHtml()}</div>
       </div>
       ${overlaySwitchHtml("code")}
       ${/* Drawn only where it can do something: with no marks in the file there is no column
@@ -15886,6 +15887,15 @@ async function loadCodeFile(path) {
   if (codeGoto) { revealLine(codeGoto); codeGoto = 0; }
 }
 
+/* A file that cannot be parsed alone, and the file it was parsed as part of. A sentence with a
+ * door in it (design rule 13): what this file's names mean came from that one. */
+function readThroughHtml() {
+  const via = CODEFILE && CODEFILE.read_through;
+  return via ? ` · read through <button class="linkbtn mono" data-gotocode="${esc(via)}"
+      title="This file is not parsed alone. What its names mean comes from this file, which includes it.">${
+      esc(baseOf(via))}</button>` : "";
+}
+
 /* Go to a file at a line, from wherever the link was drawn.
  *
  * The body of what `[data-gotocode]` did inline, lifted out the day a **second** door
@@ -16922,6 +16932,8 @@ function codeList() {
               title="Open this file in the centre pane, with its columns">open ▸</button>
     </div>
     ${comparing() ? `<div class="nav-note chgnote">${overlayNote()}</div>` : ""}
+    ${CODEFILE && CODEFILE.read_through
+      ? `<div class="nav-note">${readThroughHtml().replace(/^ · /, "")}</div>` : ""}
     <div id="codePaneMount"></div>`;
 }
 

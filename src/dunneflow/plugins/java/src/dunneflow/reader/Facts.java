@@ -25,7 +25,7 @@ public final class Facts {
     private Facts() {}
 
     /** `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name. */
-    public static final long SCHEMA_VERSION = 17;
+    public static final long SCHEMA_VERSION = 18;
 
     /** `schema.ArmKind`. */
     public enum ArmKind implements Json.Writable {
@@ -1228,6 +1228,7 @@ public final class Facts {
         public Routine module_scope = null;
         public long literals_dropped = 0L;
         public long tests_dropped = 0L;
+        public String read_through = "";
         public List<IpcRegistration> ipc_registrations = new ArrayList<>();
         public List<String> errors = new ArrayList<>();
 
@@ -1316,6 +1317,9 @@ public final class Facts {
             }
             if (tests_dropped != 0L) {
                 Json.field(out, first, "tests_dropped", tests_dropped);
+            }
+            if (!Objects.equals(read_through, "")) {
+                Json.field(out, first, "read_through", read_through);
             }
             if (!ipc_registrations.isEmpty()) {
                 Json.field(out, first, "ipc_registrations", ipc_registrations);

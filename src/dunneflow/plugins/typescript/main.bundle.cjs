@@ -214078,7 +214078,7 @@ function resolveOne(checker, node, anchors) {
 }
 
 // src/facts.ts
-var SCHEMA_VERSION = 17;
+var SCHEMA_VERSION = 18;
 
 // src/main.ts
 var PROTOCOL = 1;

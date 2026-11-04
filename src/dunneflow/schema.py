@@ -51,7 +51,9 @@ from typing import Literal
 # 17: `FileFacts.tests_dropped` -- test code a reader leaves out *inside* a file, for Rust's
 #     `#[cfg(test)] mod tests`; and, with the Tauri edge, a way in a client in the same
 #     application calls by name, and the link that names it.
-SCHEMA_VERSION = 17
+# 18: `FileFacts.read_through`, and `files.read_through`: the file a fragment was parsed
+#     through, because a fragment's facts mean what its includer put in front of it.
+SCHEMA_VERSION = 18
 
 
 # --------------------------------------------------------------------------- #
@@ -1040,6 +1042,11 @@ class FileFacts:
     # that keeps its tests inline reads as one with none (design rule 1). Added for Rust,
     # with schema 17.
     tests_dropped: int = 0
+    # **The file this one was parsed through**, relative, where it cannot be parsed alone: a
+    # C++ `.inl` is the bodies of a class some header declares, so it is read as part of that
+    # header, and which header is a choice that decides what it means. Empty for a file read
+    # as itself, which is every file of every other language.
+    read_through: str = ""
     # Names this file hands to an IPC dispatch. See `IpcRegistration`. Schema 17.
     ipc_registrations: list[IpcRegistration] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)

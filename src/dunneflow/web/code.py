@@ -201,7 +201,7 @@ def build_file(store: Store, source: SourceStore | None,
     if not asked:
         return {"available": False, "reason": "no path asked for"}
     full = asked
-    rows = _rows(store, "SELECT module, lang, errors FROM files WHERE path = :p",
+    rows = _rows(store, "SELECT module, lang, errors, read_through FROM files WHERE path = :p",
                  {"p": full})
     if not rows:
         return {"available": False, "file": asked,
@@ -256,6 +256,7 @@ def build_file(store: Store, source: SourceStore | None,
         "file": full,
         "module": str(meta["module"]), "lang": str(meta["lang"]),
         "errors": str(meta["errors"] or "[]"),
+        "read_through": str(meta["read_through"] or ""),
         "first": 1,
         "lines": lines,
         "defs": defs,

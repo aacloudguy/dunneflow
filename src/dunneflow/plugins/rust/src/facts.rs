@@ -17,7 +17,7 @@ use crate::json::{write_str, ToJson};
 use std::collections::BTreeMap;
 
 /// `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-pub const SCHEMA_VERSION: i64 = 17;
+pub const SCHEMA_VERSION: i64 = 18;
 
 /// `schema.ArmKind`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1171,6 +1171,7 @@ pub struct FileFacts {
     pub module_scope: Option<Routine>,
     pub literals_dropped: i64,
     pub tests_dropped: i64,
+    pub read_through: String,
     pub ipc_registrations: Vec<IpcRegistration>,
     pub errors: Vec<String>,
 }
@@ -1249,6 +1250,9 @@ impl ToJson for FileFacts {
         }
         if self.tests_dropped != zero.tests_dropped {
             crate::json::field(out, &mut first, "tests_dropped", &self.tests_dropped);
+        }
+        if self.read_through != zero.read_through {
+            crate::json::field(out, &mut first, "read_through", &self.read_through);
         }
         if self.ipc_registrations != zero.ipc_registrations {
             crate::json::field(out, &mut first, "ipc_registrations", &self.ipc_registrations);

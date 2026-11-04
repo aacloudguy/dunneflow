@@ -80,7 +80,9 @@ CREATE TABLE IF NOT EXISTS files (
     -- discard possible -- editing the TypeScript reader costs the TypeScript rows and
     -- leaves the Python ones alone -- and it is the only place that fact is recorded, so
     -- a map cannot hold two answers about which reader read a file (rule 40).
-    extractor    TEXT NOT NULL DEFAULT ''
+    extractor    TEXT NOT NULL DEFAULT '',
+    -- `FileFacts.read_through`: the file this one was parsed as part of, or ''.
+    read_through TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS routines (
@@ -1271,10 +1273,10 @@ class Store:
         c = self.conn
         self.forget_file(ff.path)
         c.execute(
-            "INSERT INTO files(path, lang, module, content_hash, doc, errors, extractor)"
-            " VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO files(path, lang, module, content_hash, doc, errors, extractor,"
+            " read_through) VALUES(?,?,?,?,?,?,?,?)",
             (ff.path, ff.lang, ff.module, ff.content_hash, ff.doc, json.dumps(ff.errors),
-             lang_fingerprint(ff.lang)),
+             lang_fingerprint(ff.lang), ff.read_through),
         )
         for r in ff.routines:
             c.execute(

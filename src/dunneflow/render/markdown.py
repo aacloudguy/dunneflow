@@ -761,6 +761,11 @@ def _routines(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
         if not rts:
             continue
         lines.append(f"## `{module}` ({len(rts)})\n")
+        through = store.query(
+            "SELECT path, read_through FROM files WHERE module = ? AND read_through <> ''"
+            " ORDER BY path", (module,))
+        lines.extend(f"*`{_esc(str(f['path']))}` is read through "
+                     f"`{_esc(str(f['read_through']))}`.*\n" for f in through)
         lines.append("| Routine | Signature | WHY | Where |\n|---|---|---|---|")
         for rt in rts:
             # The whole WHY: the docstring's opening line plus every comment attached

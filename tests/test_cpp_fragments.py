@@ -11,10 +11,16 @@ the routines keep the fragment's own path, and their names come from the include
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
+from dunneflow import walk
+from dunneflow.render import markdown
+from dunneflow.render.page import Stamp
 from dunneflow.schema import FileFacts, SuppliedEdge
+from dunneflow.store import Store
+from dunneflow.web.code import build_file
 from tests.test_cpp_reader import _WHY, PLUGIN, needs_clang
 
 pytestmark = needs_clang
@@ -160,3 +166,50 @@ def test_a_header_only_cpp_tree_is_read_as_cpp(tmp_path: Path) -> None:
     facts, _, _ = _read(tmp_path, files)
     assert _names(facts["lib.hpp"]) == {"lib.one"}
     assert _names(facts["plain.h"]) == {"lib.two"}, "a .h beside a .hpp was read as C"
+
+
+def test_a_fragment_names_the_file_it_was_read_through(tmp_path: Path) -> None:
+    """Per file, because *which* includer is a choice that decides what the fragment means, and
+    an aggregate note cannot say which file it was made for."""
+    files = _tree(tmp_path, {"maths.h": CLASS_H, "maths.inl": CLASS_INL, "plain.cpp": "int p;\n"})
+    facts, _, _ = _read(tmp_path, files)
+    assert facts["maths.inl"].read_through == "maths.h"
+    assert facts["maths.h"].read_through == ""
+    assert facts["plain.cpp"].read_through == ""
+
+
+def test_an_orphan_names_nothing(tmp_path: Path) -> None:
+    files = _tree(tmp_path, {"maths.inl": CLASS_INL})
+    facts, _, _ = _read(tmp_path, files)
+    assert facts["maths.inl"].read_through == ""
+
+
+def test_it_reaches_the_store_the_file_view_and_the_map(tmp_path: Path) -> None:
+    root = tmp_path / "t"
+    root.mkdir()
+    _tree(root, {"maths.h": CLASS_H, "maths.inl": CLASS_INL})
+    store = Store(tmp_path / "g.db")
+    try:
+        walk.analyze_tree(root, store)
+        rows = store.query("SELECT path, read_through FROM files ORDER BY path")
+        assert [(r["path"], r["read_through"]) for r in rows] == [
+            ("maths.h", ""), ("maths.inl", "maths.h")]
+        assert build_file(store, cast(Any, _Source()), "maths.inl")["read_through"] == "maths.h"
+        assert build_file(store, cast(Any, _Source()), "maths.h")["read_through"] == ""
+        store.conn.commit()
+        page = markdown._routines(
+            store, tmp_path, "t", Stamp(generated="x", revision="", analysed="")
+        ).read_text(encoding="utf-8")
+        assert "`maths.inl` is read through `maths.h`." in page
+    finally:
+        store.close()
+
+
+class _Source:
+    """A sidecar holding one short file for every path: only the header's fields are asked of."""
+
+    def text(self, _path: str, revision: str | None = None) -> str:
+        return "// nothing\n"
+
+    def resolve_revision(self, *_a: Any, **_k: Any) -> None:
+        return None

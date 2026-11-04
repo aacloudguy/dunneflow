@@ -2513,7 +2513,8 @@ async function switchBase(rev) {
   render();
   let d;
   try {
-    const r = await fetch("/api/base?revision=" + encodeURIComponent(rev), { method: "POST" });
+    const r = await fetch("/api/base?revision=" + encodeURIComponent(rev) + "&unfinished="
+                          + window.DunneFlowSettings.unfinishedChoice(), { method: "POST" });
     d = await r.json();
   } catch (err) {
     REBUILD = { revision: rev, state: "failed",
@@ -2635,7 +2636,9 @@ function rebuildPanel() {
          /* The one failure with a fix the reader can press. Offered on the server's own
             field rather than on the shape of its sentence (rule 30), and the name comes
             from the switch that was refused, so it fills the dialog in for them. */
-         ? `<button class="linkbtn" data-anagain="${esc(REBUILD.program || "")}"
+         ? `<p class="hint">Or read it as it stands: <b>Settings › What opens, and what
+              shows › Unfinished maps</b> opens one with a warning instead.</p>
+            <button class="linkbtn" data-anagain="${esc(REBUILD.program || "")}"
               >Analyse it again</button> ` : ""}
        <button class="linkbtn" data-rebuilddismiss>Close</button>`
     : `<div class="rebuild-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
@@ -2760,8 +2763,14 @@ function assumeTitle(w) {
 
 function versionStrip() {
   const usable = REVISIONS.filter(r => r.comparable);
-  const lost = state.revNote
-    ? `<span class="verstrip-lost">${esc(state.revNote)}</span>` : "";
+  /* **First, and before any other thing the strip says**, because it qualifies all of them:
+     the version named next to it is part of a program rather than a program. Present only
+     when the reader's Setting *Unfinished maps* opened one anyway; the sentence is the
+     server's, naming the step it stopped in and the way out (rule 80). */
+  const halted = UNFINISHED
+    ? `<span class="verstrip-unfinished" role="alert">${esc(UNFINISHED)}</span>` : "";
+  const lost = halted + (state.revNote
+    ? `<span class="verstrip-lost">${esc(state.revNote)}</span>` : "");
   const base = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.base))
             || REVISIONS.find(r => r.serving)
             || usable[0];
@@ -7544,6 +7553,20 @@ function viewSettings() {
           <div class="seg" role="group" aria-label="Startup screen">
             <button data-start="cover" aria-pressed="${state.startup === "cover"}">Cover</button>
             <button data-start="graph" aria-pressed="${state.startup === "graph"}">Package graph</button>
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Unfinished maps</div>
+            <div class="desc">A map whose analysis stopped part way opens perfectly and holds
+              part of a program. Refused, it names the way out; opened, a warning above the
+              view says which step it stopped in. Held for every program on this machine,
+              because a refused map cannot be opened to change its own — so a reset of
+              this program leaves it as it is.</div></div>
+          <div class="seg" role="group" aria-label="Unfinished maps">
+            ${[["refuse", "Refuse"], ["open", "Open with a warning"]].map(([v, l]) =>
+              `<button data-unfinished-set="${v}" aria-pressed="${
+                window.DunneFlowSettings.unfinishedChoice() === v}">${l}</button>`).join("")}
           </div>
         </div>
 
@@ -13822,6 +13845,9 @@ function wire() {
   });
 
   /* settings controls */
+  $$("[data-unfinished-set]").forEach(b => b.addEventListener("click", () => {
+    window.DunneFlowSettings.setUnfinishedChoice(b.dataset.unfinishedSet); render();
+  }));
   $$("[data-theme-set]").forEach(b => b.addEventListener("click", () => {
     state.theme = b.dataset.themeSet; applyTheme(); render();
   }));
@@ -14837,7 +14863,9 @@ const WIRED_ATTRS = new Set([
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
   "titled", "toggle",
-  "trail", "trailback", "trailfwd", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+  "trail", "trailback", "trailfwd", "trailcap", "trailclear", "triage", "triaged",
+  /* The Setting "Unfinished maps": one key for the machine, so `settings.js` holds it. */
+  "unfinished-set", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];
@@ -17732,7 +17760,8 @@ async function switchProgram(name) {
   render();
   let d;
   try {
-    const r = await fetch("/api/program?name=" + encodeURIComponent(name), { method: "POST" });
+    const r = await fetch("/api/program?name=" + encodeURIComponent(name) + "&unfinished="
+                          + window.DunneFlowSettings.unfinishedChoice(), { method: "POST" });
     d = await r.json();
   } catch (err) {
     REBUILD = { revision: name, state: "failed",
@@ -17768,6 +17797,9 @@ async function switchProgram(name) {
  */
 let ABOUT = null;        /* the dialog's contents while it is open, null when it is not */
 let ABOUT_TREE = null;   /* the tree leaf, for the topbar readout; "" = the map cannot say */
+/* Why the map on screen is not a whole one, or "" -- `/api/about`'s `unfinished`, which the
+   server fills only when the Setting *Unfinished maps* let a never-finished map open. */
+let UNFINISHED = "";
 
 /* One fetch, two callers, two different things to say when it fails -- so the fetch throws
    and each caller answers for its own surface (rule 51: the rule lives where they all pass,
@@ -17792,6 +17824,9 @@ async function loadAbout() {
   }
   ABOUT_TREE = d.tree;
   paintSrcPath(d);
+  UNFINISHED = d.unfinished || "";
+  const vs = $("#verStrip");
+  if (vs) vs.innerHTML = versionStrip();
 }
 
 /* The topbar readout, which was a dead field until there was something true to put in it.

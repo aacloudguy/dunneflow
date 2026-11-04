@@ -141,8 +141,33 @@ timestamp and a real tool version.
 
 **What to do.** Analyse it again. It picks up where it stopped.
 
-**One command proceeds anyway, and warns:** `dunneflow query`. Its contract is that you get
-the rows that are there, so it tells you the map is unfinished and answers.
+**Or read it as it stands, if you choose to.** Refusing is a Setting, not a law:
+
+- in the dashboard, **Settings › What opens, and what shows › Unfinished maps** — *Refuse*
+  or *Open with a warning*. The start page shows the same choice under its list whenever a
+  program on it is unfinished. It is one choice for the whole machine rather than per
+  program, because a program that is refused cannot be opened to change its own settings.
+  Opened, a red line at the top of the view says which step the analysis stopped in.
+- on the command line, `--allow-unfinished` on `check`, `touches`, `impact`, `glossary`,
+  `naming`, `mirror`, `serve` and `mcp`. Each prints the same sentence as a warning and
+  answers.
+
+**One command proceeds without being asked, and warns:** `dunneflow query`. Its contract is
+that you get the rows that are there, so it tells you the map is unfinished and answers.
+
+### A map folder that was never finished
+
+A map's pages are written into `map@<revision>.unfinished/` and renamed to `map@<revision>/`
+only after the last one. If writing stops — a crash, Ctrl-C, a full disk — the
+`.unfinished` folder is what is left. It holds the pages written so far and an
+`UNFINISHED.md` saying which page it stopped on. Nothing counts it as a map: the directory's
+`README.md` lists it as *never finished*, and
+
+```
+dunneflow render <program directory>
+```
+
+writes the map again from the graph that is already there, without reading the source.
 
 ---
 

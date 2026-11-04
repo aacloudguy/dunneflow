@@ -44,7 +44,7 @@ from ..resolve import version as version_order
 from ..runtime import resource_root
 from ..sourcedb import DocSourceStore, SourceStore
 from ..standards import STANDARDS_DB
-from ..store import StaleGraphError, Store, UnfinishedMapError
+from ..store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
 from . import (
     analysis,
     anomalychanges,
@@ -345,6 +345,17 @@ def _analysing(d: Path) -> dict[str, Any] | None:
         return None
     return runstate.as_progress(body)
 
+def _unfinished_choice(q: dict[str, list[str]]) -> bool | None:
+    """The page's Setting "Unfinished maps", as sent with a switch: open, refuse, or unsaid.
+
+    Three states, because a request that does not say is not a request that chose to
+    refuse: it gets the server's own default, which `--allow-unfinished` sets. Anything
+    other than the two words is unsaid rather than guessed at (rule 49).
+    """
+    said = (q.get("unfinished") or [""])[0]
+    return {"open": True, "refuse": False}.get(said)
+
+
 def _relaxed(q: dict[str, list[str]]) -> bool:
     """Whether a naming request asks for a leading underscore to be allowed."""
     return (q.get("underscore") or [""])[0] == "1"
@@ -437,6 +448,11 @@ class _Base:
     # `None` is a real state and not an error: design rule 11 makes documentation an
     # optional input, and a program analysed with `--no-docs` keeps a complete code map.
     docs: DocStore | None
+    # **Why this map may not be trusted, or `""` when it may** -- `unfinished_sentence`,
+    # set only when the reader's Setting let an unfinished map open (rule 80's third half
+    # and Tom's ruling that strictness is a Setting). A sentence for the page's banner,
+    # because the banner has to say which step it stopped in, and a flag cannot.
+    unfinished: str
     # The first screen. 175 reachability queries on every navigation would make it the
     # slowest one.
     cover: dict[str, Any]
@@ -632,8 +648,13 @@ class _Live:
     PROGRAM_CACHES: tuple[str, ...] = ("changes", "anomalypairs", "filepairs", "findings")
 
     def __init__(self, source_db: Path, out_dir: Path,
-                 out_root: Path | None = None, root_gone: str = "") -> None:
+                 out_root: Path | None = None, root_gone: str = "",
+                 allow_unfinished: bool = False) -> None:
         self.lock = threading.Lock()
+        # **The Setting "Unfinished maps", as the server's default** -- `--allow-unfinished`
+        # on `serve` and `mcp`. A page sends its own on every switch, which wins; this is
+        # what the boot and a request that says nothing get. Refusing is the default.
+        self.allow_unfinished = allow_unfinished
         # **Why the root on screen is not the root the reader chose**, or `""` when it is.
         # A sentence rather than a flag, for the reason every refusal here is a sentence:
         # the page has to *say* which disk, and a boolean cannot (rule 89). Set once at
@@ -782,7 +803,8 @@ class _Live:
     # -- the one door onto a version -------------------------------------- #
 
     def open(self, graph_db: Path,
-             step: Any = None, clock: _Clock | None = None) -> None:
+             step: Any = None, clock: _Clock | None = None,
+             allow_unfinished: bool | None = None) -> None:
         """Make `graph_db` the base: build everything from it, then swap it in.
 
         The same method at boot and at a switch, deliberately. A second builder would be
@@ -820,8 +842,18 @@ class _Live:
         # routines and *no internal calls at all*, over a timestamp and a determinism
         # guarantee. Closed by hand rather than by the `try` below, which does not start
         # until the build does.
+        #
+        # **Unless the reader's Setting says to open it with a warning.** `None` is "the
+        # request did not say", which is the server's default and not a choice. The
+        # sentence is read either way, before anything can close the store it comes from.
+        allowed = self.allow_unfinished if allow_unfinished is None else allow_unfinished
+        unfinished = ""
         try:
-            store.refuse_if_unfinished(self.out_dir.name)
+            if allowed and store.finished() == "":
+                unfinished = unfinished_sentence(self.out_dir.name,
+                                                 store.get_meta("step") or "")
+            else:
+                store.refuse_if_unfinished(self.out_dir.name)
         except BaseException:
             store.close()
             raise
@@ -893,6 +925,7 @@ class _Live:
                       files=files, naming=naming, stated=stated, checked=checked,
                       glossary=glossary,
                       docs=docs,
+                      unfinished=unfinished,
                       cover=cover,
                       # The default under its own key, and the *same object*: `payload` and
                       # `payloads[default_level()]` are one truth with an index over it.
@@ -1033,7 +1066,8 @@ class _Live:
         except (ValueError, OSError):
             return None
 
-    def switch_program(self, out_dir: Path, name: str) -> None:
+    def switch_program(self, out_dir: Path, name: str,
+                       allow_unfinished: bool | None = None) -> None:
         """Serve a different **program**. Runs on its own thread, like `switch`.
 
         The same shape as a revision switch and a wider blast radius, and the difference is
@@ -1082,7 +1116,7 @@ class _Live:
         try:
             (self.out_dir, self.source, self.docsource,
              self.standards) = out_dir, source, docsource, standards
-            self.open(graph_db, step, clock)
+            self.open(graph_db, step, clock, allow_unfinished)
         except Exception as exc:                  # noqa: BLE001 -- a report, not a swallow
             (self.out_dir, self.source, self.docsource, self.standards) = was
             # **All three, and `standards` was missing from both of these lists.** It was
@@ -1175,7 +1209,8 @@ class _Live:
         self.note(state="done", revision="", program="", step="",
                   done_steps=0, steps=0, ms=round((time.perf_counter() - t) * 1000))
 
-    def switch(self, graph_db: Path, revision: str) -> None:
+    def switch(self, graph_db: Path, revision: str,
+               allow_unfinished: bool | None = None) -> None:
         """Make `graph_db` the base, reporting each step. Runs on its own thread.
 
         A failure is **reported**, never raised into a thread nobody is reading. The
@@ -1191,7 +1226,7 @@ class _Live:
                       done_steps=i, steps=n, ms=ms(), spent=list(clock.spent))
 
         try:
-            self.open(graph_db, step, clock)
+            self.open(graph_db, step, clock, allow_unfinished)
         except Exception as exc:                  # noqa: BLE001 -- see the docstring:
             self.note(state="failed", revision=revision,   # this is a report, not a swallow
                       steps=len(BUILD_STEPS), ms=ms(), reason=why(exc))
@@ -2645,6 +2680,9 @@ class _Handler(BaseHTTPRequestHandler):
             docs = base.docs.counts() if base.docs is not None else None
             source_revision = base.source_revision
             out_name = self._live.out_dir.name
+            # `""` unless this map never finished and the reader's Setting opened it
+            # anyway -- the banner's sentence, naming the step it stopped in (rule 80).
+            unfinished = base.unfinished
 
             # The leaf of the tree this snapshot was read from -- a name, never a path
             # (rule 60). Only the sidecar knows it, and a map handed over without one
@@ -2694,6 +2732,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({
             "program": meta.get("program") or out_name,
             "revision": meta.get("revision") or "",
+            "unfinished": unfinished,
             "analysed_at": meta.get("analysed_at") or "",
             "tree": tree,
             "tool_version": said("tool_version"),
@@ -3224,7 +3263,8 @@ class _Handler(BaseHTTPRequestHandler):
             running = self._live.progress().get("revision", "")
             self._started(False, f"a switch to {running} is already running")
             return
-        threading.Thread(target=self._live.switch_program, args=(target, asked),
+        threading.Thread(target=self._live.switch_program,
+                         args=(target, asked, _unfinished_choice(q)),
                          name=f"dunneflow-program-{asked}", daemon=True).start()
         self._started(True, "")
 
@@ -3560,7 +3600,8 @@ class _Handler(BaseHTTPRequestHandler):
             running = self._live.progress().get("revision", "")
             self._started(False, f"a switch to {running} is already running")
             return
-        threading.Thread(target=self._live.switch, args=(graph, asked),
+        threading.Thread(target=self._live.switch,
+                         args=(graph, asked, _unfinished_choice(q)),
                          name=f"dunneflow-base-{asked}", daemon=True).start()
         self._started(True, "")
 
@@ -4279,7 +4320,8 @@ def no_map_here(out_dir: Path, out_root: Path, revision: str | None) -> str:
 
 
 def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
-          revision: str | None = None, emit: Any = print, root_gone: str = "") -> None:
+          revision: str | None = None, emit: Any = print, root_gone: str = "",
+          allow_unfinished: bool = False) -> None:
     """Open one version of a program and serve it until interrupted.
 
     `revision` chooses which one, defaulting to the newest -- never a fixed `graph.db`
@@ -4312,7 +4354,8 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     if (graph_db is None or not graph_db.exists()) and not cold:
         raise FileNotFoundError(no_map_here(out_dir, out_root, revision))
 
-    live = _Live(out_dir / "source.db", out_dir, out_root, root_gone=root_gone)
+    live = _Live(out_dir / "source.db", out_dir, out_root, root_gone=root_gone,
+                 allow_unfinished=allow_unfinished)
     # The same door a base switch goes through, and the whole reason it takes a `step`
     # callback: the terminal gets the boot, a watching page gets a switch, and neither is
     # a second way of building a version (rule 51).
@@ -4348,6 +4391,8 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
 
     live.open(graph_db, _boot_step, boot)
     _drain()
+    if live.current.unfinished:
+        emit(f"warning: {live.current.unfinished}")
 
     files = live.current.files
     naming = live.current.naming

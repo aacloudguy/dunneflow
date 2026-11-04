@@ -97,7 +97,27 @@
     lead.textContent = rows.length === 1
       ? "One program has been mapped. Open it, or read another tree."
       : `${rows.length} programs have been mapped. Open one, or read another tree.`;
-    mount.innerHTML = rows.map(row).join("");
+    mount.innerHTML = rows.map(row).join("") + unfinishedControl(rows);
+  }
+
+  /* **The Setting "Unfinished maps", where the rows it governs are** -- and only when one of
+     them is. This page has no Settings pane, and the choice is the machine's rather than a
+     program's (`settings.js` says why), so the shell's row and this one read and write the
+     same key. Absent when nothing here is unfinished: a control with nothing to govern is
+     furniture (design rule 29's other half). */
+  function unfinishedControl(rows) {
+    if (!rows.some(p => !p.serving && p.openable && !p.finished && !p.analysing)) return "";
+    const now = window.DunneFlowSettings.unfinishedChoice();
+    return `<div class="start-unfinished">
+      <span class="start-unfinishedk">Unfinished maps</span>
+      <div class="seg" role="group" aria-label="Unfinished maps">
+        ${[["refuse", "Refuse"], ["open", "Open with a warning"]].map(([v, l]) =>
+          `<button data-unfinished-set="${v}" aria-pressed="${now === v}">${l}</button>`
+        ).join("")}
+      </div>
+      <span class="hint">A map whose analysis stopped part way holds part of a program.
+        Opened, a warning above the view says which step it stopped in.</span>
+    </div>`;
   }
 
   /* A row for every directory the walk found, **including the ones that cannot be opened**.
@@ -135,11 +155,16 @@
       /* The store's own three states, not two: an analysis that was killed leaves a graph
          that opens perfectly and lies. Named here so the row is not a click into a refusal
          with no warning. */
-      why = "its analysis never finished — analyse it again";
+      why = window.DunneFlowSettings.unfinishedChoice() === "open"
+        ? "its analysis never finished — opens with a warning"
+        : "its analysis never finished — analyse it again";
     }
     const busy = OPENING === p.name;
+    /* Unfinished is openable exactly when the reader's Setting says so; the server is asked
+       with the same choice and decides again, so this only spares a click into a refusal. */
+    const halted = !p.finished && window.DunneFlowSettings.unfinishedChoice() !== "open";
     return `<button class="start-prog" data-open="${esc(p.name)}"
-                    ${(!p.openable || !p.finished || run || busy) ? "disabled" : ""}>
+                    ${(!p.openable || halted || run || busy) ? "disabled" : ""}>
       <span class="start-progname">${esc(p.name)}</span>
       <span class="start-progwhat">${busy ? "opening…" : esc(why || points)}</span>
     </button>`;
@@ -157,7 +182,8 @@
     load();
     let d;
     try {
-      d = await fetch("/api/program?name=" + encodeURIComponent(name),
+      d = await fetch("/api/program?name=" + encodeURIComponent(name) + "&unfinished="
+                      + window.DunneFlowSettings.unfinishedChoice(),
                       { method: "POST" }).then(r => r.json());
     } catch (err) {
       OPENING = "";
@@ -308,6 +334,12 @@
     const t = ev.target;
     if (!t || !t.closest) return;
 
+    const choice = t.closest("[data-unfinished-set]");
+    if (choice) {
+      window.DunneFlowSettings.setUnfinishedChoice(choice.dataset.unfinishedSet);
+      load();
+      return;
+    }
     const opener = t.closest("[data-open]");
     if (opener && !opener.disabled) { open(opener.getAttribute("data-open")); return; }
 

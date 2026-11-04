@@ -203,7 +203,20 @@ Refusing on absence would refuse every map made before it. `UnfinishedMapError` 
 **read** paths only — `_Live.open`, `_open_store` and so `check`, and `serve`'s boot — with
 `analyze` deliberately exempt, because opening one is how it recovers (34 s on Society, since
 the extraction is content-hashed). `query` is the one reader that proceeds, and **warns**:
-its contract is that you get the rows that are there. `unfinished_sentence` is the one place
+its contract is that you get the rows that are there. Every other one proceeds only when the
+reader's Setting says so (rule 109): `--allow-unfinished` on `_open_store`'s commands, `serve`
+and `mcp`, which sets `_Live.allow_unfinished`; and from the page, `unfinished=open|refuse` on
+`POST /api/program` and `/api/base` (`_unfinished_choice`, three states — absent is the
+server's default, not a refusal). Opened anyway, `_Base.unfinished` holds the sentence and
+`/api/about` carries it for the version strip. The page keeps the choice under one
+machine-wide key, `dunneflow:unfinished`, rather than per program, because a refused program
+cannot be opened to change its own.
+
+**The map folder is staged** (rule 109). `render_all` writes into
+`map@<rev>.unfinished/`, rewriting `UNFINISHED.md` before each page, and `os.replace`s it to
+`map@<rev>/` after the last; `revisions.known_maps` skips the staging name, so `mapless`
+offers the revision again and `dunneflow render` repairs it, and `render_index` links the
+folder's note, never its pages. `unfinished_sentence` is the one place
 those words live, and `serve.why()` strips the class name from the two exceptions written to
 be read.
 

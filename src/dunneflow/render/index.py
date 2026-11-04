@@ -74,12 +74,15 @@ def render_index(out_dir: Path, program: str, stamp: str | None = None,
     if legacy_graph.exists():
         graphs.setdefault(None, legacy_graph)
     maps = revisions.known_maps(out_dir)
+    # Listed, and never linked as a map (rule 109): the cell opens the note the folder
+    # carries, which says which page it stopped on and what writes it again.
+    halted = revisions.unfinished_maps(out_dir)
     said = {r["revision"]: r for r in rows}
 
     # Newest first, and every revision anything here knows about -- a map with no graph is
     # as much a row as a graph with no map. `None` is the legacy bare `graph.db`, which
     # sorts last because it has no instant to sort by.
-    named = sorted({r for r in (set(graphs) | set(maps)) if r}, reverse=True)
+    named = sorted({r for r in (set(graphs) | set(maps) | set(halted)) if r}, reverse=True)
     order: list[str | None] = [*named]
     if None in graphs:
         order.append(None)
@@ -106,8 +109,16 @@ def render_index(out_dir: Path, program: str, stamp: str | None = None,
             captured = (str(said_row["captured_at"]) or "—") if said_row else "—"
             files = f"{said_row['files']:,}" if said_row else "—"
             where = maps.get(rev) if rev else None
+            stopped = halted.get(rev) if rev else None
             if where is not None:
                 cell = f"[`{where.name}/`]({where.name}/README.md)"
+                if stopped is not None:
+                    cell += (" — and a rewrite of it that stopped part way, in "
+                             + _note_link(stopped))
+            elif stopped is not None:
+                cell = ("*never finished* — its writing stopped part way; "
+                        f"{_note_link(stopped)} says where, and `dunneflow render <dir>` "
+                        "writes it again")
             elif rev in graphs:
                 cell = ("*not written* — `dunneflow render <dir>` writes it "
                         "from the graph that is already here")
@@ -137,3 +148,8 @@ def render_index(out_dir: Path, program: str, stamp: str | None = None,
     path = out_dir / "README.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _note_link(folder: Path) -> str:
+    """A link to the note inside a map folder that was never finished, never to its pages."""
+    return f"[`{folder.name}/`]({folder.name}/{revisions.UNFINISHED_NOTE})"

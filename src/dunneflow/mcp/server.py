@@ -323,7 +323,8 @@ class Server:
 
 
 def serve(given: Path, revision: str | None = None,
-          log: Callable[[str], None] = lambda _msg: None) -> int:
+          log: Callable[[str], None] = lambda _msg: None,
+          allow_unfinished: bool = False) -> int:
     """Open the map and run one session on this process's own streams.
 
     **stdin is decoded here**, because `cli.speak_utf8` settles stdout and stderr and
@@ -342,7 +343,7 @@ def serve(given: Path, revision: str | None = None,
         if (getattr(sys.stdin, "encoding", "") or "").lower().replace("-", "") != "utf8":
             sys.stdin.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 
-    session = Session(given, revision, log=log)
+    session = Session(given, revision, log=log, allow_unfinished=allow_unfinished)
     try:
         return Server(sys.stdin, sys.stdout, session, log=log).serve()
     finally:

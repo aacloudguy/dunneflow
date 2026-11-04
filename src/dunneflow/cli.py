@@ -1369,9 +1369,9 @@ def _open_store(args: argparse.Namespace, *,
         # The step is read **before** anything is closed. It was read after, once, and
         # `check` died on a closed connection while trying to explain why it was refusing.
         said = unfinished_sentence(program, store.get_meta("step") or "")
-        if finished_only:
+        if finished_only and not getattr(args, "allow_unfinished", False):
             store.close()
-            _emit(f"error: {said}")
+            _emit(f"error: {said} Or pass --allow-unfinished to read it as it stands.")
             return None
         # Read anyway, and say what is being read. An escape hatch that quietly hands over
         # a half-written map is not an escape hatch, it is a trap.
@@ -1865,6 +1865,15 @@ def build_parser() -> argparse.ArgumentParser:
                              f"{platform_output_root()} in a packaged application)")
         sp.add_argument("--db", help="graph database path")
 
+    def unfinished(sp: argparse.ArgumentParser) -> None:
+        # **The Setting, as a flag** (rule 80, and Tom's ruling of 2026-11-03 that
+        # strictness is the reader's choice). Refusing stays the default because the
+        # cheaper mistake is a refusal that names its way out; reading anyway prints the
+        # same sentence as a warning, so the choice is never made in silence.
+        sp.add_argument("--allow-unfinished", action="store_true",
+                        help="read a map whose analysis never finished, with a warning, "
+                             "instead of refusing it")
+
     a = sub.add_parser("analyze", help="extract, resolve, and write the map")
     common(a)
     a.add_argument("--include-tests", action="store_true", help="include test files")
@@ -1934,12 +1943,14 @@ def build_parser() -> argparse.ArgumentParser:
     common(t)
     t.add_argument("--routine", required=True, help="name or qualified name")
     t.add_argument("--limit", type=int, default=5)
+    unfinished(t)
     t.set_defaults(func=cmd_touches)
 
     i = sub.add_parser("impact", help="what breaks if I change this routine?")
     common(i)
     i.add_argument("--routine", required=True, help="name or qualified name")
     i.add_argument("--limit", type=int, default=5)
+    unfinished(i)
     i.set_defaults(func=cmd_impact)
 
     ck = sub.add_parser("check", help="report anomalies; non-zero exit if any are BROKEN")
@@ -1950,11 +1961,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help="the graph included tests (changes dead-code reporting)")
     ck.add_argument("--verbose", action="store_true", help="show detail and blind spot")
     ck.add_argument("--limit", type=int, default=40)
+    unfinished(ck)
     ck.set_defaults(func=cmd_check)
 
     g = sub.add_parser("glossary", help="what this program's words mean, and who says so")
     common(g)
     g.add_argument("--limit", type=int, default=20)
+    unfinished(g)
     g.set_defaults(func=cmd_glossary)
 
     nm = sub.add_parser("naming",
@@ -1965,12 +1978,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="read a leading underscore (`_Handler`) as a privacy mark rather "
                          "than part of the spelling; strictly it is a violation, and the "
                          "claims say when it was allowed")
+    unfinished(nm)
     nm.set_defaults(func=cmd_naming)
 
     mr = sub.add_parser(
         "mirror", help="words the documentation defines that the code does not use")
     common(mr)
     mr.add_argument("--limit", type=int, default=15)
+    unfinished(mr)
     mr.set_defaults(func=cmd_mirror)
 
     q = sub.add_parser("query", help="ask the graph directly with SQL")
@@ -2018,6 +2033,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="which point in time to open as the base (default: the newest). "
                          "The reader can switch it from the page; this is how a chosen "
                          "base survives a restart of the server.")
+    unfinished(sv)
     sv.set_defaults(func=cmd_serve)
 
     mc = sub.add_parser("mcp", help="answer the map to an agent over MCP, on stdin/stdout")
@@ -2026,6 +2042,7 @@ def build_parser() -> argparse.ArgumentParser:
                          "several (default: the output root)")
     mc.add_argument("--revision", default=None,
                     help="which point in time to open as the base (default: the newest)")
+    unfinished(mc)
     mc.set_defaults(func=cmd_mcp)
 
     # --- the plugin author's two commands ---------------------------------- #
@@ -2153,7 +2170,8 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             given = platform_output_root()
             _emit(f"opening {given} in the meantime — nothing there has been touched")
     try:
-        return serve_mcp(given, args.revision, _emit)
+        return serve_mcp(given, args.revision, _emit,
+                         allow_unfinished=args.allow_unfinished)
     except (FileNotFoundError, StaleGraphError, UnfinishedMapError) as exc:
         # Refused before a single message is exchanged, and on **stderr** with a non-zero
         # exit. A server that handshakes cheerfully and then fails every call gives an
@@ -2323,7 +2341,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     try:
         serve(given, port=args.port,
               open_browser=not args.no_open, revision=args.revision, emit=_emit,
-              root_gone=gone)
+              root_gone=gone, allow_unfinished=args.allow_unfinished)
     except (FileNotFoundError, StaleGraphError, UnfinishedMapError) as exc:
         _emit(f"error: {exc}")
         return 2

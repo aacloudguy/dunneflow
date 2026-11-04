@@ -35,15 +35,22 @@ class Session:
     """One reader's place in one output root."""
 
     def __init__(self, given: Path, revision: str | None = None,
-                 log: Callable[[str], None] = lambda _msg: None) -> None:
+                 log: Callable[[str], None] = lambda _msg: None,
+                 allow_unfinished: bool = False) -> None:
         out_dir, out_root = where(given)
         self.out_root = out_root
         self._log = log
-        self.live = _Live(out_dir / "source.db", out_dir, out_root)
+        # `--allow-unfinished` is the server's default for every open this session makes,
+        # the boot's and each `open` tool call's alike (rule 61: a second way into the
+        # store obeys the rule the first was taught).
+        self.live = _Live(out_dir / "source.db", out_dir, out_root,
+                          allow_unfinished=allow_unfinished)
 
         graph_db = revisions.resolve(out_dir, revisions.GRAPH, revision)
         if graph_db is not None:
             self.live.open(graph_db)
+            if self.live.current.unfinished:
+                self._log(f"warning: {self.live.current.unfinished}")
             self._say_open()
             return
 
@@ -183,8 +190,14 @@ class Session:
                     "unfinished": bool(report.get("unfinished"))}
         base = self.base
         self._say_open()
-        return {"opened": True, "program": self.live.out_dir.name,
+        said = {"opened": True, "program": self.live.out_dir.name,
                 "revision": base.revision, "root": base.root}
+        if base.unfinished:
+            # Opened because `--allow-unfinished` said so, and the agent is told in the
+            # same sentence the dashboard's banner prints: an answer from a part of a
+            # program, handed over as though it were the whole, is the trap rule 80 is.
+            said["warning"] = base.unfinished
+        return said
 
     # ---- making a map, which is the one thing here that writes --- #
 

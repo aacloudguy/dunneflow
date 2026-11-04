@@ -2417,3 +2417,44 @@ rule of that number — a blank canvas must say why it is blank — which does e
      an `analyze` with no `--part-of`, because nothing in those arguments says where to
      stop and inventing a stopping condition would be a rule with no evidence behind it —
      stated in `BACKLOG.md` rather than guessed at.
+
+109. **A folder of pages is an artefact too, and it is finished only once it has been renamed
+     into place.** Rule 80 taught the graph to say it was unfinished, and it did: the render
+     of Unreal's `Engine/Source/Runtime` crashed in `02-flows.md` on SQLite's parameter limit,
+     and the graph beside it was correctly marked `complete = ""`. The **map** was not
+     marked at all. `render_all` wrote straight into `map@<rev>/`, so the crash left a folder
+     with the finished map's name, a cover page vouching for it, `01-entrypoints.md`, and
+     thirteen pages missing — and `revisions.known_maps` counted that folder as a map. So
+     `mapless` did not offer the revision, and `dunneflow render`, the one command that could
+     have written it again, answered *every revision in this directory already has a map*.
+
+     **The marker cannot be inside the thing it marks.** A page the map writes to say "not
+     finished yet" is a page the map has to remember to delete, and a reader opening the
+     folder sees thirteen pages before they see one note. The name is the one fact a listing
+     reads without opening anything, so the name is where the state goes: pages are written
+     into `map@<rev>.unfinished/`, which nothing counts, and become `map@<rev>/` in one
+     `os.replace` after the last page. A rewrite stages too, because rewriting in place and
+     dying leaves new pages over old ones — two maps' halves under one name. The folder still
+     carries `UNFINISHED.md`, rewritten before every page, so a person who opens it is told
+     which page it stopped on and the command that writes it again (rule 89).
+
+     **And skipping it by name had a trap of its own.** `revision_of` takes `Path.stem`,
+     which reads `.unfinished` as a suffix and strips it — so the staging folder claims
+     exactly the revision of the finished one, and a listing keyed by revision would have let
+     whichever sorted last win. The suffix is removed deliberately before the revision is
+     read, and the two sets are kept apart.
+
+     **Whether an unfinished map may be read at all is the reader's choice** — Tom,
+     2026-11-03: strictness is a Setting. *Unfinished maps: refuse / open with a warning*,
+     default refuse, governs every reader that refused one: the dashboard's open and switch
+     (`unfinished=` on the request, one key for the machine because a refused program
+     cannot be opened to change its own setting), `serve` and `mcp` (`--allow-unfinished`),
+     and the orientation commands through `_open_store`. Opened anyway, the same sentence
+     the refusal would have said is printed as a warning — above the view, in the version
+     strip, naming the step it stopped in. The map folder is not governed by it: a
+     half-written folder is never linked as a map, only its note is.
+
+     **The general shape.** A completion marker protects the artefact it is written into and
+     nothing else. Anything a run produces in more than one write — a folder, a set of
+     files, an export — is a second artefact with the same failure, and it needs either its
+     own marker or an atomic step into the name readers look for.

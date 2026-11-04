@@ -738,6 +738,11 @@ body {
 /* A choice that could not be honoured. Never quiet: the strip is the one surface that
    is always on screen, so it is where a dropped version has to be said. */
 .verstrip-lost { color: var(--sev-suspect); }
+/* A map that never finished, opened because the reader's Setting said to. `--sev-broken`,
+   and the tier is the argument: what is on screen is part of a program, which is BROKEN's
+   own definition of a map (rule 80). Both colours from the sets, so it follows the palette. */
+.verstrip-unfinished { color: var(--sev-broken); background: var(--sev-broken-bg);
+                       padding: 0 .4rem; border-radius: .25rem; margin-right: .5rem; }
 /* **One line, clipped, scrolling** -- `verStrip`, default off, so this is reached only when
  * a reader asks for it.
  *
@@ -4428,6 +4433,12 @@ body.detached-code #trailMount { display: none !important; }
 .start-gonelead { margin: 0; font-size: .92rem; }
 
 .start-empty { margin: 0; font-size: .92rem; color: var(--text-muted); }
+
+/* The Setting "Unfinished maps", under the list it governs. Wraps rather than overflowing:
+   a phone-width start page is one column, and the hint is a sentence. */
+.start-unfinished { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem;
+                    margin-top: .75rem; }
+.start-unfinishedk { font-size: .88rem; font-weight: 600; }
 
 /* The row for the program being read. An `<a>`, so it looks and behaves exactly like the
    button rows beside it while going somewhere instead of posting — `.start-prog` already

@@ -20,7 +20,7 @@ what it is doing:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | what the tool is for, the commands, the verification gates, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 107 engineering rules **in full**, with the false result each came from — numbered to 108, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 108 engineering rules **in full**, with the false result each came from — numbered to 109, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 31 dashboard design rules in full | before building or changing a view |
 | `ARCHITECTURE.md` | what each module owns, and what each surface answers — `serve`, `mcp`, `query`, and everything under them | before working in a module, or adding a route |
 | `PACKAGING.md` | the spec, the three release scripts, signing, notarisation, and what a frozen build reads as a file | before touching `packaging/` or `runtime.py` |
@@ -316,6 +316,8 @@ it was written from.
      naming.
 107. A burst must end, and a transaction is not a bound.
 108. A walk up the tree does not know when it has left it, and it answers anyway.
+109. A folder of pages is an artefact too, and it is finished only once it has been renamed
+     into place.
 ```
 
 ## Anomalies: the discipline

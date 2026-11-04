@@ -10,11 +10,14 @@ name and a type and never assumes a convention is obvious.
 
 from __future__ import annotations
 
+import os
+import shutil
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from .. import revisions
 from ..anomalies import Report, detect
 from ..detectors import rules_document
 from ..docstore import DocStore
@@ -110,8 +113,23 @@ def render_all(store: Store, out_dir: Path, program: str,
     `None` still detects, because this function is called from places that have no report
     to hand and a renderer that silently wrote no anomalies would be worse than a slow one
     (rule 49).
+
+    **Written beside `out_dir` and renamed into it after the last page** (rule 109). A
+    render of Unreal's `Runtime` died in `02-flows.md` and left `README.md` and
+    `01-entrypoints.md` in `map@<rev>/` -- a folder with the finished map's name, a cover
+    page vouching for it, and thirteen pages missing. Nothing said so, and `dunneflow
+    render` counted it as a map and declined to write one. So the pages go into
+    `map@<rev>.unfinished/`, which nothing counts, and become `map@<rev>/` in one rename.
+    A re-render stages too: a map rewritten in place by a run that dies keeps the old
+    pages it had not reached, and they would be read as the new map's.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
+    final = out_dir
+    out_dir = revisions.staging_dir(final)
+    if out_dir.exists():
+        # What an earlier interrupted run left. Nothing reads it (`known_maps` skips the
+        # name), so it is not evidence of anything but that run, and this run replaces it.
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
     stamp = Stamp.of(store, when)
     if report is None:
         report = detect(store, include_tests)
@@ -149,9 +167,48 @@ def render_all(store: Store, out_dir: Path, program: str,
     written = []
     for i, page in enumerate(pages):
         say(i, len(pages), "document")
+        _mark_unfinished(out_dir, final, i, len(pages), PAGE_NAMES[i])
         written.append(page())
     say(len(pages), len(pages), "document")
-    return [w for w in written if w]
+    (out_dir / revisions.UNFINISHED_NOTE).unlink()
+    # **The swap.** `os.replace` will not put a directory over a non-empty one on any of
+    # the three platforms, so the old map is removed first. Between the two statements
+    # there is no map of this revision, which is a true statement -- `mapless` offers it
+    # again -- where the alternative orders all leave a folder that is not what it says.
+    if final.exists():
+        shutil.rmtree(final)
+    os.replace(out_dir, final)
+    return [final / w.name for w in written if w]
+
+
+# The pages in the order `render_all` writes them, for the note's *which page it stopped
+# on*. Positional, so `test_markdown_staging` asserts it is as long as the page list.
+PAGE_NAMES = (
+    "README.md", "01-entrypoints.md", "02-flows.md", "03-routines.md", "04-data.md",
+    "05-boundaries.md", "06-governance.md", "07-database.md", "08-network.md",
+    "09-anomalies.md", "10-glossary.md", "11-naming.md", "12-traceability.md",
+    "13-mirror.md", "14-constants.md",
+)
+
+
+def _mark_unfinished(staging: Path, final: Path, i: int, n: int, page: str) -> None:
+    """Say, inside the folder, that it is not a map yet and how far the writing got.
+
+    Rewritten before each page, so whatever ends the run -- a crash, Ctrl-C, a full disk,
+    a `kill -9` -- the folder a person opens says which page it stopped on and what writes
+    it again (design rule 21, and rule 89's half about naming a command that can act).
+    """
+    rev = revisions.revision_of(final)
+    again = (f"`dunneflow render {final.parent} --revision {rev}`" if rev
+             else f"`dunneflow render {final.parent}`")
+    (staging / revisions.UNFINISHED_NOTE).write_text(
+        "# This map was never finished\n\n"
+        f"Its writing stopped on page {i + 1} of {n}, `{page}`. The pages beside this "
+        "note are the ones written before it, and they are part of a map rather than a "
+        f"map: a finished one is renamed to `{final.name}/` after its last page, and this "
+        f"folder never was.\n\n{again} writes it again from the graph that is already "
+        "here, without reading the source.\n",
+        encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- #

@@ -873,6 +873,37 @@ function resetSettings(program, current) {
   return { settings: base, cleared };
 }
 
+/* **The Setting "Unfinished maps"** -- refuse, or open with a warning -- and the one
+ * Setting that is *not* per program.
+ *
+ * It has to be this way round. Every other Setting is filed under the program it was made
+ * in, and that is right for a disk order or a colour. This one decides whether a program
+ * can be opened at all, so filed under that program it could only be changed from inside a
+ * map it refuses to open. One key for the machine, read by the start page and the shell
+ * alike, sent with every open and switch as `unfinished=` (`serve.py`'s
+ * `_unfinished_choice`). Refusing is the default: a refusal that names its way out is the
+ * cheaper mistake (rule 80). Not in `DEFAULTS`, so a reset of one program leaves it alone,
+ * and the Settings row says so. */
+const UNFINISHED_KEY = 'dunneflow:unfinished';
+
+function unfinishedChoice() {
+  try {
+    return window.localStorage.getItem(UNFINISHED_KEY) === 'open' ? 'open' : 'refuse';
+  } catch {
+    return 'refuse';                  // storage unavailable; the default is a fine answer
+  }
+}
+
+function setUnfinishedChoice(value) {
+  try {
+    window.localStorage.setItem(UNFINISHED_KEY, value === 'open' ? 'open' : 'refuse');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 window.DunneFlowSettings = { DEFAULTS, SETTINGS_VERSION, loadSettings, saveSettings,
-                             resetSettings, freshDefaults };
+                             resetSettings, freshDefaults,
+                             unfinishedChoice, setUnfinishedChoice };
 })();

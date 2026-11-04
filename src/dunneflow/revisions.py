@@ -38,6 +38,12 @@ GRAPH = "graph"
 DOCS = "docs"
 MAP = "map"
 SEP = "@"
+# What a map folder is called while it is being written. Rule 109: a folder of pages is an
+# artefact, and it is finished only once it has been renamed into place -- so the name a
+# half-written one carries can never be the name a finished one has.
+UNFINISHED = ".unfinished"
+# The note such a folder carries, saying which page it stopped on and what writes it again.
+UNFINISHED_NOTE = "UNFINISHED.md"
 
 # What a map is recognised by, in one place. The pattern matches `graph.db` -- the legacy
 # bare name -- as well as `graph@<revision>.db`.
@@ -114,6 +120,16 @@ def map_dir(out_dir: Path, revision: str) -> Path:
     return out_dir / f"{MAP}{SEP}{as_filename(revision)}"
 
 
+def staging_dir(final: Path) -> Path:
+    """Where the map that will become `final` is written until its last page is down.
+
+    A sibling, so the rename that finishes it is a rename within one directory and
+    therefore one filesystem -- `os.replace` across two is a copy, and a copy can be
+    interrupted half way, which is the state this exists to make impossible (rule 109).
+    """
+    return final.with_name(final.name + UNFINISHED)
+
+
 def known_maps(out_dir: Path) -> dict[str, Path]:
     """Every written map in a program directory, by the revision its name claims.
 
@@ -121,16 +137,33 @@ def known_maps(out_dir: Path) -> dict[str, Path]:
     `analysed_at` and the counts inside it, and nothing renames one on the reader's behalf.
     Directories only -- a file called `map@…` is not a map and is left where it is rather
     than reported as one.
+
+    **A map still being written is not a map** (rule 109). `map@<rev>.unfinished/` is
+    skipped by name, and it has to be by name: `revision_of` takes `Path.stem`, which strips
+    `.unfinished` as though it were a suffix, so the half-written folder claims exactly the
+    revision of the finished one. A crashed render left `README.md` and `01-entrypoints.md`
+    in a folder this function counted, and `dunneflow render` -- the one command that could
+    repair it -- answered *every revision already has a map*.
     """
-    found: dict[str, Path] = {}
+    return {rev: p for rev, p in _map_folders(out_dir) if not p.name.endswith(UNFINISHED)}
+
+
+def unfinished_maps(out_dir: Path) -> dict[str, Path]:
+    """Every map folder whose writing stopped before its last page, by revision."""
+    return {rev: p for rev, p in _map_folders(out_dir) if p.name.endswith(UNFINISHED)}
+
+
+def _map_folders(out_dir: Path) -> list[tuple[str, Path]]:
     if not out_dir.is_dir():
-        return found
+        return []
+    found = []
     for child in sorted(out_dir.glob(f"{MAP}{SEP}*")):
         if not child.is_dir():
             continue
-        rev = revision_of(child)
+        named = child.name.removesuffix(UNFINISHED)
+        rev = revision_of(child.with_name(named))
         if rev:
-            found[rev] = child
+            found.append((rev, child))
     return found
 
 
@@ -246,8 +279,9 @@ def revision_of(path: Path) -> str | None:
     A *claim*, and only that: the authority is `meta.revision` inside the file. This
     exists so a listing can be built without opening several hundred megabytes.
     """
-    # `Path.stem` on a directory is its whole name, which is what `known_maps` wants: a
-    # map directory has no suffix to strip and a database has one that must go.
+    # `Path.stem` on a map directory is its whole name, because a revision has no dot in
+    # it, and a database has a suffix that must go. The one map folder that *does* carry a
+    # dot is the staging one, and `_map_folders` removes it before asking (rule 109).
     stem = path.stem
     if SEP not in stem:
         return None

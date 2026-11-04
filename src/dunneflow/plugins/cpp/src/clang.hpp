@@ -99,6 +99,9 @@
     X(clang_getFileName)                        \
     X(clang_File_isEqual)                       \
     X(clang_getIncludedFile)                    \
+    X(clang_getInclusions)                      \
+    X(clang_getLocationForOffset)               \
+    X(clang_getRange)                           \
     X(clang_CompilationDatabase_fromDirectory)  \
     X(clang_CompilationDatabase_getCompileCommands) \
     X(clang_CompilationDatabase_dispose)        \

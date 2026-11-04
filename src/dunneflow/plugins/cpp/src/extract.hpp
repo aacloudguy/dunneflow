@@ -117,6 +117,13 @@ struct Result {
     int fatal = 0, errors = 0;   // diagnostics in this file's parse
     std::string first_missing;   // the first include it could not find
     long skipped_lines = 0;      // lines in inactive #if arms of this file
+    // A fragment (`.inl`, `.ipp`) is read through a file that includes it. `through` is that
+    // file, relative, once it was; `not_included` says the includer's parse never reached
+    // it (an inactive guard), so the caller tries the next includer or reads it alone.
+    std::string through;
+    bool not_included = false;
+    bool fragment = false;       // a fragment, by suffix, however it ended up being read
+    std::string rel;             // the file's own path, relative, for what the edge pass says of it
 };
 
 // ------------------------------------------------------------------ folding --- //
@@ -130,6 +137,7 @@ inline const std::set<std::string> EXITS = {"return", "throw", "continue", "brea
 
 struct Ctx {
     std::string rel, module, text;
+    bool through = false;  // parsed as part of an includer's translation unit
     std::string root;  // the analysed root, generic separators, with a trailing '/'
     std::vector<Tok> toks;
     std::vector<unsigned> line_starts;
@@ -531,8 +539,19 @@ private:
     void visit(CXCursor c) { C().clang_visitChildren(c, trampoline, this); }
 
     void one(CXCursor c, CXCursor parent) {
-        if (!in_main(c)) return;  // somebody else's fact, and never descended into
         CXCursorKind k = C().clang_getCursorKind(c);
+        if (!in_main(c)) {
+            // Somebody else's fact, and never descended into -- except, for a fragment read
+            // through its includer, the scopes the includer opened around the `#include`:
+            // `namespace UE { #include "Foo.inl" }` puts the fragment's definitions inside
+            // a namespace cursor that is the includer's, and a class body can hold an
+            // X-macro fragment's members the same way. Nothing of the includer's is
+            // recorded; its children are each asked again.
+            if (x_.through && (k == CXCursor_Namespace || k == CXCursor_LinkageSpec ||
+                               k == CXCursor_UnexposedDecl || is_record_kind(k)))
+                visit(c);
+            return;
+        }
 
         if (k == CXCursor_InclusionDirective) return include(c);
         if (k == CXCursor_MacroDefinition) return define(c);
@@ -1931,12 +1950,37 @@ inline std::string module_of(const std::string& rel) {
     return stem;
 }
 
-// Parse one file and read everything this reader reports about it.
+// Did this translation unit include `f`? `clang_getFile` cannot say: it answers for any file
+// on disk, included or not, so a fragment under an includer's inactive `#if` would be read
+// as an empty file rather than tried through the next includer.
+inline bool includes(CXTranslationUnit tu, CXFile f) {
+    struct Seen {
+        CXFile f;
+        bool hit;
+    } seen{f, false};
+    C().clang_getInclusions(
+        tu,
+        [](CXFile g, CXSourceLocation*, unsigned depth, CXClientData d) {
+            auto* s = static_cast<Seen*>(d);
+            if (depth > 0 && C().clang_File_isEqual(g, s->f)) s->hit = true;
+        },
+        &seen);
+    return seen.hit;
+}
+
+// Parse one file and read everything this reader reports about it. With `via`, the file is a
+// fragment and the translation unit parsed is `via`'s, a file that includes it, with `args`
+// being `via`'s arguments: only what is expanded in the fragment is kept, so its routines
+// keep its own path, and what it means -- `UKismetMathLibrary::Add_IntInt`, the class whose
+// body it is -- comes from the declarations the includer put in front of it.
 inline void read(CXIndex index, const std::string& abs, const std::string& rel, const std::string& text,
-                 const std::vector<std::string>& args, const rules::Rules& rules, Result& out) {
+                 const std::vector<std::string>& args, const rules::Rules& rules, Result& out,
+                 const std::string& via = "", const std::string& via_rel = "") {
     out.hash = ids::hash_source(text);
+    out.rel = rel;
     Ctx x;
     x.rel = rel;
+    x.through = !via.empty();
     {
         std::string g = std::filesystem::path(abs).lexically_normal().generic_string();
         if (g.size() >= rel.size()) x.root = g.substr(0, g.size() - rel.size());
@@ -1959,7 +2003,8 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
     CXUnsavedFile unsaved{abs.c_str(), text.c_str(), static_cast<unsigned long>(text.size())};
     unsigned options = CXTranslationUnit_KeepGoing | CXTranslationUnit_DetailedPreprocessingRecord |
                        CXTranslationUnit_RetainExcludedConditionalBlocks * 0;
-    CXErrorCode err = C().clang_parseTranslationUnit2(index, abs.c_str(), argv.data(), static_cast<int>(argv.size()),
+    const std::string& unit = via.empty() ? abs : via;
+    CXErrorCode err = C().clang_parseTranslationUnit2(index, unit.c_str(), argv.data(), static_cast<int>(argv.size()),
                                                       &unsaved, 1, options, &x.tu);
     if (err != CXError_Success || !x.tu) {
         out.failed = "libclang could not parse it (error " + std::to_string(static_cast<int>(err)) + ")";
@@ -1971,6 +2016,14 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
     }
 
     main_file() = C().clang_getFile(x.tu, abs.c_str());
+    if (x.through) {
+        if (!main_file() || !includes(x.tu, main_file())) {
+            out.not_included = true;
+            C().clang_disposeTranslationUnit(x.tu);
+            return;
+        }
+        out.through = via_rel;
+    }
 
     unsigned nd = C().clang_getNumDiagnostics(x.tu);
     for (unsigned i = 0; i < nd; i++) {
@@ -1989,7 +2042,16 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
     CXCursor root = C().clang_getTranslationUnitCursor(x.tu);
     CXToken* toks = nullptr;
     unsigned nt = 0;
-    C().clang_tokenize(x.tu, C().clang_getCursorExtent(root), &toks, &nt);
+    // Through an includer the unit's extent is the includer's text, so the fragment's own is
+    // named: the whole of it, by offset.
+    // The end is the last character, not one past it: an offset at the end of the file is
+    // not a location in it, and a range ending nowhere tokenises to nothing.
+    unsigned last = text.empty() ? 0 : static_cast<unsigned>(text.size() - 1);
+    CXSourceRange whole = x.through
+        ? C().clang_getRange(C().clang_getLocationForOffset(x.tu, main_file(), 0),
+                             C().clang_getLocationForOffset(x.tu, main_file(), last))
+        : C().clang_getCursorExtent(root);
+    C().clang_tokenize(x.tu, whole, &toks, &nt);
     x.toks.reserve(nt);
     for (unsigned i = 0; i < nt; i++) {
         Tok t;

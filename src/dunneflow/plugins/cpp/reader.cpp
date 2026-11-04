@@ -124,11 +124,30 @@ struct Session {
             return;
         }
         try {
-            extract::read(index, abs, rel(abs), t, cfg.args_for(abs), rules, r);
+            read_one(index, abs, t, r);
         } catch (const std::exception& e) {
             r.failed = std::string("the reader failed on it: ") + e.what();
             r.facts_json.clear();
         }
+    }
+
+    // A fragment is read through the first of its includers whose parse reaches it, and alone
+    // only when none does -- nothing includes it, or every includer has it under an inactive
+    // `#if`. Anything else is read alone, as it always was.
+    void read_one(CXIndex index, const std::string& abs, const std::string& t, extract::Result& r) {
+        auto it = cfg.includers.find(abs);
+        if (it != cfg.includers.end()) {
+            for (const auto& via : it->second) {
+                extract::Result tried;
+                extract::read(index, abs, rel(abs), t, cfg.args_for(via), rules, tried, via, rel(via));
+                if (tried.not_included) continue;
+                r = std::move(tried);
+                r.fragment = true;
+                return;
+            }
+        }
+        extract::read(index, abs, rel(abs), t, cfg.args_for(abs), rules, r);
+        r.fragment = config::is_fragment(abs);
     }
 
     void work() {
@@ -273,7 +292,7 @@ std::string extract_reply(const json::Value& f) {
         if (!text::read_source(abs, t)) return "{\"t\":\"failed\",\"reason\":\"could not be read\"";
         CXIndex index = clang::api().clang_createIndex(0, 0);
         try {
-            extract::read(index, abs, session->rel(abs), t, session->cfg.args_for(abs), session->rules, r);
+            session->read_one(index, abs, t, r);
         } catch (const std::exception& e) {
             r.failed = e.what();
             r.facts_json.clear();

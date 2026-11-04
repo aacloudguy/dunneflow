@@ -60,6 +60,12 @@ inline std::string suffix(const std::string& path) {
     return s;
 }
 
+// A fragment is text written to be pasted into another file -- the bodies a header keeps
+// apart, an X-macro list -- and read alone it means nothing: `int32 UFoo::Add(...)` with no
+// `UFoo` in front of it is not a routine clang can name.
+inline const std::set<std::string> FRAGMENT_SUFFIXES = {".inl", ".ipp"};
+inline bool is_fragment(const std::string& path) { return FRAGMENT_SUFFIXES.count(suffix(path)) > 0; }
+
 inline bool is_c(const std::string& path) { return suffix(path) == ".c"; }
 inline bool is_header(const std::string& path) { return HEADER_SUFFIXES.count(suffix(path)) > 0; }
 
@@ -104,6 +110,9 @@ struct Session {
     int ambiguous = 0;                     // spellings two or more files answer
     int unanswered = 0;                    // spellings no file in reach answers
     int above = 0;                         // spellings whose directory would be above the ceiling
+    // Each fragment's includers among the files read, canonical order first: the header of
+    // the same stem, then by path (rule 66). A fragment nothing includes is not here.
+    std::map<std::string, std::vector<std::string>> includers;
 
     // The arguments for one file. The language comes first, so a database entry that names
     // another is still parsed as the file's own suffix says.
@@ -176,13 +185,68 @@ inline std::vector<std::string> database_args(CXCompileCommand cmd) {
     return out;
 }
 
+// Which file each fragment is included by. A quoted spelling is looked for beside the file
+// that writes it first, as the compiler does; then by unique suffix over the files read, the
+// matcher the include directories are inferred with (one answer or none -- rule 1).
+inline std::map<std::string, std::vector<std::string>> fragment_includers(
+    const std::vector<std::string>& files, const std::map<std::string, std::set<std::string>>& own) {
+    std::set<std::string> known(files.begin(), files.end());
+    std::map<std::string, std::vector<std::string>> by_base;
+    for (const auto& g : files)
+        if (is_fragment(g)) by_base[g.substr(g.find_last_of('/') + 1)].push_back(g);
+    std::map<std::string, std::set<std::string>> found;
+    for (const auto& [file, sps] : own) {
+        std::string dir = file.substr(0, file.find_last_of('/'));
+        for (auto sp : sps) {
+            while (sp.rfind("./", 0) == 0) sp = sp.substr(2);
+            if (sp.empty()) continue;
+            std::string beside = generic(fs::path(dir) / sp);
+            if (known.count(beside) && is_fragment(beside)) {
+                if (beside != file) found[beside].insert(file);
+                continue;
+            }
+            if (sp.find("..") != std::string::npos) continue;
+            auto it = by_base.find(sp.substr(sp.find_last_of('/') + 1));
+            if (it == by_base.end()) continue;
+            std::vector<std::string> hits;
+            for (const auto& g : it->second)
+                if (g.size() > sp.size() && g.compare(g.size() - sp.size(), sp.size(), sp) == 0 &&
+                    g[g.size() - sp.size() - 1] == '/')
+                    hits.push_back(g);
+            if (hits.size() == 1 && hits[0] != file) found[hits[0]].insert(file);
+        }
+    }
+    auto stem = [](const std::string& g) {
+        std::string b = g.substr(g.find_last_of('/') + 1);
+        return b.substr(0, b.rfind('.'));
+    };
+    std::map<std::string, std::vector<std::string>> out;
+    for (const auto& kv : found) {
+        const std::string own_stem = stem(kv.first);
+        std::vector<std::string> v(kv.second.begin(), kv.second.end());  // a set: path order already
+        std::stable_partition(v.begin(), v.end(), [&](const std::string& g) {
+            return is_header(g) && !is_fragment(g) && stem(g) == own_stem;
+        });
+        out[kv.first] = std::move(v);
+    }
+    return out;
+}
+
 inline Session decide(const std::string& root_in, const std::vector<std::string>& files,
                       const rules::Rules& r) {
     Session s;
     fs::path root = fs::absolute(fs::path(root_in));
     s.root = generic(root);
-    for (const auto& f : files)
-        if (!is_c(f) && SOURCE_SUFFIXES.count(suffix(f))) s.tree_has_cpp = true;
+    // **Whether a `.h` is C or C++ is a fact about the tree**, and a source file is not the
+    // only thing that says it: a header only C++ writes (`.hpp`, `.inl`, ...) says it too.
+    // Without that a header-only C++ tree -- Unreal's `Engine/Classes/Kismet`, every
+    // header-only library -- was parsed as C: `<type_traits>` not found in all 25 files,
+    // `namespace` not a keyword, and not one routine in the map.
+    for (const auto& f : files) {
+        std::string x = suffix(f);
+        if (!is_c(f) && (SOURCE_SUFFIXES.count(x) || (HEADER_SUFFIXES.count(x) && x != ".h")))
+            s.tree_has_cpp = true;
+    }
 
 #ifdef __APPLE__
     // libclang is not run through the `xcrun` shim the way `/usr/bin/clang++` is, so it has
@@ -218,6 +282,9 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
     fs::path top;
     const rules::Preset* preset = match_preset(root, r, top);
     if (preset) {
+        // A preset names a C++ framework (all of them do: see `cpp.yaml`), so a tree under
+        // one is C++ whatever its suffixes say.
+        s.tree_has_cpp = true;
         s.preset = preset->name;
         s.top = generic(top);
         for (const auto& d : preset->defines) s.base.push_back("-D" + d);
@@ -244,11 +311,17 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
     //    with a preset everything under its top.
     std::set<std::string> spellings;
     std::vector<std::string> reach;  // generic absolute paths of every header-like file in reach
+    std::map<std::string, std::set<std::string>> own;  // file -> the fragment spellings it writes
     for (const auto& f : files) {
         std::string t;
-        if (text::read_source(f, t)) include_spellings(t, spellings);
+        std::set<std::string> mine;
+        if (text::read_source(f, t)) include_spellings(t, mine);
+        for (const auto& sp : mine)
+            if (is_fragment(sp)) own[generic(fs::absolute(f))].insert(sp);
+        spellings.insert(mine.begin(), mine.end());
         reach.push_back(generic(fs::absolute(f)));
     }
+    s.includers = fragment_includers(reach, own);
     std::set<std::string> module_defines;
     if (!s.top.empty()) {
         std::error_code ec;

@@ -50,6 +50,8 @@ struct Tree {
     std::vector<std::string> read_beyond;
     long fatal_files = 0, missing_files = 0, files = 0, skipped_lines = 0;
     std::map<std::string, long> missing;  // first missing include, per file that had one
+    long fragments_through = 0;
+    std::vector<std::string> fragments_alone;  // read alone: nothing that is read reaches them
 
     void add(extract::Result& r) {
         files++;
@@ -60,6 +62,10 @@ struct Tree {
         if (!r.first_missing.empty()) missing_files++;
         skipped_lines += r.skipped_lines;
         if (!r.first_missing.empty()) missing[r.first_missing]++;
+        if (r.fragment) {
+            if (!r.through.empty()) fragments_through++;
+            else fragments_alone.push_back(r.rel);
+        }
         for (auto& s : r.sites) sites.push_back(std::move(s));
         for (auto& d : r.defs) defs.push_back(std::move(d));
         for (auto& o : r.overs) overs.push_back(std::move(o));
@@ -295,6 +301,17 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     if (t.fatal_files)
         notes.push_back("edges: " + std::to_string(t.fatal_files) + " of " + std::to_string(t.files) +
                         " files hit a fatal error, and clang read on past it");
+    if (t.fragments_through || !t.fragments_alone.empty()) {
+        notes.push_back("edges: " + std::to_string(t.fragments_through) +
+                        " fragments (.inl, .ipp) were read through a file that includes them; " +
+                        std::to_string(t.fragments_alone.size()) +
+                        " were read alone, because nothing read includes them under the defines in force" +
+                        (t.fragments_alone.empty() ? "" : ":"));
+        std::vector<std::string> alone = t.fragments_alone;
+        std::sort(alone.begin(), alone.end());  // the pool finishes files in any order (rule 66)
+        for (size_t i = 0; i < alone.size() && i < 6; i++) notes.push_back("  " + alone[i]);
+        if (alone.size() > 6) notes.push_back("  … and " + std::to_string(alone.size() - 6) + " more");
+    }
     if (t.skipped_lines)
         notes.push_back("edges: " + std::to_string(t.skipped_lines) +
                         " lines are in #if arms this configuration does not take, and were not read");

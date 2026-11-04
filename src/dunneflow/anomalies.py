@@ -359,6 +359,104 @@ def _lang_clause(langs: list[str]) -> tuple[str, tuple[str, ...]]:
     return "f.lang IN (" + ",".join("?" * len(langs)) + ")", tuple(langs)
 
 
+def _any_called(store: Store, ids: list[str]) -> bool:
+    """Whether any call names one of the definitions `ids` -- what *every call resolves to
+    it* has to be true of before it is printed (rule 13).
+
+    **Named, not resolved.** A call to a name defined twice is a lost edge: the resolver
+    records `ambiguous` and binds nothing, so a test of `callee_id` would find no caller
+    for every collision there is. A call in the same file by the bare name is the one the
+    redefinition governs, and a resolved one is counted as well.
+    """
+    marks = ",".join("?" * len(ids))
+    if store.query(f"SELECT 1 FROM calls WHERE callee_id IN ({marks}) LIMIT 1", tuple(ids)):
+        return True
+    # Two indexed lookups per definition rather than one correlated query: an `OR` across
+    # `calls` is a scan of every call in the map, once per finding.
+    for d in store.query(f"SELECT DISTINCT file, name FROM routines WHERE id IN ({marks})"
+                         " ORDER BY file, name", tuple(ids)):
+        if store.query("SELECT 1 FROM calls WHERE file = ? AND callee_expr = ? LIMIT 1",
+                       (d["file"], d["name"])):
+            return True
+    return False
+
+
+def _decision_arms(store: Store, routine_id: str) -> list[tuple[str, int, int, int]]:
+    """Every arm of every `DECISION` in one routine, as `(point, arm, first, last)` lines.
+
+    `control_arms` records an arm's *header* line only, so an arm's body is read as running
+    from its header to the line before the next arm's, and the last arm to the end of the
+    decision. A decision with no arm rows -- a lone `if` -- is one arm over its whole span.
+    """
+    out: list[tuple[str, int, int, int]] = []
+    for d in store.query(
+            "SELECT point_id, line_start, line_end FROM control"
+            " WHERE routine_id = ? AND kind = 'DECISION' ORDER BY line_start, point_id",
+            (routine_id,)):
+        heads = [int(a["line_start"]) for a in store.query(
+            "SELECT line_start FROM control_arms WHERE point_id = ? ORDER BY idx",
+            (d["point_id"],))] or [int(d["line_start"])]
+        ends = [h - 1 for h in heads[1:]] + [int(d["line_end"])]
+        out.extend((str(d["point_id"]), i, h, e)
+                   for i, (h, e) in enumerate(zip(heads, ends, strict=True)))
+    return out
+
+
+def _is_rebinding(store: Store, members: list[Occurrence]) -> bool:
+    """Whether a group of nested definitions is one name *rebound in sequence*, not a
+    collision.
+
+    Unreal's `TraceLog/create_standalone.py` defines `predicate` inside `_main_trace`,
+    passes it to `_collect_source`, and then -- under `if analysis:` -- defines a second
+    `predicate` and passes that. It was the one BROKEN finding in all of `Runtime`, and
+    the program has no defect: the first definition is used before the second exists, and
+    the second exists only on one arm. Either is enough to make *only the last one exists
+    at run time* false, so each consecutive pair must show one of them:
+
+    - **an arm apart** -- one definition sits in a `DECISION` arm the other does not, so
+      at most one of them runs on a given pass; or
+    - **used between** -- the name is called, or passed as an argument, by the enclosing
+      routine on a line between the end of one definition and the start of the next.
+
+    Only definitions nested in one enclosing routine are judged: at module or class
+    scope the later one really does replace the earlier for every caller, which is the
+    finding.
+    """
+    if len(members) < 2:
+        return False
+    rows = store.query(
+        "SELECT id, name, qualname, file, line_start, line_end, is_nested FROM routines"
+        f" WHERE id IN ({','.join('?' * len(members))})"
+        " ORDER BY line_start, id", tuple(m.id for m in members))
+    if any(not x["is_nested"] for x in rows) or len({x["file"] for x in rows}) != 1:
+        return False
+    parent = str(rows[0]["qualname"]).rsplit(".", 1)[0]
+    enclosing = store.query(
+        "SELECT id FROM routines WHERE file = ? AND qualname = ?"
+        " AND line_start <= ? AND line_end >= ? ORDER BY line_start DESC, id LIMIT 1",
+        (rows[0]["file"], parent, rows[0]["line_start"], rows[-1]["line_end"]))
+    if not enclosing:
+        return False
+    outer = str(enclosing[0]["id"])
+    arms = _decision_arms(store, outer)
+    name = str(rows[0]["name"])
+
+    def where(line: int) -> frozenset[tuple[str, int]]:
+        return frozenset((p, i) for p, i, first, last in arms if first <= line <= last)
+
+    for a, b in zip(rows, rows[1:], strict=False):
+        if where(int(a["line_start"])) != where(int(b["line_start"])):
+            continue
+        if store.query(
+                "SELECT 1 FROM calls c LEFT JOIN call_args ca ON ca.site_id = c.site_id"
+                " WHERE c.caller_id = ? AND c.line > ? AND c.line < ?"
+                "   AND (c.callee_expr = ? OR ca.expr = ?) LIMIT 1",
+                (outer, a["line_end"], b["line_start"], name, name)):
+            continue
+        return False
+    return True
+
+
 def _name_collisions(store: Store, r: Report) -> None:
     where, params = _lang_clause(_shadowing_langs(store))
     for row in store.query(
@@ -374,16 +472,25 @@ def _name_collisions(store: Store, r: Report) -> None:
         members = _routine_rows(
             store, "WHERE name != '<module>' AND qualname = ? AND lang = ?",
             (row["qualname"], row["lang"]))
+        if _is_rebinding(store, members):
+            continue
+        called = _any_called(store, [m.id for m in members])
+        detail = (f"`{row['qualname']}` is defined {row['n']} times "
+                  f"(lines {_at_lines(members)}). Only the last one exists at run time")
+        detail += ("; every call resolves to it and the others are unreachable." if called
+                   else ", and the others are unreachable. No call in the map resolves to "
+                        "any of them.")
         r.add(Anomaly(
             kind="NAME_COLLISION", severity=BROKEN, confidence=CERTAIN,
             title=f"`{row['qualname']}` is defined {row['n']} times",
-            detail=f"`{row['qualname']}` is defined {row['n']} times "
-                   f"(lines {_at_lines(members)}). Only the last one exists at run time; "
-                   f"every call resolves to it and the others are unreachable.",
+            detail=detail,
             blind_spot="If these are nested functions in different enclosing scopes "
                        "they are distinct and this is a naming defect in DunneFlow, "
                        "not in the program. Check whether the definitions sit inside "
-                       "different functions.",
+                       "different functions. A nested name rebound in sequence -- used "
+                       "before it is defined again, or defined on different arms of a "
+                       "decision -- is already left out; one used only through something "
+                       "this map does not record as a call or an argument is not.",
             # Grouped by language and qualname, so the pair is the key -- unique by
             # construction. `f` is MIN(file) and is deliberately not here: it names one of
             # the colliding definitions arbitrarily, and which one it names can move.

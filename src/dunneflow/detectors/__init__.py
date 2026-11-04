@@ -6,8 +6,13 @@ here and rules there is what makes "teach it about a new framework" a config edi
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import json
+import os
 import re
+import sys
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -754,6 +759,89 @@ def fingerprint_files(paths: Iterable[Path]) -> str:
     return h.hexdigest()[:16]
 
 
+
+#: Where a fingerprint is remembered between processes (`remembered_fingerprint`).
+FINGERPRINT_CACHE = "fingerprints.json"
+#: How many sets of inputs it remembers: every reader and the core, several times over.
+FINGERPRINT_CACHE_KEEP = 64
+
+
+def _stat_key(paths: Iterable[Path]) -> str | None:
+    """What has to be unchanged for a remembered fingerprint to still be the answer.
+
+    **Rule 81: a key that decides whether to skip work must carry everything the work
+    depends on.** The work is a hash of each file's name and bytes, so the key holds each
+    file's absolute path -- two checkouts are two tools -- and on POSIX its size, `mtime`,
+    **`ctime`** and inode. `ctime` is the part that makes it sound: every write to a file's
+    bytes moves it, and unlike `mtime` nothing short of the system clock can set it back, so
+    an edit that preserves size and restores `mtime` (`touch -r`, an archive extraction) is
+    still seen. Windows has no change time -- `st_ctime` there is creation -- so there the key
+    is size and `mtime`, and an edit made to restore both would be missed: that residue is
+    Windows', stated rather than hidden.
+
+    `None` when a file cannot be asked, and then nothing is remembered or reused:
+    `fingerprint_files` is what refuses a missing file, loudly, and it must still be the
+    one that answers.
+    """
+    rows = []
+    try:
+        for path in sorted(set(paths)):
+            st = path.stat()
+            rows.append([str(path.resolve()), st.st_size, st.st_mtime_ns]
+                        + ([] if sys.platform == "win32" else [st.st_ctime_ns, st.st_ino]))
+    except OSError:
+        return None
+    return hashlib.sha256(json.dumps(rows).encode("utf-8")).hexdigest()
+
+
+def remembered_fingerprint(paths: Iterable[Path]) -> str:
+    """`fingerprint_files`, remembered on this machine while its inputs are unchanged.
+
+    **Opening a map hashed the tool's own readers, every time, in every process.** On a
+    checkout on a USB disk that was 7.1 of a 7.7 s read-only open: 286 cold reads, 215 of
+    them Rust's reader, for a value that had not changed since the last command. The
+    dashboard's start page took 8 s to list three programs (2026-11-03). Stat calls are
+    what a remembered answer costs instead, and on that disk they are the cheap half.
+
+    The value is **the same value** `fingerprint_files` gives -- it is stored, not
+    re-derived -- so every stamp in every existing map still compares equal (rule 12). The
+    file lives in this machine's data directory beside the reader builds, never in the
+    package (a signed bundle is read-only) and never in a maps root (it can be unplugged).
+    A cache that cannot be read or written is simply not used.
+    """
+    from ..runtime import platform_output_root
+
+    wanted = list(paths)
+    key = _stat_key(wanted)
+    if key is None:
+        return fingerprint_files(wanted)
+    where = platform_output_root() / FINGERPRINT_CACHE
+    try:
+        held = json.loads(where.read_text(encoding="utf-8"))
+        if not isinstance(held, dict):
+            held = {}
+    except (OSError, ValueError):
+        held = {}
+    hit = held.get(key)
+    if isinstance(hit, str):
+        return hit
+    value = fingerprint_files(wanted)
+    held[key] = value
+    keep = dict(list(held.items())[-FINGERPRINT_CACHE_KEEP:])
+    try:
+        where.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=".fingerprints.", dir=where.parent)
+    except OSError:
+        return value
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(keep, f)
+        os.replace(tmp, where)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+    return value
+
 # The rules files that belong to no single language, and so to all of them.
 # `annotations.yaml` mines governance markers out of comments and prose alike; a
 # language's own rules file is named by that language's plugin and is hashed with it.
@@ -823,7 +911,7 @@ def core_fingerprint() -> str:
     language's stamp (`ingest.lang_fingerprint`), and a graph that differs only there
     loses that language's files rather than all of them.
     """
-    return fingerprint_files(core_extraction_inputs())
+    return remembered_fingerprint(core_extraction_inputs())
 
 
 def lang_extraction_inputs(lang: str) -> list[Path]:
@@ -865,4 +953,4 @@ def lang_fingerprint(lang: str) -> str:
         raise RulesMissing(
             f"nothing in this build reads {lang!r}, so there is no reader to fingerprint."
         )
-    return f"{plugin.manifest.version}:{fingerprint_files(lang_extraction_inputs(lang))}"
+    return f"{plugin.manifest.version}:{remembered_fingerprint(lang_extraction_inputs(lang))}"

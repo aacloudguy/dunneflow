@@ -109,7 +109,8 @@ def _san(text: str, limit: int = 30) -> str:
     return out if len(out) <= limit else out[: limit - 1] + "…"
 
 
-def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path | None:
+def render_network(store: Store, out: Path, program: str, stamp: Stamp,
+                   ranked: list[dict] | None = None) -> Path | None:
     outbound = store.query(
         "SELECT b.target, b.evidence, b.direction, b.line, r.qualname, r.module, r.file,"
         "       b.routine_id"
@@ -147,7 +148,7 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
     # `d["roots"]` because a **declared way in that bound nothing has no routines**, so
     # it cannot be a zone: a zone is *which process is this routine in*, and this one
     # holds none. It is named on the Flows page instead of drawn as an empty box here.
-    executables = [d for d in ways_in(store)
+    executables = [d for d in (ways_in(store) if ranked is None else ranked)
                    if d["kind"] in ("CLI", "MAIN") and d["roots"]]
     zones: dict[str, set[str]] = {}
     for d in executables:

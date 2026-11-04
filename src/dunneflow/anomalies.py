@@ -444,6 +444,19 @@ def _lost_edges(store: Store, r: Report) -> None:
         "        OR callee_expr LIKE 'cls.%')"
         " GROUP BY callee_expr ORDER BY n DESC, callee_expr"
     )
+    # **Every group's call sites in one read**, not one query per group. There is no index
+    # on `callee_expr`, so the per-group query walked all of `calls` each time: on Unreal's
+    # Runtime, 1,465 groups over 972,536 calls, 0.13-3.7 s apiece, which is most of the
+    # 2,416 s the anomaly phase took there. One ordered scan, grouped here, in the order
+    # each group was read in before -- file, then line -- with the caller as the tiebreak
+    # that order never had (rule 66).
+    sites: dict[str, list[sqlite3.Row]] = {}
+    for x in store.query(
+            "SELECT c.callee_expr, c.file, c.line, r.qualname AS caller FROM calls c"
+            "  LEFT JOIN routines r ON r.id = c.caller_id"
+            " WHERE c.ambiguous > 1"
+            " ORDER BY c.callee_expr, c.file, c.line, r.qualname"):
+        sites.setdefault(x["callee_expr"], []).append(x)
     for row in rows:
         dispatch = row["dispatched"] == row["n"]
         if dispatch:
@@ -487,11 +500,7 @@ def _lost_edges(store: Store, r: Report) -> None:
                 Occurrence(nav="file", id=str(x["file"]),
                            label=f"{x['caller']} \u2192 {row['callee_expr']}",
                            file=str(x["file"]), line=int(x["line"] or 0))
-                for x in store.query(
-                    "SELECT c.file, c.line, r.qualname AS caller FROM calls c"
-                    "  LEFT JOIN routines r ON r.id = c.caller_id"
-                    " WHERE c.ambiguous > 1 AND c.callee_expr = ?"
-                    " ORDER BY c.file, c.line, c.callee_expr", (row["callee_expr"],))
+                for x in sites.get(row["callee_expr"], [])
             ],
         ))
 

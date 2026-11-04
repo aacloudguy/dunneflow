@@ -10,7 +10,6 @@ name and a type and never assumes a convention is obvious.
 
 from __future__ import annotations
 
-import json
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from datetime import datetime
@@ -117,13 +116,17 @@ def render_all(store: Store, out_dir: Path, program: str,
     if report is None:
         report = detect(store, include_tests)
     say = tick or (lambda _done, _total, _what: None)
+    # **The ways in, ranked once for the three pages that list them** -- the cover, the
+    # flows and the network. Each asked for itself, and on Unreal's Runtime one asking is
+    # 7.5 s warm and 19.6 s cold: the same 5,730 reach walks, three times (rule 51).
+    ranked = ways_in(store)
 
     def flows() -> Path:
-        return _flows(store, out_dir, program, stamp,
+        return _flows(store, out_dir, program, stamp, ranked=ranked,
                       tick=lambda i, n: say(i, n, "02-flows.md, way in"))
 
     pages: list[Callable[[], Path | None]] = [
-        lambda: _overview(store, out_dir, program, stamp, report),
+        lambda: _overview(store, out_dir, program, stamp, report, ranked=ranked),
         lambda: _entrypoints(store, out_dir, program, stamp),
         flows,
         lambda: _routines(store, out_dir, program, stamp),
@@ -131,7 +134,7 @@ def render_all(store: Store, out_dir: Path, program: str,
         lambda: _boundaries(store, out_dir, program, stamp),
         lambda: _governance(store, out_dir, program, stamp),
         lambda: render_database(store, out_dir, program, stamp),
-        lambda: render_network(store, out_dir, program, stamp),
+        lambda: render_network(store, out_dir, program, stamp, ranked=ranked),
         lambda: render_anomalies(report, out_dir, program, stamp),
         # Documentation is a parallel input, so its two documents are written whether or
         # not any documentation was found. A glossary that says "nothing defines these
@@ -155,11 +158,12 @@ def render_all(store: Store, out_dir: Path, program: str,
 
 
 def _overview(store: Store, out: Path, program: str, stamp: Stamp,
-              rep: Report) -> Path:
+              rep: Report, ranked: list[dict] | None = None) -> Path:
     c = store.counts()
     bi = boundary_index(store)
 
-    ranked = ways_in(store)
+    if ranked is None:
+        ranked = ways_in(store)
 
     lines = [header(program, "Overview", stamp)]
     lines.append(
@@ -374,10 +378,45 @@ def _tree_list(tree: dict, depth: int = 0) -> str:
 
 
 def _flows(store: Store, out: Path, program: str, stamp: Stamp,
-           tick: Callable[[int, int], None] | None = None) -> Path:
-    ranked = ways_in(store)
+           tick: Callable[[int, int], None] | None = None,
+           ranked: list[dict] | None = None) -> Path:
+    if ranked is None:
+        ranked = ways_in(store)
 
-    lines = [header(program, "Flows", stamp)]
+    path = out / "02-flows.md"
+    lines = _Stream(path)
+    try:
+        _flows_into(lines, store, program, stamp, ranked, tick)
+    finally:
+        lines.close()
+    return path
+
+
+class _Stream:
+    """A page written as it is built, byte for byte what `"\n".join(lines)` wrote.
+
+    **The flows page is the one page that can be larger than memory should hold.** On
+    Unreal's Runtime it was 1.14 GB, joined into one string before a single byte reached
+    the disk, beside a Python process already at 1.5 GB on an 8 GB machine. Written as it
+    goes, the page costs one section at a time. `append` keeps the list's spelling so the
+    builder above reads exactly as it did.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self._f = path.open("w", encoding="utf-8")
+        self._first = True
+
+    def append(self, text: str) -> None:
+        self._f.write(text if self._first else "\n" + text)
+        self._first = False
+
+    def close(self) -> None:
+        self._f.close()
+
+
+def _flows_into(lines: _Stream, store: Store, program: str, stamp: Stamp,
+                ranked: list[dict], tick: Callable[[int, int], None] | None) -> None:
+    lines.append(header(program, "Flows", stamp))
     lines.append(
         "What each way in sets in motion. Solid arrows are calls; dotted arrows are "
         "the program reading from or writing to the world outside itself. Diagrams are "
@@ -391,6 +430,7 @@ def _flows(store: Store, out: Path, program: str, stamp: Stamp,
     # would read as a program with nothing to trace.
     unbound = [d for d in ranked if not d["roots"]]
     rooted = [d for d in ranked if d["roots"]]
+    index = _Inventory(store) if rooted else None
     for n, d in enumerate(rooted):
         if tick is not None:
             tick(n, len(rooted))
@@ -419,7 +459,7 @@ def _flows(store: Store, out: Path, program: str, stamp: Stamp,
         lines.append("```mermaid")
         lines.append(flow_diagram(flow))
         lines.append("```\n")
-        lines.append(_flow_inventory(store, d))
+        lines.append(_flow_inventory(store, d, index))
 
 
     if unbound:
@@ -434,48 +474,72 @@ def _flows(store: Store, out: Path, program: str, stamp: Stamp,
                          f"{_esc(d.get('why', ''))} |")
         lines.append("")
 
-    path = out / "02-flows.md"
-    path.write_text("\n".join(lines), encoding="utf-8")
-    return path
+
+class _Inventory:
+    """What every way in's inventory is made of, read once per render rather than per way in.
+
+    **Each inventory asked the graph twice**, once for its routines and once for their
+    boundaries, and on Unreal's Runtime that was 11,410 queries over 11.3 M rows: 9,032 s
+    of a 9,649 s profiled render, at about 0.8 ms a row on an external disk. What a row
+    says depends only on its routine, and where it goes in the table depends only on the
+    routine's place in one fixed order, so both are taken once: the order as a rank, and
+    the row's text the first time a way in reaches it.
+
+    The order is the one the per-way-in query wrote -- module, qualname, file, line --
+    with the id last, which breaks the tie that query left to the engine (rule 66).
+    """
+
+    def __init__(self, store: Store) -> None:
+        self._rank: dict[str, int] = {}
+        self._where: list[tuple[str, str, str]] = []
+        for i, r in enumerate(store.query(
+                "SELECT id, qualname, file, line_start FROM routines"
+                " ORDER BY module, qualname, file, line_start, id")):
+            self._rank[r["id"]] = i
+            self._where.append((r["id"], r["qualname"], f"{r['file']}:{r['line_start']}"))
+        self._bounds: dict[str, list[str]] = {}
+        for b in store.query(
+                "SELECT routine_id, kind, direction, target FROM boundaries"
+                " ORDER BY kind, direction, target"):
+            label = f"{b['kind']}{'→' if b['direction'] == 'OUT' else '←'}{b['target'] or '?'}"
+            entries = self._bounds.setdefault(b["routine_id"], [])
+            if label not in entries:
+                entries.append(label)
+        self._line: dict[int, str] = {}
+
+    def rows(self, reached: set[str]) -> list[str]:
+        """The table rows for these routines, in the fixed order. An id the routines
+        table does not hold has no row, exactly as the join it replaces had none."""
+        out = []
+        for i in sorted(self._rank[r] for r in reached if r in self._rank):
+            line = self._line.get(i)
+            if line is None:
+                rid, qualname, where = self._where[i]
+                touches = "; ".join(self._bounds.get(rid, [])) or "—"
+                line = f"| `{_esc(qualname)}` | {_esc(touches)} | {_esc(where)} |"
+                self._line[i] = line
+            out.append(line)
+        return out
 
 
-def _flow_inventory(store: Store, way_in: dict) -> str:
+def _flow_inventory(store: Store, way_in: dict, index: _Inventory | None = None) -> str:
     """Every routine one way in reaches, and every boundary it ends up touching.
 
     The diagram above is bounded; this is not. A reader who wants the complete answer
-    to "what does starting this actually run?" finds it here.
+    to "what does starting this actually run?" finds it here. `index` is the render's
+    one `_Inventory`; without it, one is read for this call.
     """
-    reached = sorted(store.reachable_from_many(way_in["roots"]))
+    reached = store.reachable_from_many(way_in["roots"])
     if not reached:
         return ""
-    ids = (json.dumps(reached),)
-    rows = store.query(
-        "SELECT id, qualname, module, file, line_start FROM routines"
-        " WHERE id IN (SELECT value FROM json_each(?))"
-        " ORDER BY module, qualname, file, line_start",
-        ids,
-    )
-    bounds: dict[str, list[str]] = {}
-    for b in store.query(
-        "SELECT routine_id, kind, direction, target FROM boundaries"
-        " WHERE routine_id IN (SELECT value FROM json_each(?)) ORDER BY kind, direction, target",
-        ids,
-    ):
-        label = f"{b['kind']}{'→' if b['direction'] == 'OUT' else '←'}{b['target'] or '?'}"
-        entries = bounds.setdefault(b["routine_id"], [])
-        if label not in entries:
-            entries.append(label)
-
+    rows = (index or _Inventory(store)).rows(set(reached))
     out = [
         f"<details><summary>Every routine reachable from <code>{way_in['name']}</code>"
         f" ({len(rows):,})</summary>\n",
         "| Routine | Touches | Where |\n|---|---|---|",
+        *rows,
+        "\n</details>\n",
     ]
-    for r in rows:
-        touches = "; ".join(bounds.get(r["id"], [])) or "—"
-        where = f"{r['file']}:{r['line_start']}"
-        out.append(f"| `{_esc(r['qualname'])}` | {_esc(touches)} | {_esc(where)} |")
-    out.append("\n</details>\n")
     return "\n".join(out)
 
 

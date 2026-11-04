@@ -1447,37 +1447,67 @@ class Store:
         return self._routine_from_row(row) if row else None
 
     def routines(self, module: str | None = None) -> list[Routine]:
-        if module:
-            rows = self.conn.execute(
-                "SELECT * FROM routines WHERE module = ? ORDER BY line_start, file, qualname",
-                (module,)
-            )
-        else:
-            rows = self.conn.execute(
-                "SELECT * FROM routines ORDER BY module, line_start, file, qualname")
-        return [self._routine_from_row(r) for r in rows]
+        """Every routine, or one module's, with its parameters, comments and annotations.
 
-    def _routine_from_row(self, row: sqlite3.Row) -> Routine:
+        **Three child queries per routine** was 223,605 routines times three on Unreal's
+        Runtime. Each child table is read once here instead, restricted by the same
+        `module` test through a subquery (so no id list, and no parameter limit), ordered
+        by owner and then by the keys the per-routine queries used, so every routine's
+        lists come back in the order they always did.
+        """
+        where, args = ("WHERE module = ?", (module,)) if module else ("", ())
+        order = ("ORDER BY line_start, file, qualname" if module
+                 else "ORDER BY module, line_start, file, qualname")
+        rows = self.conn.execute(f"SELECT * FROM routines {where} {order}", args).fetchall()
+        owned = f"IN (SELECT id FROM routines {where})"
+        params: dict[str, list[Param]] = {}
+        for p in self.conn.execute(
+                f"SELECT * FROM params WHERE routine_id {owned} ORDER BY routine_id, idx", args):
+            params.setdefault(p["routine_id"], []).append(
+                Param(p["name"], p["type"], p["dflt"], p["kind"]))
+        comments: dict[str, list[Comment]] = {}
+        for c in self.conn.execute(
+                f"SELECT * FROM comments WHERE routine_id {owned}"
+                " ORDER BY routine_id, line, text", args):
+            comments.setdefault(c["routine_id"], []).append(
+                Comment(c["text"], c["line"], bool(c["leading"])))
+        annots: dict[str, list[Annotation]] = {}
+        for a in self.conn.execute(
+                f"SELECT * FROM annotations WHERE owner_id {owned}"
+                " ORDER BY owner_id, line, kind, value, text", args):
+            annots.setdefault(a["owner_id"], []).append(
+                Annotation(a["kind"], a["value"], a["line"], a["text"]))
+        return [self._routine_from_row(r, params.get(r["id"], []), comments.get(r["id"], []),
+                                       annots.get(r["id"], [])) for r in rows]
+
+    def _routine_from_row(self, row: sqlite3.Row, params: list[Param] | None = None,
+                          comments: list[Comment] | None = None,
+                          annots: list[Annotation] | None = None) -> Routine:
+        """One routine from its row. Its children are read here unless the caller has
+        already read them for many routines at once (`routines`)."""
         rid = row["id"]
-        params = [
-            Param(p["name"], p["type"], p["dflt"], p["kind"])
-            for p in self.conn.execute(
-                "SELECT * FROM params WHERE routine_id = ? ORDER BY idx", (rid,)
-            )
-        ]
-        comments = [
-            Comment(c["text"], c["line"], bool(c["leading"]))
-            for c in self.conn.execute(
-                "SELECT * FROM comments WHERE routine_id = ? ORDER BY line, text", (rid,)
-            )
-        ]
-        annots = [
-            Annotation(a["kind"], a["value"], a["line"], a["text"])
-            for a in self.conn.execute(
-                "SELECT * FROM annotations WHERE owner_id = ? ORDER BY line, kind, value, text",
-                (rid,)
-            )
-        ]
+        if params is None:
+            params = [
+                Param(p["name"], p["type"], p["dflt"], p["kind"])
+                for p in self.conn.execute(
+                    "SELECT * FROM params WHERE routine_id = ? ORDER BY idx", (rid,)
+                )
+            ]
+        if comments is None:
+            comments = [
+                Comment(c["text"], c["line"], bool(c["leading"]))
+                for c in self.conn.execute(
+                    "SELECT * FROM comments WHERE routine_id = ? ORDER BY line, text", (rid,)
+                )
+            ]
+        if annots is None:
+            annots = [
+                Annotation(a["kind"], a["value"], a["line"], a["text"])
+                for a in self.conn.execute(
+                    "SELECT * FROM annotations WHERE owner_id = ? ORDER BY line, kind, value, text",
+                    (rid,)
+                )
+            ]
         return Routine(
             id=rid, name=row["name"], qualname=row["qualname"], module=row["module"],
             file=row["file"], line_start=row["line_start"], line_end=row["line_end"],

@@ -1377,3 +1377,29 @@ this is that cost appearing on a second surface.
 
 The five slowest, for scale: Runtime 8,815 s · Source.Editor 4,891 s · Plugins.Runtime
 3,301 s · Binaries 2,380 s · VirtualProduction 1,595 s.
+
+## The two silent phases, made cheap (v2, measured 2026-11-03)
+
+`Engine/Source/Runtime` with the libclang reader: 18,263 files, 223,614 routines, 972,536
+calls, 7,091 ways in. Apple M1, 8 GB, 8 CPUs, the graph on the external volume. *Before* is
+`output/cpp-scale/runtime2.log` (cpp-reader e05e5f3); *after* is `runtime3.log`, with chunk
+5b's slice C in the working tree.
+
+| phase | before | after | what changed |
+|---|---|---|---|
+| looking for anomalies | 2,416.3 s | **2.9 s** | `_lost_edges` asked `calls` once per group, 1,465 times on an unindexed column; now one ordered read |
+| writing the map | 892.9 s | **51.3 s** | each way in's inventory was two queries — 11,410 over 11.3 M rows, 9,032 s of a 9,649 s profiled render — and is now one read per render; `ways_in` once, not three times; the routines page reads each child table once, not three times per routine; the 1.14 GB flows page is streamed instead of joined |
+| opening a map, fingerprints (fresh process) | 5.42 s | **0.13 s** | the readers' fingerprint is remembered, keyed on what the files' metadata says (rule 81) |
+
+**What did not move is the point.** The map written after was diffed against the map the
+code before wrote from the same graph: every page that does not read the documents or the
+anomaly report is byte-identical apart from its stamp line, `02-flows.md`'s 1,143,542,872
+bytes included, and the findings are the same 1 broken, 2,822 suspect, 7 informational.
+
+**The whole run is not comparable, and the reason is stated rather than the number
+hidden.** *Before* read the tree from cache (`files 18263 (parsed 0, cached 18263)`, 39.7 s,
+3,860.5 s in all); *after* re-read every file (`parsed 18263`, 18,205.6 s, 18,518.6 s in
+all, 3.6 GB peak), because the graph that holds the extraction cache had been emptied by a
+writable open of a graph made stale by this very change. The extraction cache is the graph's
+`files` table, not `source.db`. Of what the run does once the files are read, the two phases
+above went from 3,309 s to 54 s.

@@ -31,7 +31,7 @@ from dunneflow.web import analysis
 from dunneflow.web import serve as serve_mod
 
 CHILD = r"""
-import sys, time
+import os, sys, time
 from pathlib import Path
 from dunneflow import runstate
 d = Path(sys.argv[1])
@@ -39,12 +39,14 @@ r = runstate.RunState(d, program=d.name, revision="r1", graph=d / "graph@r1.db",
                       argv=["analyze", "x"]).start()
 r.note({"state": "working", "step": "looking for anomalies", "done_steps": 6,
         "steps": 8, "detail": "detector 4/15", "ms": 1})
-print("ready", flush=True)
+print("ready", os.getpid(), flush=True)
 time.sleep(120)
 """
 
 
-def _child(program_dir: Path) -> subprocess.Popen[str]:
+def _child(program_dir: Path) -> tuple[subprocess.Popen[str], int]:
+    """The process, and the pid the run itself holds. They are two pids on Windows, where a
+    venv's `python.exe` is a launcher that starts the real interpreter."""
     program_dir.mkdir(parents=True, exist_ok=True)
     kw: dict = {"start_new_session": True}
     if sys.platform == "win32":
@@ -52,14 +54,15 @@ def _child(program_dir: Path) -> subprocess.Popen[str]:
     proc = subprocess.Popen([sys.executable, "-c", CHILD, str(program_dir)],
                             stdout=subprocess.PIPE, text=True, **kw)
     assert proc.stdout is not None
-    assert proc.stdout.readline().strip() == "ready"
-    return proc
+    word, pid = proc.stdout.readline().split()
+    assert word == "ready"
+    return proc, int(pid)
 
 
-def _kill(proc: subprocess.Popen[str]) -> None:
+def _kill(proc: subprocess.Popen[str], pid: int) -> None:
     if proc.poll() is None:
         if sys.platform == "win32":
-            proc.kill()
+            os.kill(pid, signal.SIGTERM)  # TerminateProcess; the launcher then exits by itself
         else:
             os.killpg(proc.pid, signal.SIGKILL)
     proc.wait(timeout=10)
@@ -67,16 +70,16 @@ def _kill(proc: subprocess.Popen[str]) -> None:
 
 def test_a_live_run_reads_as_running_and_a_killed_one_as_stopped(tmp_path: Path) -> None:
     d = tmp_path / "prog"
-    proc = _child(d)
+    proc, pid = _child(d)
     try:
         body = runstate.read(d)
         assert body is not None and body["running"], body
         shown = runstate.as_progress(body)
         assert shown["state"] == "working" and shown["origin"] == "terminal"
         assert shown["detail"] == "detector 4/15"
-        assert shown["pid"] == proc.pid
+        assert shown["pid"] == pid
     finally:
-        _kill(proc)
+        _kill(proc, pid)
     body = runstate.read(d)
     assert body is not None
     assert body["state"] == "working", "a killed run cannot have written its last word"
@@ -183,7 +186,7 @@ def test_the_dashboard_shows_a_terminal_run_refuses_a_second_and_stops_it(tmp_pa
                                                                          monkeypatch):
     root = tmp_path / "root"
     d = root / "prog"
-    proc = _child(d)
+    proc, pid = _child(d)
     _graph(d)
     try:
         lv = _live(root)
@@ -223,7 +226,7 @@ def test_the_dashboard_shows_a_terminal_run_refuses_a_second_and_stops_it(tmp_pa
         monkeypatch.setattr(time, "time", lambda: float(body["beat"]) + runstate.ENDED_S + 1)
         assert lv.analysis_progress().get("origin") is None
     finally:
-        _kill(proc)
+        _kill(proc, pid)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX's")

@@ -26,7 +26,10 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX  // or `min` and `max` are macros, and every `std::max` here stops parsing
 #include <windows.h>
+#undef IN   // empty macros in the SDK, and `Direction::IN` in `facts.hpp`
+#undef OUT
 #else
 #include <dlfcn.h>
 #endif

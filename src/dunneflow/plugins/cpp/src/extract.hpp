@@ -92,6 +92,7 @@ struct Site {
 // One definition this file holds, as the edge pass names it to the host.
 struct Def {
     std::string usr, file, name, qualname;
+    int args = -1;
     long line = 0;
     bool has_body = true;
     bool is_record = false;
@@ -101,7 +102,8 @@ struct Def {
 // A way in marked on a declaration whose body is not here, for the edge pass to bind by
 // USR (`SuppliedBinding`).
 struct Mark {
-    std::string entrypoint_id, usr, name;
+    std::string entrypoint_id, usr, name, qualname, written_at;
+    int args = -1;
     std::vector<std::string> markers;  // every word of the marking macro, as `decorators` read it
     bool pure = false;                 // declared `= 0`
 };
@@ -868,6 +870,8 @@ private:
         d.file = x_.rel;
         d.line = f.line_start;
         d.name = name;
+        d.qualname = qualname;
+        d.args = C().clang_Cursor_getNumArguments(c);
         // Said, not decided here: an invalid definition only loses a tie (`edges.hpp`).
         d.invalid = C().clang_isInvalidDeclaration(c) != 0;
         x_.out->defs.push_back(d);
@@ -1152,6 +1156,9 @@ private:
                 m.entrypoint_id = *e.id;
                 m.usr = u;
                 m.name = e.name ? *e.name : spelling(c);
+                m.qualname = qualname;
+                m.written_at = x_.rel + ":" + std::to_string(x_.line_of(a));
+                m.args = C().clang_Cursor_getNumArguments(c);
                 m.markers = decs;
                 m.pure = C().clang_CXXMethod_isPureVirtual(c) != 0;
                 x_.out->marks.push_back(std::move(m));

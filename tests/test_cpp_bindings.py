@@ -300,3 +300,117 @@ def test_what_only_an_overrider_reaches_is_not_unreachable(tmp_path: Path) -> No
         assert not [n for n in stranded if "touch_" in n or "ACube" in n], stranded
     finally:
         store.close()
+
+
+# `Helper.h` names `UType` and does not declare it, as `ValueOrBBKeyBlueprintUtility.h` does:
+# read alone it gets another USR than the definition, which sees the type.
+HELPER_H = """\
+#pragma once
+#define UFUNCTION(...)
+class AHelper {
+public:
+    UFUNCTION(BlueprintPure)
+    static int Read(const UType* t);
+    UFUNCTION(BlueprintPure)
+    static int Pair(const UType* t);
+    UFUNCTION(BlueprintPure)
+    static int Pair(const UOther* t);
+    UFUNCTION(BlueprintPure)
+    static int Lone(const UType* t);
+    UFUNCTION(BlueprintPure)
+    static int Lone(const UOther* t);
+    UFUNCTION(BlueprintPure)
+    static int Gone(const UType* t);
+    UFUNCTION(Reliable, Server)
+    void ServerFire(int x);
+    void ServerFire_Implementation(int x);
+    UFUNCTION(Reliable, Client)
+    void ClientHit(const UType* t);
+    void ClientHit_Implementation(const UType* t);
+    UFUNCTION(NetMulticast)
+    void Everyone();
+    void Everyone_Implementation();
+};
+"""
+HELPER_CPP = """\
+class UType {};
+class UOther {};
+#include "Helper.h"
+int AHelper::Read(const UType* t) { return 1; }
+int AHelper::Pair(const UType* t) { return 2; }
+int AHelper::Pair(const UOther* t) { return 3; }
+int AHelper::Gone(const UType* t, int more) { return 4; }
+void AHelper::ServerFire_Implementation(int x) {}
+void AHelper::ClientHit_Implementation(const UType* t) {}
+void AHelper::Everyone_Implementation() {}
+int AHelper::Lone(const UType* t) { return 5; }
+"""
+
+
+def _helper(tmp_path: Path, *, preset: bool = True) -> Store:
+    if _WHY:
+        pytest.skip(_WHY)
+    top = tmp_path / "Runtime"
+    if preset:
+        (top / "Core" / "Public" / "HAL").mkdir(parents=True)
+        (top / "Core" / "Public" / "HAL" / "Platform.h").write_text("", encoding="utf-8")
+    game = top / "Game"
+    game.mkdir(parents=True)
+    (game / "Helper.h").write_text(HELPER_H, encoding="utf-8")
+    (game / "Helper.cpp").write_text(HELPER_CPP, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(game, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    return store
+
+
+def test_a_declaration_whose_usr_differs_is_bound_by_name_and_argument_count(
+        tmp_path: Path) -> None:
+    store = _helper(tmp_path)
+    try:
+        assert _bound(store)["Read"] == [("AHelper.Read", 4)]
+    finally:
+        store.close()
+
+
+def test_two_declarations_asking_for_one_shape_bind_nothing(tmp_path: Path) -> None:
+    """`Pair(UType*)` and `Pair(UOther*)` are the same name and count: which is which is the
+    USR's to say, and here it cannot."""
+    store = _helper(tmp_path)
+    try:
+        assert {q for q, _ in _bound(store)["Pair"]} == {None}
+    finally:
+        store.close()
+
+
+def test_one_definition_two_declarations_could_mean_is_given_to_neither(tmp_path: Path) -> None:
+    store = _helper(tmp_path)
+    try:
+        assert {q for q, _ in _bound(store)["Lone"]} == {None}
+    finally:
+        store.close()
+
+
+def test_another_argument_count_is_another_function(tmp_path: Path) -> None:
+    store = _helper(tmp_path)
+    try:
+        assert _bound(store)["Gone"] == [(None, None)]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("name, body, line", [
+    ("ServerFire", "AHelper.ServerFire_Implementation", 8),
+    ("ClientHit", "AHelper.ClientHit_Implementation", 9),
+    ("Everyone", "AHelper.Everyone_Implementation", 10),
+])
+def test_a_replicated_function_is_bound_to_its_implementation(
+        tmp_path: Path, name: str, body: str, line: int) -> None:
+    store = _helper(tmp_path)
+    try:
+        assert _bound(store)[name] == [(body, line)]
+        assert [a for a in detect(store).items
+                if a.kind == "ENTRYPOINT_NO_TARGET" and a.subject == name] == []
+    finally:
+        store.close()

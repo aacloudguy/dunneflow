@@ -307,8 +307,30 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     // saying it looked, which stops the host guessing by name.
     std::sort(t.marks.begin(), t.marks.end(),
               [](const extract::Mark& a, const extract::Mark& b) { return a.entrypoint_id < b.entrypoint_id; });
-    long by_usr = 0, by_suffix = 0, explained = 0, overridden = 0, two_bodies = 0, no_body = 0;
+    long by_usr = 0, by_suffix = 0, by_shape = 0, explained = 0, overridden = 0, two_bodies = 0, no_body = 0;
     std::set<std::string> sent;
+    // **A USR is only as good as the parse that made it.** `ValueOrBBKeyBlueprintUtility.h`
+    // names `UBehaviorTreeComponent` without declaring it, so read alone its `GetBool` has a
+    // different USR from the definition its `.cpp` sees with the type in hand. There, and only
+    // when no USR answers, one definition of that qualified name and argument count answers,
+    // provided one marked declaration asks: overloads stay apart, and two askers bind nothing.
+    using Shape = std::pair<std::string, int>;
+    std::map<Shape, std::vector<Where>> shaped;
+    for (const auto& d : t.defs) {
+        if (d.is_record || d.qualname.empty()) continue;
+        Where w{d.file, d.name, d.line, d.invalid};
+        auto& v = shaped[{d.qualname, d.args}];
+        if (std::find(v.begin(), v.end(), w) == v.end()) v.push_back(w);
+    }
+    std::map<Shape, std::set<std::string>> askers;
+    // By where each is written, not by id: two overloads whose types were both missing can
+    // share a USR, and so an id.
+    for (const auto& m : t.marks) askers[{m.qualname, m.args}].insert(m.written_at);
+    auto one_shaped = [&](const extract::Mark& m, const std::string& suffix) -> const std::vector<Where>* {
+        if (askers[{m.qualname, m.args}].size() != 1) return nullptr;
+        auto it = shaped.find({m.qualname + suffix, m.args});
+        return it != shaped.end() && it->second.size() == 1 ? &it->second : nullptr;
+    };
     for (const auto& m : t.marks) {
         if (!sent.insert(m.entrypoint_id).second) continue;  // a header read twice marks it twice
         facts::SuppliedBinding b;
@@ -340,6 +362,9 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
             if (it != bodies.end() && it->second.size() == 1) {
                 at(it->second);
                 by_suffix++;
+            } else if (const auto* found = one_shaped(m, rule->suffix)) {
+                at(*found);
+                by_shape++;
             } else {
                 b.why = "its body is `" + m.name + rule->suffix + "`, and no single definition of that was read";
                 no_body++;
@@ -369,6 +394,9 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                             (n == 1 ? "" : "s") + " in this tree"
                       : "it is pure virtual, and nothing in this tree implements it";
             overridden++;
+        } else if (const auto* found = one_shaped(m, "")) {
+            at(*found);
+            by_shape++;
         } else {
             no_body++;
         }
@@ -401,7 +429,9 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     if (!sent.empty())
         notes.push_back("edges: " + std::to_string(sent.size()) + " ways in marked on a declaration; " +
                         std::to_string(by_usr) + " bound to their definition by USR, " + std::to_string(by_suffix) +
-                        " to the body their marker names, " + std::to_string(explained) +
+                        " to the body their marker names, " + std::to_string(by_shape) +
+                        " by qualified name and argument count where the USRs differ, " +
+                        std::to_string(explained) +
                         " with no body in C++ by their marker, " + std::to_string(overridden) + " pure virtual, " +
                         std::to_string(two_bodies) + " defined more than once, and " + std::to_string(no_body) +
                         " with no definition read");

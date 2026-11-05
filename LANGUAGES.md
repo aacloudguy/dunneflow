@@ -464,3 +464,27 @@ it cannot see a type?** If the answer is *it picks*, that pick is a guess, and t
 not draw it. The fourth is clang's as much as anyone's: **what does your checker do with a
 tree ten times your corpus?** Measure it on a scale probe before the first real tree does it
 for you, and if it must be split, decide what crosses the split by name.
+
+## An eighth reader, and what a whole-program parser costs the host
+
+C and C++ on libclang took four seams the other readers did not need.
+
+- **`facts_span_files`.** A C++ file's facts depend on what it includes, so its own hash is not a
+  key for them (rule 81). A reader that declares this has all its files read after any change,
+  and reports what else it read as `edges_done.inputs`, down to system headers. The cost is
+  transfer and writes only, because this reader parses every file whenever it is opened anyway.
+- **`reading:<lang>`.** A marker set before a language is read and cleared after its edge pass, so
+  a run killed in between is recognised (rule 80). Without it, every edge-supplying reader could
+  leave a map with no edges that the next run saw nothing wrong with.
+- **`supplies_bindings`.** A way in marked on a declaration is bound by the reader. A USR is the
+  right key and not a sufficient one: a header read alone may not know a type its `.cpp` does, and
+  then the two have different USRs. So qualified name and argument count answer where no USR does,
+  if there is one such definition and one declaration asking.
+- **A framework's code generator is data.** Which marker means which body is in the preset's
+  `bodies` in `cpp.yaml`, not in the reader.
+
+**What bit, and would bite again.** Findings in a language you are not working on still need
+reading: OpenUSD's 89 BROKEN were noted as "all Python" for two days, and 87 were false. A generated
+header (`pxr/pxr.h`, `*.generated.h`) is missing from any unconfigured tree, so 4,622 of OpenUSD's
+5,104 C++ files and 10,923 of Runtime's 18,259 read on past a missing include. And any data-sized
+`IN (?,…)` overflows at this scale, which is why they became `json_each`.

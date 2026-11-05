@@ -448,6 +448,14 @@ queries know a language exists.
   to read its own writes back out of it: 734 MB and 0.1% CPU on a tree of 84,159 files.
   `WAL_CAP_BYTES` carries the measurement and sits beside the `cache_size` it is derived
   from. What it buys beyond speed is that a killed run **keeps what it committed**.
+- `runstate.py` — **what a run is doing, where a second process can read it.** `analysis.json`
+  beside the graph: the pid, the argv, the last progress object and a heartbeat. It is how the
+  dashboard shows and stops a run started in a terminal, and what the next estimate is priced from.
+- `estimate.py` — **how long a run will take, as a range and a reason.** From this program's last
+  run, or else from `RATES`, each a measurement sourced in a comment. The low end needs a graph
+  this version can read (`store.facts_held`, a read-only open): the extraction cache is the
+  graph's `files` table, and `source.db` skips no reading. `--warn-after` and the dialog ask
+  before a long run; with no terminal the run is refused, naming `--any-size`.
 - `walk.py` — discovery, and **the size guard**. `parts_under` cuts a tree into parts no
   larger than `TOO_BIG`, descending only into what is oversized, and `Breakdown.uncovered`
   states the one thing a cut of directories cannot cover: a directory that had to be split
@@ -789,6 +797,10 @@ queries know a language exists.
   count of a question nobody may have asked. A standard that declares `paths: ['**/*.py']`
   has closed the axis itself and is never labelled: only the languages that actually hold
   some of the population are split, so one is one.
+- `entrypoint_roots` — **a way in with several starts.** A pure virtual has no body, so
+  `entrypoints.routine_id` stays NULL and `resolve/supplied.bind_ways_in` writes one row per
+  overrider, replaced whole on each resolve. `flows.ways_in` adds them to `roots`, and
+  `anomalies._unreachable` counts them. They are "any of these", never one flow.
 - `resolve/shape.py` — **the amendment, and the one place it is judged.** `CLAUDE.md`'s
   founding exclusion read *"local variables, arithmetic, control flow"* until 2026-09-07,
   and the rule behind it has not changed: **a loop or a decision is a subject only where

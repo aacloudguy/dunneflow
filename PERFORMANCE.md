@@ -1403,3 +1403,47 @@ all, 3.6 GB peak), because the graph that holds the extraction cache had been em
 writable open of a graph made stale by this very change. The extraction cache is the graph's
 `files` table, not `source.db`. Of what the run does once the files are read, the two phases
 above went from 3,309 s to 54 s.
+
+## C and C++ at scale, on a quiet machine (v2, measured 2026-11-04)
+
+Three cold runs in sequence at `cpp-reader` aa6007a, 18:46 to 22:08, nothing else running: Apple
+M1, 8 GB, 8 CPUs, the graph on the external volume. Swap was 1.3 GB of 2 GB in use at the start,
+left over rather than active, and 1.6 GB of 3 GB at the end. Logs: `output/cpp-scale/*-j.log`,
+each with the machine's conditions before and after.
+
+| | files | routines | reading the tree | whole run | peak |
+|---|---:|---:|---:|---:|---:|
+| `Runtime/Core` | 1,959 | 27,911 | 133.8 s | 144.6 s | 1.46 GB |
+| OpenUSD 7f5e51901 | 5,744 | 49,299 | 899.2 s | 969.7 s | 2.67 GB |
+| `Engine/Source/Runtime` | 18,263 | 225,891 | 10,363.0 s | 10,977.5 s | 3.57 GB |
+
+**Runtime's phases against the runs before it.** The earlier runs took 8,353 s (`runtime.log`)
+and 18,206 s (`runtime3.log`) to read the tree, so this one lands between them.
+
+| phase | this run | before |
+|---|---:|---:|
+| before the first step | 297.9 s | 0.3 s, from an empty graph |
+| resolving calls and command trees | 195.0 s | |
+| looking for anomalies | 2.6 s | 2.9 s (2,416 s before slice C) |
+| writing the map | 115.6 s | 51.3 s |
+
+- **Before the first step** is this run's alone: it started from a full stale graph of about
+  930 MB, and the 0.3 s started from an empty one. That the discard is the cost is inferred from
+  those two conditions; it was not timed by itself.
+- **The map doubled, and it is not the same work.** It now sizes every inventory first
+  (`--flow-inventory`), and `02-flows.md` grew from 1,143,542,872 to 1,220,096,920 bytes because
+  more ways in are bound. `omitted` would be 1.205 GB and `count` 2 MB, so `omitted` saves almost
+  nothing on this tree. How the 115.6 s divides between the two was not measured.
+- **Slice E's void figure is settled.** Its render ran 3 h 22 m with 9.8 GB of swap in use and
+  was stopped. This one took 115.6 s, so the pre-pass was not the cause.
+- **Asking which headers a file read costs no measurable CPU.** User time was 32,847 s, against
+  33,692 s and 34,093 s before `clang_getInclusions` was added.
+- **Not explained:** this run used 3.5 CPUs on average over the whole run, where the 8,353 s run
+  used 4.8, on less CPU time overall. Something waited, and nothing recorded says what. A retake
+  is needed before quoting either as *the* figure; 2 h 20 m to 3 h is what has been seen with no
+  other work running.
+
+**A rate per file does not carry between trees.** C++ cost 0.068 s a file on Core, 0.176 s on
+OpenUSD and 0.567 s on Runtime, because the headers a file pulls in grow with the tree.
+`estimate.RATES` holds Runtime's, so a first run of a smaller tree is priced high: 52 min for
+OpenUSD's 16, and 20 min for Core's 2.5. A program's own last run replaces the rate after that.

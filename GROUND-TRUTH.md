@@ -422,3 +422,58 @@ quiet warning needs a run that goes quiet for longer than that one ever does, so
 four minutes. Serve with `dunneflow serve ../tour/maps --port 8787 --no-open`.
 How the captures were composed (window size, framing, the native menus that cannot be
 photographed) is in the retake's record.
+
+## C and C++: five public trees, and what each reproduces (2026-11-04)
+
+All read-only in `../`, none with a `compile_commands.json`: `tmux-3.6a`, `git` d38352cd43,
+`nmap` 25a76d787, `OpenUSD` 7f5e51901 (49 `plugInfo.json` files were already modified, so its
+revision is a working stamp) and Unreal's `Engine/Source/Runtime`, whose `Core` is also read
+alone. The maps are under `output/cpp-scale/`, which is gitignored.
+
+```bash
+uv run dunneflow analyze ../UnrealEngine-release/Engine/Source/Runtime --name runtime \
+    --output output/cpp-scale/runtime --timings --any-size   # about 3 hours: PERFORMANCE.md
+```
+
+Never use `output/cpp-scale/runtime.sh`: it deletes its output first.
+
+| | Core | Runtime | OpenUSD |
+|---|---:|---:|---:|
+| routines | 27,911 | 225,891 | 49,299 |
+| internal calls | 29,341 | 364,089 | 84,521 |
+| ways in | 0 | 7,091 | 618 |
+
+| findings at 54364d9 (broken · suspect · informational) | |
+|---|---|
+| Core | 0 · 126 · 4 |
+| Runtime | 0 · 1,789 · 7 |
+| OpenUSD | 2 · 530 · 5 |
+| git | 1 · 20 · 5 |
+| nmap | 1 · 288 · 7 |
+
+The first table is from aa6007a. The findings for Core, Runtime and OpenUSD were detected again
+from those same graphs after the fix, and git's and nmap's are fresh runs. **None of the five has
+been read again since eb21b9a**, which changes the C++ reader, except tmux for the ordering probe.
+
+**Every BROKEN left was read against the source, and each is the program's.** OpenUSD's two are
+`test_ListAPI` and `test_ComputeAllDependencies`, each defined twice in one test class, so the
+first never runs. nmap's is `test_default_executable`, likewise, at `NmapOptions.py:920` and
+`:925`. git's is `contrib/fast-import/import-zips.py`, which is Python 2.
+
+**87 of OpenUSD's 89 BROKEN were this tool's, and are fixed** (`anomalies._is_rebinding`): 82
+were a `@property` with its `@x.setter`, and 5 a function defined on each arm of a module-level
+`if`. The 2026-11-02 note that they were "all Python" was true and was not enough, because
+nobody had read them.
+
+**198 of Runtime's 309 `ENTRYPOINT_NO_TARGET` were this tool's, and are fixed in the reader**: 94
+replicated functions and 104 definitions read under another USR. Those two counts come from
+searching the map and the source, not from a rerun. On the modules retaken, AIModule went from 159
+to 170 of 210 bound, and AugmentedReality from 68 to 103 of 145.
+
+**Runtime itself has not been retaken with that fix.** At aa6007a its 6,996 `LIBRARY` ways in were
+6,438 bound, 57 through overriders and 501 unbound: 220 Blueprint events with no C++ body, 43 pure
+virtual with no implementation, and 238 with no definition read, which is the figure the fix
+lowers. Against the earlier 1,275 unbound, 57 of the fall is overriders counting as bound.
+
+**About 103 of those 309 have no definition in their module's text** by a simple search, which
+misses macro-written ones. They have not been read one by one.

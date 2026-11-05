@@ -452,7 +452,7 @@ Never use `output/cpp-scale/runtime.sh`: it deletes its output first.
 | nmap | 1 · 288 · 7 |
 
 The first table is from aa6007a. The findings for Core, Runtime and OpenUSD were detected again
-from those same graphs after the fix. git, nmap and tmux were read again at 62b1b8a, and their
+from those same graphs after the fix. git, nmap and tmux were read again at 7dfd3d5, and their
 findings are unchanged. **Core, Runtime and OpenUSD have not been read since eb21b9a**, which
 changes the C++ reader, so their maps refuse to open until they are.
 
@@ -478,7 +478,7 @@ lowers. Against the earlier 1,275 unbound, 57 of the fall is overriders counting
 
 **Linux and Windows are read through other clangs, and neither has read these corpora.**
 maclab uses LLVM 22.1.0's tarball and GIZA Visual Studio's clang 19.1.5, and each passes the
-suite and `ingest-conform cpp`. The first Windows build did not compile, and the first Linux run
+suite and `ingest-conform cpp`, and read tmux. The first Windows build did not compile, and the first Linux run
 lost clang's own `stddef.h`; both are fixed and tested. A figure here is the Mac's.
 
 **About 103 of those 309 have no definition in their module's text** by a simple search, which

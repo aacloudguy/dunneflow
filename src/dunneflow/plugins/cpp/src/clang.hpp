@@ -74,6 +74,7 @@
     X(clang_getCursorResultType)                \
     X(clang_Cursor_getNumArguments)             \
     X(clang_Cursor_getArgument)                 \
+    X(clang_CXXMethod_isDefaulted)              \
     X(clang_CXXMethod_isVirtual)                \
     X(clang_CXXMethod_isPureVirtual)            \
     X(clang_CXXMethod_isStatic)                 \

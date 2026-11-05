@@ -504,6 +504,7 @@ inline bool has_final(CXCursor c) {
 struct Routine {
     facts::Routine r;
     unsigned body_lo = 0, body_hi = 0;  // offsets of `{` and `}`
+    bool macro_written = false;         // no `{` is written here: a macro wrote the whole body
 };
 
 class Reader {
@@ -780,6 +781,22 @@ private:
             &b);
         if (!b.ok) return false;
         extent(b.found, lo, hi);
+        // A function a macro writes whole has its body at the macro's own offset, where no
+        // `{` is written: `void U::Set##Name(T v) { ... }`. Unreal's 67 pasted setters were
+        // refused here as having no body, and so was every such function in any tree.
+        //
+        // Not inside a record the macro also named, which `record` already leaves as the
+        // macro's: `DECLARE_CYCLE_STAT` is a `struct FStat_X` with seven accessors, 441 times
+        // over in Core alone, and none of them is anything a reader came to find.
+        if (x_.in_macro(lo)) {
+            CXCursor owner = C().clang_getCursorSemanticParent(c);
+            unsigned ra, rb;
+            if (is_record_kind(C().clang_getCursorKind(owner)) && in_main(owner)) {
+                extent(owner, ra, rb);
+                if (!x_.written_in_macro(ra, spelling(owner))) return false;
+            }
+            return !C().clang_CXXMethod_isDefaulted(c);
+        }
         // `= default` is given a body by clang and has none as written: not a routine.
         size_t i = x_.tok_at(lo);
         return i < x_.toks.size() && x_.toks[i].off == lo && (x_.toks[i].text == "{" || x_.toks[i].text == "try");
@@ -827,6 +844,9 @@ private:
         auto r = std::make_unique<Routine>();
         r->body_lo = lo;
         r->body_hi = hi;
+        size_t first = x_.tok_at(lo);
+        r->macro_written = !(first < x_.toks.size() && x_.toks[first].off == lo &&
+                             (x_.toks[first].text == "{" || x_.toks[first].text == "try"));
         facts::Routine& f = r->r;
         f.id = ids::definition_id(x_.rel, qualname, n);
         f.name = name;
@@ -1186,6 +1206,7 @@ private:
         bool construction = false;
         CXCursor call, ref;     // what clang made of it; null when clang made nothing
         bool resolved = false;
+        bool macro_written = false;  // from clang, in a body a macro wrote: not a call written here
     };
 
     // What clang made of every call it kept, by the offset the call is written at. The
@@ -1224,6 +1245,26 @@ private:
         unsigned a, b;
         extent(c, a, b);
         CXCursor ref = C().clang_getCursorReferenced(c);
+        // In a body a macro wrote whole there is nothing to scan, so what clang resolved is all
+        // there is, and each call is named by what it reaches. Constructors are left out: from
+        // here an implicit one cannot be told from a written one.
+        if (!stack_.empty() && stack_.back()->macro_written) {
+            if (C().clang_Cursor_isNull(ref) || !is_function_kind(C().clang_getCursorKind(ref)) ||
+                C().clang_getCursorKind(ref) == CXCursor_Constructor)
+                return;
+            bool nested;
+            std::string rec;
+            Pending p;
+            p.off = a;
+            p.line = x_.line_of(a);
+            p.expr = join(scope_parts(ref, nested, rec), routine_name(ref));
+            p.call = c;
+            p.ref = ref;
+            p.resolved = true;
+            p.macro_written = true;
+            pending_[stack_.back()].push_back(p);
+            return;
+        }
         // Every call a macro written here expands to, by the macro's offset: which of them
         // the written call is, is decided at `emit_calls`, and not by which came first.
         if (x_.macro_names.count(a)) macro_calls_[a].push_back({c, ref});
@@ -1451,6 +1492,7 @@ private:
     // Every call written in one routine's body, as the syntactic reader found them: by the
     // tokens, so a statement clang could not make sense of still has its calls.
     void scan_calls(Routine* owner) {
+        if (owner->macro_written) return;  // nothing is written to scan: `note_call` has them
         auto skip = inner(owner);
         size_t lo = x_.tok_at(owner->body_lo) + 1, hi = x_.tok_at(owner->body_hi);
         std::vector<Pending>& out = pending_[owner];
@@ -1539,7 +1581,7 @@ private:
             // it is a macro and says so, not a call clang failed to resolve (rule 32).
             // The two are different counts, and only one is a gap in what clang could read.
             auto mac = x_.macro_names.find(p.off);
-            if (mac != x_.macro_names.end() && !p.construction) {
+            if (mac != x_.macro_names.end() && !p.construction && !p.macro_written) {
                 CXCursor call, ref;
                 if (macro_call(p.off, mac->second, call, ref)) {
                     resolve(e, call, ref);
@@ -1753,6 +1795,9 @@ private:
     // Control as written, by the tokens: a statement clang dropped still has its loop, and a
     // macro that expands to an `if` (`check(x)`) is not control anybody wrote.
     void scan_control(Routine* owner) {
+        // Control is read from what is written, so a macro-written body shows none. Its calls
+        // are in the map and its loops and guards are not.
+        if (owner->macro_written) return;
         auto skip = inner(owner);
         size_t lo = x_.tok_at(owner->body_lo) + 1, hi = x_.tok_at(owner->body_hi);
         control_range(owner, lo, hi, 1, skip);

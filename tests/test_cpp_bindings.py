@@ -414,3 +414,127 @@ def test_a_replicated_function_is_bound_to_its_implementation(
                 if a.kind == "ENTRYPOINT_NO_TARGET" and a.subject == name] == []
     finally:
         store.close()
+
+
+# ------------------------------------------------------------------- bodies a macro writes
+#
+# Runtime's 309 ENTRYPOINT_NO_TARGET, read against its source on 2026-11-05: 67 were setters a
+# macro writes whole (`void U::Set##Name(T v) {...}`), which the reader refused as having no
+# body because no `{` is written at the macro's offset; 39 were `CustomThunk`, whose body is
+# `exec<Name>`.
+
+MACRO_H = """\
+#pragma once
+#define UFUNCTION(...)
+struct FFrame;
+#define DECLARE_FUNCTION(func) static void func(void* Context, FFrame& Stack, void* Result)
+#define DEFINE_FUNCTION(func) void func(void* Context, FFrame& Stack, void* Result)
+void Helper();
+class AFog {
+public:
+    UFUNCTION(BlueprintCallable)
+    void SetDensity(float v);
+    UFUNCTION(BlueprintCallable)
+    void SetHeight(float v);
+    UFUNCTION(BlueprintCallable)
+    void SetColour(float v);
+    AFog();
+};
+class ALib {
+public:
+    UFUNCTION(BlueprintCallable, CustomThunk)
+    static void Resize(int size);
+    DECLARE_FUNCTION(execResize)
+    {
+        Helper();
+    }
+    UFUNCTION(BlueprintPure, CustomThunk)
+    static int Count();
+    DECLARE_FUNCTION(execCount);
+    UFUNCTION(BlueprintCallable, CustomThunk)
+    static void Gone();
+};
+"""
+
+MACRO_CPP = """\
+#include "Macro.h"
+void Helper() {}
+#define FOG_SETTER(Name) void AFog::Set##Name(float v) { Helper(); }
+FOG_SETTER(Density)
+#define FOG_ALL FOG_SETTER(Height) FOG_SETTER(Colour)
+FOG_ALL
+#define DEFAULTED(Class) Class::Class() = default;
+DEFAULTED(AFog)
+void ALib::Resize(int size) {}
+DEFINE_FUNCTION(ALib::execCount) { Helper(); }
+"""
+
+
+def _macro(tmp_path: Path, *, preset: bool = True) -> Store:
+    root = tmp_path / "Source"
+    (root / "Runtime/Mod/Public").mkdir(parents=True)
+    (root / "Runtime/Mod/Public/Macro.h").write_text(MACRO_H)
+    (root / "Runtime/Mod/Macro.cpp").write_text(MACRO_CPP)
+    if preset:
+        (root / "Runtime/Core/Public/HAL").mkdir(parents=True)
+        (root / "Runtime/Core/Public/HAL/Platform.h").write_text("#pragma once\n")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    return store
+
+
+@pytest.mark.parametrize("name", ["SetDensity", "SetHeight", "SetColour"])
+def test_a_function_a_macro_writes_whole_is_a_routine_and_binds(tmp_path: Path, name: str) -> None:
+    store = _macro(tmp_path)
+    try:
+        assert [q for q, _ in _bound(store)[name]] == [f"AFog.{name}"]
+    finally:
+        store.close()
+
+
+def test_two_routines_one_macro_writes_on_one_line_stay_two(tmp_path: Path) -> None:
+    store = _macro(tmp_path)
+    try:
+        rows = store.query("SELECT id, line_start FROM routines WHERE name IN ('SetHeight', 'SetColour')")
+        assert len({r["id"] for r in rows}) == 2 and len({r["line_start"] for r in rows}) == 1
+    finally:
+        store.close()
+
+
+def test_what_a_macro_written_body_calls_is_its_own(tmp_path: Path) -> None:
+    store = _macro(tmp_path)
+    try:
+        for name in ("SetDensity", "SetHeight", "SetColour"):
+            got = store.query(
+                "SELECT callee_id FROM calls c JOIN routines r ON r.id = c.caller_id"
+                " JOIN routines h ON h.id = c.callee_id WHERE r.name = ? AND h.name = 'Helper'",
+                (name,))
+            assert len(got) == 1, name
+    finally:
+        store.close()
+
+
+def test_accessors_in_a_class_the_macro_named_are_the_macro_s(tmp_path: Path) -> None:
+    """`DECLARE_CYCLE_STAT`: seven accessors per stat, 441 stats in Core, nothing to find."""
+    (tmp_path / "s.cpp").write_text(
+        "#define STAT(Id) struct FStat_##Id { static int Get() { return 1; } };\n"
+        "STAT(One)\nSTAT(Two)\n"
+        "#define HEAD(Name) struct Name { int Get() { return 2; } };\n"
+        "HEAD(Kept)\n")
+    store = Store(tmp_path / "g.db")
+    try:
+        analyze_tree(tmp_path, store)
+        rows = store.query("SELECT qualname FROM routines ORDER BY qualname")
+        assert [r["qualname"] for r in rows] == ["Kept.Get"], "the file writes `Kept`, and not FStat_One"
+    finally:
+        store.close()
+
+
+def test_a_macro_written_default_is_still_not_a_routine(tmp_path: Path) -> None:
+    store = _macro(tmp_path)
+    try:
+        assert store.query("SELECT id FROM routines WHERE qualname = 'AFog.AFog'") == []
+    finally:
+        store.close()

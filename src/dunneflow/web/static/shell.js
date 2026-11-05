@@ -17029,7 +17029,7 @@ const NAV_GROUPS = [
   { id: "navWaysIn", title: "Ways in", open: true,
     note: () => navFilterNote(
       ENTRYPOINTS.filter(e => navMatch(navQuery(), e.name, e.module)).length,
-      ENTRYPOINTS.length, "ways in", 6),
+      ENTRYPOINTS.length, ENTRYPOINTS.length === 1 ? "way in" : "ways in", 6),
     items: () => {
       const q = navQuery();
       /* `Overview` is a place, not a name in the program -- it stays put while a search is

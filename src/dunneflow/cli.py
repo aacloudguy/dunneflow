@@ -1355,7 +1355,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
         print(
             f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal "
             f"calls · {c['boundaries']:,} boundary touches · {c['structures']:,} "
-            f"structures · {c['entrypoints']:,} ways in"
+            f"structures · {c['entrypoints']:,} way{'' if c['entrypoints'] == 1 else 's'} in"
         )
         print(f"graph: {db_path}")
         if doc_stats is not None:

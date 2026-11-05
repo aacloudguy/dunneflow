@@ -303,8 +303,12 @@ presets:
     # `BlueprintImplementableEvent` has no C++ body anywhere: Blueprint implements it, and
     # C++ calls it through the same generated thunk. A replicated function is the first kind:
     # `UFUNCTION(Server)`'s own name is the thunk that sends it, and what runs on arrival is
-    # `<Name>_Implementation`. `Client` and `NetMulticast` are the same.
+    # `<Name>_Implementation`. `Client` and `NetMulticast` are the same. A `CustomThunk` tells
+    # UHT not to write the thunk, because a person did: Blueprint enters at `exec<Name>`, with
+    # the VM's own parameters, and `<Name>` is at most a stub that says it is never called.
     bodies:
+      CustomThunk:
+        prefix: exec
       BlueprintNativeEvent:
         suffix: _Implementation
       Server:

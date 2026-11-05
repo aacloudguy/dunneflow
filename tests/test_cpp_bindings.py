@@ -538,3 +538,36 @@ def test_a_macro_written_default_is_still_not_a_routine(tmp_path: Path) -> None:
         assert store.query("SELECT id FROM routines WHERE qualname = 'AFog.AFog'") == []
     finally:
         store.close()
+
+
+def test_a_custom_thunk_is_bound_to_the_exec_function_not_its_stub(tmp_path: Path) -> None:
+    store = _macro(tmp_path)
+    try:
+        bound = _bound(store)
+        assert [q for q, _ in bound["Resize"]] == ["ALib.execResize"], "inline in the header"
+        assert [q for q, _ in bound["Count"]] == ["ALib.execCount"], "DEFINE_FUNCTION in the .cpp"
+    finally:
+        store.close()
+
+
+def test_a_custom_thunk_with_no_exec_says_so(tmp_path: Path) -> None:
+    store = _macro(tmp_path)
+    try:
+        assert bound_why(store, "Gone") == (
+            "its body is `execGone`, and no single definition of that was read")
+    finally:
+        store.close()
+
+
+def test_without_the_preset_a_custom_thunk_is_not_guessed(tmp_path: Path) -> None:
+    store = _macro(tmp_path, preset=False)
+    try:
+        assert [q for q, _ in _bound(store)["Resize"]] == ["ALib.Resize"]
+    finally:
+        store.close()
+
+
+def bound_why(store: Store, name: str) -> str:
+    rows = store.query("SELECT why FROM supplied_bindings WHERE name = ? OR entrypoint_id IN"
+                       " (SELECT id FROM entrypoints WHERE name = ?)", (name, name))
+    return str(rows[0]["why"])

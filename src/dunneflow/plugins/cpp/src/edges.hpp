@@ -316,11 +316,14 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     // provided one marked declaration asks: overloads stay apart, and two askers bind nothing.
     using Shape = std::pair<std::string, int>;
     std::map<Shape, std::vector<Where>> shaped;
+    std::map<std::string, std::vector<Where>> named;  // a body a marker names, whatever its shape
     for (const auto& d : t.defs) {
         if (d.is_record || d.qualname.empty()) continue;
         Where w{d.file, d.name, d.line, d.invalid};
         auto& v = shaped[{d.qualname, d.args}];
         if (std::find(v.begin(), v.end(), w) == v.end()) v.push_back(w);
+        auto& n = named[d.qualname];
+        if (std::find(n.begin(), n.end(), w) == n.end()) n.push_back(w);
     }
     std::map<Shape, std::set<std::string>> askers;
     // By where each is written, not by id: two overloads whose types were both missing can
@@ -349,7 +352,20 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                 break;
             }
         }
-        if (own != bodies.end() && own->second.size() == 1) {
+        const std::vector<Where>* entered = nullptr;
+        std::string entered_as;
+        if (rule && !rule->prefix.empty() && m.qualname.size() >= m.name.size()) {
+            entered_as = rule->prefix + m.name;
+            auto it = named.find(m.qualname.substr(0, m.qualname.size() - m.name.size()) + entered_as);
+            if (it != named.end() && it->second.size() == 1) entered = &it->second;
+        }
+        if (entered) {
+            at(*entered);
+            by_suffix++;
+        } else if (rule && !rule->prefix.empty()) {
+            b.why = "its body is `" + entered_as + "`, and no single definition of that was read";
+            no_body++;
+        } else if (own != bodies.end() && own->second.size() == 1) {
             at(own->second);
             by_usr++;
         } else if (own != bodies.end() && own->second.size() > 1) {

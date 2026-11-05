@@ -86,6 +86,8 @@ struct Preset {
     struct Body {
         std::string suffix;  // the body is the method of this name plus the suffix
         std::string why;     // there is no body here, and this is why
+        std::string prefix;  // the body is the method of this prefix plus the name, whatever its
+                             // parameters, and what runs even when the name has a body too
     };
     std::map<std::string, Body> bodies;
 };
@@ -149,7 +151,7 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         }
         x.module_file_suffix = p["module_defines"]["file_suffix"].str();
         x.module_define = p["module_defines"]["define"].str();
-        for (const auto& [marker, b] : p["bodies"].map()) x.bodies[marker] = {b["suffix"].str(), b["why"].str()};
+        for (const auto& [marker, b] : p["bodies"].map()) x.bodies[marker] = {b["suffix"].str(), b["why"].str(), b["prefix"].str()};
         if (x.name.empty() || x.marker.empty()) {
             notes.push_back("a preset in detectors/cpp.yaml has no name or no marker, and is not used");
             continue;

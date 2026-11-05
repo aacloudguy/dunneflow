@@ -101,6 +101,84 @@ def use(items):
 '''
 
 
+# OpenUSD's 82: `usdviewq/freeCamera.py`, a property and its setter. Both bodies are live.
+PROPERTY = '''
+class Camera:
+    @property
+    def fov(self):
+        return self._fov
+
+    @fov.setter
+    def fov(self, value):
+        self._fov = value
+
+    @fov.deleter
+    def fov(self):
+        del self._fov
+'''
+
+# OpenUSD's 5: `pxr/base/trace/__main__.py` and `usdviewq/qt.py`. Only one arm ever runs.
+MODULE_ARMS = '''
+import sys
+if sys.argv:
+    def pick(x):
+        return x
+else:
+    def pick(x):
+        return -x
+'''
+
+CLASS_ARMS = '''
+import sys
+class Camera:
+    if sys.argv:
+        def pick(self):
+            return 1
+    else:
+        def pick(self):
+            return 2
+'''
+
+TRY_ARMS = '''
+try:
+    import json
+    def load(x):
+        return json.loads(x)
+except ImportError:
+    def load(x):
+        return x
+'''
+
+# Two definitions on one arm: the arm excuses nothing, because the first is still replaced.
+ONE_ARM = '''
+import sys
+if sys.argv:
+    def pick(x):
+        return x
+    def pick(x):
+        return -x
+'''
+
+# A decorator that is merely some other thing's attribute says nothing about this name.
+OTHER_DECORATOR = '''
+import functools
+class Camera:
+    @functools.cache
+    def fov(self):
+        return 1
+
+    @functools.cache
+    def fov(self):
+        return 2
+'''
+
+# Half a property: the third definition really does replace the second.
+SETTER_THEN_DUPLICATE = PROPERTY + '''
+    def fov(self):
+        return 0
+'''
+
+
 def _collisions(tmp_path: Path, source: str) -> list[anomalies.Anomaly]:
     store: Store = _analyze(tmp_path, {"prog.py": source})
     try:
@@ -113,6 +191,38 @@ def _collisions(tmp_path: Path, source: str) -> list[anomalies.Anomaly]:
                          ids=["create_standalone", "used-between", "arm-apart"])
 def test_a_sequential_rebinding_is_not_a_collision(tmp_path: Path, source: str) -> None:
     assert _collisions(tmp_path, source) == []
+
+
+@pytest.mark.parametrize("source", [PROPERTY, MODULE_ARMS, CLASS_ARMS, TRY_ARMS],
+                         ids=["property", "module-arms", "class-arms", "try-arms"])
+def test_a_rebinding_at_any_scope_is_not_a_collision(tmp_path: Path, source: str) -> None:
+    assert _collisions(tmp_path, source) == []
+
+
+@pytest.mark.parametrize("source", [ONE_ARM, OTHER_DECORATOR, SETTER_THEN_DUPLICATE],
+                         ids=["one-arm", "other-decorator", "setter-then-duplicate"])
+def test_a_duplicate_at_module_or_class_scope_is_still_broken(
+        tmp_path: Path, source: str) -> None:
+    found = _collisions(tmp_path, source)
+    assert len(found) == 1 and found[0].severity == anomalies.BROKEN
+
+
+@pytest.mark.parametrize("source", [MODULE_ARMS, TRY_ARMS], ids=["if", "try"])
+def test_definitions_on_two_arms_are_not_a_redefinition(tmp_path: Path, source: str) -> None:
+    store: Store = _analyze(tmp_path, {"prog.py": source})
+    try:
+        assert [a for a in detect(store).items if a.kind == "REDEFINITION"] == []
+    finally:
+        store.close()
+
+
+def test_a_redefinition_in_one_block_is_still_reported(tmp_path: Path) -> None:
+    store: Store = _analyze(tmp_path, {"prog.py": MODULE_SCOPE})
+    try:
+        assert [a.subject for a in detect(store).items
+                if a.kind == "REDEFINITION"] == ["prog.pick"]
+    finally:
+        store.close()
 
 
 def test_a_true_duplicate_is_still_broken(tmp_path: Path) -> None:

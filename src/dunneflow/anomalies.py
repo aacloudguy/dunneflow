@@ -382,7 +382,7 @@ def _any_called(store: Store, ids: list[str]) -> bool:
 
 
 def _decision_arms(store: Store, routine_id: str) -> list[tuple[str, int, int, int]]:
-    """Every arm of every `DECISION` in one routine, as `(point, arm, first, last)` lines.
+    """Every arm of every decision or `try` in one routine, as `(point, arm, first, last)`.
 
     `control_arms` records an arm's *header* line only, so an arm's body is read as running
     from its header to the line before the next arm's, and the last arm to the end of the
@@ -391,7 +391,8 @@ def _decision_arms(store: Store, routine_id: str) -> list[tuple[str, int, int, i
     out: list[tuple[str, int, int, int]] = []
     for d in store.query(
             "SELECT point_id, line_start, line_end FROM control"
-            " WHERE routine_id = ? AND kind = 'DECISION' ORDER BY line_start, point_id",
+            " WHERE routine_id = ? AND kind IN ('DECISION', 'HANDLER')"
+            " ORDER BY line_start, point_id",
             (routine_id,)):
         heads = [int(a["line_start"]) for a in store.query(
             "SELECT line_start FROM control_arms WHERE point_id = ? ORDER BY idx",
@@ -402,52 +403,71 @@ def _decision_arms(store: Store, routine_id: str) -> list[tuple[str, int, int, i
     return out
 
 
+def _decorated_by_itself(decorators: str, name: str) -> bool:
+    """Whether a definition's decorator is written in the definition's own name.
+
+    `@fov.setter` reads the `fov` already bound and hands back something holding both, so
+    the earlier definition is used by the later one. It is the same for `@f.register`, and
+    the test is the written name, not the word `setter`, so no language's vocabulary is
+    needed to ask it.
+    """
+    return any(str(d).replace("(", ".").split(".", 1)[0] == name
+               for d in json.loads(decorators or "[]"))
+
+
 def _is_rebinding(store: Store, members: list[Occurrence]) -> bool:
-    """Whether a group of nested definitions is one name *rebound in sequence*, not a
-    collision.
+    """Whether a group of definitions is one name *rebound*, not a collision.
 
     Unreal's `TraceLog/create_standalone.py` defines `predicate` inside `_main_trace`,
     passes it to `_collect_source`, and then -- under `if analysis:` -- defines a second
     `predicate` and passes that. It was the one BROKEN finding in all of `Runtime`, and
-    the program has no defect: the first definition is used before the second exists, and
-    the second exists only on one arm. Either is enough to make *only the last one exists
-    at run time* false, so each consecutive pair must show one of them:
+    the program has no defect. OpenUSD then gave 89 at BROKEN, of which 87 were false: 82
+    a `@property` with its `@x.setter`, and 5 a function defined on each arm of a
+    module-level `if`, where only one ever runs. Any of these makes *only the last one
+    exists at run time* false, so each consecutive pair must show one of them:
 
-    - **an arm apart** -- one definition sits in a `DECISION` arm the other does not, so
-      at most one of them runs on a given pass; or
+    - **decorated by itself** -- the later definition's decorator is written in the name
+      being defined, so the earlier one is what it is built from. Any scope;
+    - **an arm apart** -- one definition sits in an arm of a decision or a `try` that the
+      other does not, so they are alternatives. Any scope: a module's and a class body's
+      decisions belong to the file's `<module>` routine; or
     - **used between** -- the name is called, or passed as an argument, by the enclosing
       routine on a line between the end of one definition and the start of the next.
-
-    Only definitions nested in one enclosing routine are judged: at module or class
-    scope the later one really does replace the earlier for every caller, which is the
-    finding.
+      Nested definitions only: at module or class scope the later one really does replace
+      the earlier for every caller, which is the finding.
     """
     if len(members) < 2:
         return False
     rows = store.query(
-        "SELECT id, name, qualname, file, line_start, line_end, is_nested FROM routines"
-        f" WHERE id IN ({','.join('?' * len(members))})"
+        "SELECT id, name, qualname, file, line_start, line_end, is_nested, decorators"
+        f" FROM routines WHERE id IN ({','.join('?' * len(members))})"
         " ORDER BY line_start, id", tuple(m.id for m in members))
-    if any(not x["is_nested"] for x in rows) or len({x["file"] for x in rows}) != 1:
+    if len({x["file"] for x in rows}) != 1:
         return False
-    parent = str(rows[0]["qualname"]).rsplit(".", 1)[0]
-    enclosing = store.query(
-        "SELECT id FROM routines WHERE file = ? AND qualname = ?"
-        " AND line_start <= ? AND line_end >= ? ORDER BY line_start DESC, id LIMIT 1",
-        (rows[0]["file"], parent, rows[0]["line_start"], rows[-1]["line_end"]))
-    if not enclosing:
-        return False
-    outer = str(enclosing[0]["id"])
-    arms = _decision_arms(store, outer)
+    nested = all(x["is_nested"] for x in rows)
+    if nested:
+        enclosing = store.query(
+            "SELECT id FROM routines WHERE file = ? AND qualname = ?"
+            " AND line_start <= ? AND line_end >= ? ORDER BY line_start DESC, id LIMIT 1",
+            (rows[0]["file"], str(rows[0]["qualname"]).rsplit(".", 1)[0],
+             rows[0]["line_start"], rows[-1]["line_end"]))
+    else:
+        enclosing = store.query(
+            "SELECT id FROM routines WHERE file = ? AND name = '<module>' LIMIT 1",
+            (rows[0]["file"],))
+    outer = str(enclosing[0]["id"]) if enclosing else ""
+    arms = _decision_arms(store, outer) if outer else []
     name = str(rows[0]["name"])
 
     def where(line: int) -> frozenset[tuple[str, int]]:
         return frozenset((p, i) for p, i, first, last in arms if first <= line <= last)
 
     for a, b in zip(rows, rows[1:], strict=False):
-        if where(int(a["line_start"])) != where(int(b["line_start"])):
+        if _decorated_by_itself(str(b["decorators"]), name):
             continue
-        if store.query(
+        if outer and where(int(a["line_start"])) != where(int(b["line_start"])):
+            continue
+        if nested and outer and store.query(
                 "SELECT 1 FROM calls c LEFT JOIN call_args ca ON ca.site_id = c.site_id"
                 " WHERE c.caller_id = ? AND c.line > ? AND c.line < ?"
                 "   AND (c.callee_expr = ? OR ca.expr = ?) LIMIT 1",
@@ -487,10 +507,11 @@ def _name_collisions(store: Store, r: Report) -> None:
             blind_spot="If these are nested functions in different enclosing scopes "
                        "they are distinct and this is a naming defect in DunneFlow, "
                        "not in the program. Check whether the definitions sit inside "
-                       "different functions. A nested name rebound in sequence -- used "
-                       "before it is defined again, or defined on different arms of a "
-                       "decision -- is already left out; one used only through something "
-                       "this map does not record as a call or an argument is not.",
+                       "different functions. A name rebound -- decorated in its own "
+                       "name, defined on different arms of a decision or a `try`, or "
+                       "nested and used before it is defined again -- is already left "
+                       "out; one used only through something this map does not record as "
+                       "a call or an argument is not.",
             # Grouped by language and qualname, so the pair is the key -- unique by
             # construction. `f` is MIN(file) and is deliberately not here: it names one of
             # the colliding definitions arbitrarily, and which one it names can move.
@@ -516,14 +537,17 @@ def _redefinitions(store: Store, r: Report) -> None:
             "WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
             "  AND module = ? AND name = ? AND lang = ?",
             (row["module"], row["name"], row["lang"]))
+        if _is_rebinding(store, members):
+            continue
         r.add(Anomaly(
             kind="REDEFINITION", severity=SUSPECT, confidence=CERTAIN,
             title=f"`{row['name']}` is defined {row['n']} times in one module",
             detail=f"`{row['name']}` is defined {row['n']} times in `{row['module']}` "
                    f"(lines {_at_lines(members)}). The later definition shadows the earlier.",
-            blind_spot="Conditional definitions (`if TYPE_CHECKING:`, platform "
-                       "branches, try/except ImportError) legitimately define a name "
-                       "more than once and only one is ever live.",
+            blind_spot="Definitions on different arms of a decision or a `try` are "
+                       "already left out. One made conditional some other way, such as "
+                       "an early return or a loop, is not, and only one of them may ever "
+                       "be live.",
             # The GROUP BY key, all three parts of it: the same name in two modules is
             # two findings, and joining them into one string would be a key that cannot
             # say which part is which.

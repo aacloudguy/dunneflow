@@ -19,11 +19,11 @@
 #   contains  -- the dotted name contains one of these
 #
 # **Two C++ shapes are deliberately not here, and both are in code.** `std::cout << x` has
-# no parentheses, so no form above can reach it — `extractors/cpp/calls.py` recognises a
+# no parentheses, so no form above can reach it — `plugins/cpp/src/extract.hpp` recognises a
 # short fixed list of stream objects by shape, on the precedent the Python reader sets for
 # argparse registration: a *shape* lives in code, a *name* lives here. And the most vexing
-# parse — `std::ifstream f(path);` against `int x(5);` — is settled by the allow-list the
-# FILE rules below already are, because telling them apart in general needs a symbol table.
+# parse — `std::ifstream f(path);` against `int x(5);` — is settled by clang, which reports
+# the first as a construction, and the FILE rules below then name the type.
 #
 # **Unreal's macros are entrypoint rules rather than boundary rules.** `UFUNCTION(
 # BlueprintCallable)` is a registration (rule 7): it says this C++ can be called from

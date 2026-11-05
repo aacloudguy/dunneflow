@@ -68,18 +68,20 @@ says what the fifth and sixth cost).
 |---|---|---|---|---|
 | **Python** | `.py` | stdlib `ast`, in process | decorated CLI commands, HTTP routes, queue consumers, scheduled jobs, MCP listeners | resolved |
 | **TypeScript** | `.ts` `.tsx` `.mts` `.cts`, JSX | TypeScript's own compiler, out of process | Next.js App Router pages and route handlers, React hook callbacks, Prisma and Supabase, `fetch` / WebSocket / EventSource / socket.io | resolved — by the compiler, not guessed |
-| **C++** | `.cpp` `.cc` `.cxx` `.h` `.hpp` `.inl` … | syntactically, in process | Unreal `UFUNCTION`s that are Blueprint-callable, replicated or `Exec`; `UE_LOG`; Unreal's file APIs | not resolved, and counted |
+| **C and C++** | `.c` `.cpp` `.cc` `.cxx` `.h` `.hpp` `.inl` … | clang's own parser (libclang), out of process, built on your machine | `main`; Unreal `UFUNCTION`s that are Blueprint-callable, replicated or `Exec`; `UE_LOG`; file, process and environment calls | resolved — by clang, where a file's includes can be found; every other call says why it was not |
 | **Kotlin** | `.kt` `.kts` | syntactically, in process | Android and Hilt entry points, Jetpack `@Composable`, Retrofit, scheduled work | not resolved, and counted |
 | **Go** | `.go` | Go's own type checker (`go/types`), out of process | `main`, `net/http` and router handlers registered by a call, cobra commands | resolved — by the checker, not guessed |
 | **Rust** | `.rs` | `syn`, out of process, built on your machine and never fetching | each Cargo binary's `fn main`; `std::net`, `reqwest`/`ureq`, `rusqlite`, the OS keychain, the crypto crates | resolved by path — only where a path, or a type the source writes down, names one definition; every other call says where it stops and why |
 | **Java** | `.java` | javac, out of process, built on your machine and never fetching | `main`; Spring MVC and JAX-RS routes; `@Scheduled`, listeners, Guice and Spring `@Provides`/`@Bean`; JDBC, Netty, `java.net`, `java.nio.file`, the JCA | resolved — by javac, not guessed; a call several bodies may answer is followed into all of them, *by dispatch*, and never drawn as an edge |
 
-**C++ and Kotlin are read without a compiler**, for two different reasons. Most large C++
-trees cannot tell a compiler how they are built without being built first, and asking
-Kotlin's compiler would put a Java runtime inside a bundle whose whole dependency list is
-`pyyaml`. So those maps state what a program touches and every routine, loop and guard in it,
-but do not claim to know where a call goes. The run says so with a count rather than leaving
-you to notice.
+**Kotlin is read without a compiler**, because asking Kotlin's compiler would put a Java
+runtime inside a bundle whose whole dependency list is `pyyaml`. So a Kotlin map states what
+a program touches and every routine, loop and guard in it, but does not claim to know where
+a call goes. The run says so with a count rather than leaving you to notice.
+
+**C and C++ need no build first.** A `compile_commands.json` is used if there is one.
+Otherwise include paths are inferred from the tree and a file is read on past an include
+that cannot be found, and the map counts what that left out.
 
 Documents beside the code (Markdown, reStructuredText, AsciiDoc and plain text) and the code's own docstrings and comments are
 read too, as evidence and never as code: a glossary term quotes the file and line that defines
@@ -238,8 +240,14 @@ or a model SDK. That is a standing guarantee rather than a current state of affa
 
 Stated here rather than left to be found:
 
-- **C++ and Kotlin calls are not resolved** inside the program; every one is external, and
-  the map says how many.
+- **Kotlin calls are not resolved** inside the program; every one is external, and the map
+  says how many.
+- **A C or C++ tree that has not been configured loses what its build would generate**:
+  `config.h`, `*.generated.h`. Unreal's `Runtime` read 10,923 of 18,259 files past a missing
+  include. The calls clang could not then resolve are counted, each with its reason.
+- **A large C++ tree takes hours, and one header edit re-reads all of it.** A file's facts
+  depend on what it includes. Unreal's `Runtime` (18,263 files) took 2 h 20 m to 3 h on an
+  8 GB Apple M1, so `analyze` states an estimate and asks first.
 - **A very large single map is slow to open.** 262,879 routines (one part of Unreal) takes
   about 4.6 minutes in the dashboard, down from 27.6. Reading in parts keeps each map to a
   size that opens quickly.

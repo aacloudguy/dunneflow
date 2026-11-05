@@ -115,17 +115,19 @@ Unlike the Windows chooser, this one **comes to the front on its own**.
 ## Which languages it reads, and the one thing you may have to install
 
 DunneFlow reads **Python**; **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and TSX
-included; **C++** — `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings;
+included; **C and C++** — `.c`, `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings;
 **Kotlin** — `.kt` and `.kts`; **Go** — `.go`; **Rust** — `.rs`; and **Java** — `.java`.
 
-**Four of the seven need something installed.** Python, C++ and Kotlin DunneFlow reads
-itself.
+**Five of the seven need something installed.** Python and Kotlin DunneFlow reads itself.
 TypeScript it reads by asking TypeScript's own compiler, which needs **Node.js 20 or newer**
 on the machine; Go by asking Go's own type checker, which needs **Go 1.22 or newer**; and
 Rust with a reader built by **Rust 1.79 or newer** (`cargo`, as `rustup` installs it); and
 Java by asking javac, which needs a **JDK 17 or newer** — a JDK, with its compiler, and not
-only a Java runtime. The Go, Rust and Java readers are built on your machine the first time
-each is needed — about a second for Go, ten for Rust and a few for Java — and no build is
+only a Java runtime; and C and C++ by asking clang, which needs **clang 15 or newer and its
+libclang library**: the Xcode Command Line Tools on macOS, an LLVM release or your
+distribution's packages on Linux, and LLVM or Visual Studio's C++ Clang tools on Windows.
+The Go, Rust, Java and C++ readers are built on your machine the first time each is needed —
+about a second for Go, a few for Java, ten for Rust and seven for C++ — and no build is
 repeated or downloads anything. A package your program imports from outside the tree being
 read is counted as outside it, not fetched; for Rust, a dependency already in your local
 cargo cache is *read*, and for Java a jar already in your local Maven or Gradle cache is, so
@@ -151,23 +153,34 @@ why, in the inspector and in `touches`. Test code is left out as it is for every
 `#[test]` functions, `#[cfg(test)]` blocks, and whole files that a `#[cfg(test)] mod`
 declaration names — and the summary counts each kind.
 
-**C++ and Kotlin are read without a compiler, and it is worth knowing why before you read
-one of those maps.** For C++ the reason is that a compiler needs to know how your program is
-built — every include path and every defined symbol — before it will read a single file, and
-most large C++ trees cannot supply that without being built first. For Kotlin the compiler
-*could* be asked, and asking it would mean a Java runtime on every machine that reads a `.kt`
-file. Neither is read by guessing instead; both are read by *reading*, and what you get is
-honest about the difference:
+**And in a C or C++ map.** A compiler normally needs to know how your program is built —
+every include path and defined symbol — and most large trees cannot say without being built
+first. So nothing has to be built. A `compile_commands.json` is used if there is one.
+Otherwise include paths are inferred from the tree, a known framework's build settings are
+applied (the map says which), and a file is read on past an include that cannot be found.
+
+| What to expect | Why |
+|---|---|
+| some calls are not connected, each with its reason | a header your build generates, such as `config.h` or `*.generated.h`, does not exist yet, so clang cannot resolve what it declares |
+| code in an inactive `#if` arm is not in the map | the map shows this machine's target, and counts the lines it left out |
+| a virtual call may have several destinations | it is drawn to the overriders that fit the receiver's type, and marked as dispatched |
+| one header edit re-reads the whole tree | what a file means depends on what it includes |
+| a large tree takes a long time | Unreal's `Runtime`, 18,263 files, took 2 h 20 m to 3 h on an 8 GB Apple M1, and `analyze` states an estimate and asks first |
+
+**Kotlin is read without a compiler, and it is worth knowing why before you read one of those
+maps.** Kotlin's compiler *could* be asked, and asking it would mean a Java runtime on every
+machine that reads a `.kt` file. It is not read by guessing instead; it is read by *reading*,
+and what you get is honest about the difference:
 
 | It tells you | It does not tell you |
 |---|---|
 | every routine, and where its body is | which of three overloads a call meant |
 | what it touches — files, the environment, the network, a database | where a call goes inside your own program |
-| every loop, branch, guard and handler | what a C++ macro expands to |
-| what registers it — a `UFUNCTION` with Blueprint, an `@AndroidEntryPoint` with Android | anything from a file it did not itself read |
+| every loop, branch, guard and handler | anything from a file it did not itself read |
+| what registers it — an `@AndroidEntryPoint` with Android | |
 
-Calls in a C++ or Kotlin map are all **external**, and the run says so with a count rather
-than leaving you to notice. That is the tool being clear about what it did, not a setting to
+Calls in a Kotlin map are all **external**, and the run says so with a count rather than
+leaving you to notice. That is the tool being clear about what it did, not a setting to
 change.
 
 **One thing to expect in a Kotlin map in particular.** Kotlin's house style is

@@ -1,14 +1,12 @@
 """Kotlin, read without a compiler — the fourth language, and the second hand-written one.
 
-Stdlib only, in process, on the same discipline as `extractors/cpp/` and for a different
-reason. C++ refused a semantic read on evidence: the demo corpus cannot tell a compiler how
-it is built without being built first. Kotlin's compiler *could* be asked, and asking it
+Stdlib only, in process. Kotlin's compiler *could* be asked, and asking it
 would mean a JVM on every machine that reads a `.kt` file and a
 `kotlin-compiler-embeddable` jar inside a bundle whose entire runtime dependency list is
 `pyyaml`. The trade is stated rather than assumed: **what that would buy is resolved calls**,
 and what it would cost is the frozen application.
 
-**Kotlin is a far more regular language to read than C++**, and the reader is smaller for it.
+**Kotlin is a regular language to read by hand**, which is what makes this affordable.
 There is no preprocessor, no header/implementation split, no line splicing and no most vexing
 parse. Every function is introduced by `fun`, every type by `class`, `object`, `interface` or
 `enum class`, and a file's package is stated at the top rather than inferred from where the

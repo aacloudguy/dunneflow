@@ -129,6 +129,7 @@ struct Result {
     int fatal = 0, errors = 0;   // diagnostics in this file's parse
     std::string first_missing;   // the first include it could not find
     long skipped_lines = 0;      // lines in inactive #if arms of this file
+    long misread = 0;            // functions clang read as variables, recovered from the tokens
     // A fragment (`.inl`, `.ipp`) is read through a file that includes it. `through` is that
     // file, relative, once it was; `not_included` says the includer's parse never reached
     // it (an inactive guard), so the caller tries the next includer or reads it alone.
@@ -592,7 +593,14 @@ private:
             visit(c);
             return;
         }
-        if (k == CXCursor_VarDecl && stack_.empty()) constant(c);
+        if (k == CXCursor_VarDecl && stack_.empty()) {
+            unsigned lo, hi;
+            if (misread_function(c, lo, hi) && routine(c, lo, hi)) {
+                x_.out->misread++;
+                return;
+            }
+            constant(c);
+        }
         if (k == CXCursor_EnumConstantDecl) enumerator(c);
         if (k == CXCursor_VarDecl && !stack_.empty()) {
             // Held so a construction under it can be told from a call: `Foo x{a}` reaches its
@@ -802,9 +810,58 @@ private:
         return i < x_.toks.size() && x_.toks[i].off == lo && (x_.toks[i].text == "{" || x_.toks[i].text == "try");
     }
 
+    // **A function clang read as a variable.** Where a parameter's type is a name clang knows as
+    // something else, or a header that would have said otherwise is missing, `void U::F(X* p)`
+    // is a legal variable `F` initialised with `X * p`, and the `{` after it a syntax error
+    // clang recovers from by skipping the whole body. No function cursor exists, and no error
+    // reaches this file's facts: AugmentedReality's `StartARSession` was simply not in its map.
+    // A variable followed by `{` is not a variable, so the body is taken from the tokens. clang
+    // kept nothing inside it, so its calls are named as written and counted as unresolved.
+    bool misread_function(CXCursor c, unsigned& lo, unsigned& hi) {
+        unsigned a, b;
+        extent(c, a, b);
+        // Its extent ends at its name, since clang has no type for it to initialise.
+        size_t open = x_.tok_at(b);
+        if (open >= x_.toks.size() || x_.toks[open].text != "(") return false;
+        long shut = matching(x_.toks, open);
+        if (shut < 0 || static_cast<size_t>(shut) + 1 >= x_.toks.size()) return false;
+        size_t i = static_cast<size_t>(shut) + 1;
+        if (x_.toks[i].text != "{") return false;
+        if (x_.in_macro(a) || x_.in_macro(x_.toks[i].off)) return false;
+        long close = matching(x_.toks, i);
+        if (close < 0) return false;
+        lo = x_.toks[i].off;
+        hi = x_.toks[static_cast<size_t>(close)].off + 1;
+        return true;
+    }
+
+    // Arguments as written between the `(` that ends at `end` and it: a misread function has no
+    // cursor to ask. Commas inside `<...>` and `(...)` are not separators.
+    int written_args(size_t end) const {
+        int depth = 0, angle = 0, commas = 0;
+        bool any = false;
+        for (size_t i = end; i-- > 0;) {
+            const std::string& t = x_.toks[i].text;
+            if (t == ")" || t == "]") depth++;
+            else if (t == "(" || t == "[") {
+                if (depth == 0) return any ? commas + 1 : 0;
+                depth--;
+            } else if (t == ">") angle++;
+            else if (t == "<") angle--;
+            else if (t == ">>") angle += 2;
+            else if (t == "," && depth == 0 && angle == 0) commas++;
+            any = true;
+        }
+        return 0;
+    }
+
     Routine* routine(CXCursor c) {
         unsigned lo, hi;
         if (!body(c, lo, hi)) return nullptr;  // `= default`, `= delete`: no body, no routine
+        return routine(c, lo, hi);
+    }
+
+    Routine* routine(CXCursor c, unsigned lo, unsigned hi) {
         unsigned a, b;
         extent(c, a, b);
         bool nested;
@@ -891,7 +948,9 @@ private:
         d.line = f.line_start;
         d.name = name;
         d.qualname = qualname;
-        d.args = C().clang_Cursor_getNumArguments(c);
+        d.args = C().clang_getCursorKind(c) == CXCursor_VarDecl
+                     ? written_args(x_.tok_at(lo) > 0 ? x_.tok_at(lo) - 1 : 0)
+                     : C().clang_Cursor_getNumArguments(c);
         // Said, not decided here: an invalid definition only loses a tie (`edges.hpp`).
         d.invalid = C().clang_isInvalidDeclaration(c) != 0;
         x_.out->defs.push_back(d);

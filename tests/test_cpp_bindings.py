@@ -571,3 +571,79 @@ def bound_why(store: Store, name: str) -> str:
     rows = store.query("SELECT why FROM supplied_bindings WHERE name = ? OR entrypoint_id IN"
                        " (SELECT id FROM entrypoints WHERE name = ?)", (name, name))
     return str(rows[0]["why"])
+
+
+# --------------------------------------------------- a function clang read as a variable
+
+MISREAD_H = """\
+#pragma once
+#define UFUNCTION(...)
+int Config;
+class ALib {
+public:
+    UFUNCTION(BlueprintCallable)
+    static void Start(int a, int b);
+    static void Other();
+};
+"""
+
+MISREAD_CPP = """\
+#include "Lib.h"
+void ALib::Other() {}
+void ALib::Start(Config* c, Pair<int, int> b)
+{
+    if (c) { Other(); }
+}
+int plain(5);
+int braced{6};
+"""
+
+
+def _misread(tmp_path: Path) -> Store:
+    root = tmp_path / "Source"
+    root.mkdir()
+    (root / "Lib.h").write_text(MISREAD_H)
+    (root / "Lib.cpp").write_text(MISREAD_CPP)
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    return store
+
+
+def test_a_function_clang_read_as_a_variable_is_still_a_routine(tmp_path: Path) -> None:
+    store = _misread(tmp_path)
+    try:
+        rows = store.query("SELECT qualname, line_start, line_end FROM routines WHERE name = 'Start'")
+        assert [tuple(r) for r in rows] == [("ALib.Start", 3, 6)]
+    finally:
+        store.close()
+
+
+def test_a_misread_function_keeps_what_its_body_writes(tmp_path: Path) -> None:
+    store = _misread(tmp_path)
+    try:
+        called = store.query(
+            "SELECT c.callee_expr FROM calls c JOIN routines r ON r.id = c.caller_id WHERE r.name = 'Start'")
+        assert [r["callee_expr"] for r in called] == ["Other"]
+        assert store.query("SELECT 1 FROM control k JOIN routines r ON r.id = k.routine_id"
+                           " WHERE r.name = 'Start'"), "its `if` is written, so it is read"
+    finally:
+        store.close()
+
+
+def test_a_misread_function_binds_by_name_and_argument_count(tmp_path: Path) -> None:
+    store = _misread(tmp_path)
+    try:
+        assert [q for q, _ in _bound(store)["Start"]] == ["ALib.Start"]
+    finally:
+        store.close()
+
+
+def test_a_real_variable_is_not_a_misread_function(tmp_path: Path) -> None:
+    store = _misread(tmp_path)
+    try:
+        assert store.query("SELECT 1 FROM routines WHERE name IN ('plain', 'braced', 'Config')") == []
+    finally:
+        store.close()
+

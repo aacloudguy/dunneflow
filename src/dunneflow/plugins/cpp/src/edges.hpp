@@ -49,6 +49,7 @@ struct Tree {
     std::vector<std::pair<std::string, std::string>> bases;
     std::vector<std::string> read_beyond;
     std::set<std::string> inputs;  // read, and not among the files: `edges_done.inputs`
+    long misread = 0;              // functions clang read as variables: see `misread_function`
     long fatal_files = 0, missing_files = 0, files = 0, skipped_lines = 0;
     std::map<std::string, long> missing;  // first missing include, per file that had one
     std::vector<extract::Mark> marks;
@@ -66,6 +67,7 @@ struct Tree {
         // fatals alone said nothing of nmap's 300 files missing OS/400's `qadrt.h`.
         if (!r.first_missing.empty()) missing_files++;
         skipped_lines += r.skipped_lines;
+        misread += r.misread;
         if (!r.first_missing.empty()) missing[r.first_missing]++;
         if (r.fragment) {
             if (!r.through.empty()) fragments_through++;
@@ -457,6 +459,10 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                     " that clang could not resolve, " + std::to_string(bound) + " through a function value, " +
                     std::to_string(ambiguous) + " with two definitions to choose between, " + std::to_string(macros) +
                     " written as a macro that is not one call");
+    if (t.misread)
+        notes.push_back("edges: " + std::to_string(t.misread) +
+                        " functions clang read as variables, so what they call is named as written and "
+                        "not resolved");
     if (constructs) notes.push_back("edges: " + std::to_string(constructs) + " constructions of this tree's classes by a constructor nobody wrote");
     if (t.missing_files) {
         notes.push_back("edges: " + std::to_string(t.missing_files) + " of " + std::to_string(t.files) +

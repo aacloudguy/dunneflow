@@ -123,6 +123,7 @@ struct Api {
 #undef DUNNEFLOW_DECLARE
     std::string path;     // the library that was opened
     std::string version;  // what it says it is
+    std::string resource; // clang's own headers, for the library `clang++` led us to; "" otherwise
 };
 
 // The one table every part of the reader calls through. Filled once, by `load`.
@@ -160,16 +161,13 @@ inline std::vector<std::string> candidates() {
     }
 #ifdef _WIN32
     std::string res = first_line("clang++ -print-resource-dir 2>NUL");
+    api().resource = res;
     if (!res.empty()) out.push_back(res + "\\..\\..\\..\\bin\\libclang.dll");
 #else
     std::string res = first_line("clang++ -print-resource-dir 2>/dev/null");
+    api().resource = res;
     if (!res.empty()) {
-        // Two components off, as text, never `res + "/../.."`: libclang finds its builtin
-        // headers by trimming the path it was opened by, also as text, and a `..` in it sent
-        // LLVM's Linux tarball looking in the wrong directory for `stddef.h`.
-        std::string lib = res;
-        for (int up = 0; up < 2 && lib.find('/') != std::string::npos; ++up)
-            lib = lib.substr(0, lib.find_last_of('/'));
+        std::string lib = res + "/../..";
 #ifdef __APPLE__
         out.push_back(lib + "/libclang.dylib");
 #else

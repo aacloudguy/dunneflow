@@ -129,6 +129,14 @@ struct Session {
         } else {
             a = {"-x", c ? "c" : cxx};
         }
+        // Said outright: libclang left to find its own resource directory did not, on LLVM's
+        // Linux tarball, and every file there read on without `stddef.h`. Before a database's
+        // arguments, so a `-resource-dir` of its own still wins.
+        const std::string& resource = clang::api().resource;
+        if (!resource.empty()) {
+            a.push_back("-resource-dir");
+            a.push_back(resource);
+        }
         // **No error limit.** clang stops a file at its twentieth error ("too many errors
         // emitted, stopping now", a fatal), and a reader that reads on past a missing header
         // meets twenty errors early: 210 of nmap's 766 files stopped there, and every call

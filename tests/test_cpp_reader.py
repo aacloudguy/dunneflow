@@ -448,12 +448,12 @@ def test_a_redefinition_clang_refused_loses_a_tie(tmp_path):
 
 @needs_clang
 def test_the_compiler_s_own_headers_are_found(tmp_path):
-    """`stddef.h` is clang's, not the system's. libclang finds it from the path it was opened
-    by, so a `..` in that path lost it on Linux, and every C or C++ file read on without it."""
+    """`stddef.h` is clang's, not the system's. libclang did not find it on LLVM's Linux
+    tarball, and every C or C++ file there read on without it."""
     _, _, said = _tree(tmp_path, {
         "a.c": "#include <stddef.h>\n#include <stdarg.h>\nvoid a(void) {}\n",
         "b.cpp": "#include <string>\nvoid b() {}\n"})
-    assert "file not found" not in said, said
+    assert not [line for line in said if "file not found" in line], said
 
 
 @needs_clang

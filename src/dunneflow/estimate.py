@@ -15,9 +15,13 @@ what it is based on:
 - **otherwise, the measured rates per language** below, each sourced to the PERFORMANCE.md
   row it came from, scaled by the machine's CPU count against the 8 they were taken on.
 
-The low end assumes everything already read is still in the source cache (`source.db`);
-the high end assumes nothing is. The run itself decides which, by hashing, and the gate
-cannot know that without doing the extraction's first half -- so it says both.
+The low end assumes every file's facts are still in a graph this version of the tool can
+read and nothing has changed; the high end assumes every file is read. The run itself decides
+which, by hashing, and the gate cannot know that without doing the extraction's first half --
+so it says both. **The cache is the graph's `files` table, not `source.db`**, which holds
+bodies and skips no reading: Runtime's graph went stale with `source.db` intact and the next
+run read all 18,263 files for 2 h 53 m. A reader that declares `facts_span_files` reads all
+of its files after any one edit, so one changed file lands it at the high end.
 """
 
 from __future__ import annotations
@@ -42,8 +46,10 @@ REFERENCE_CPUS = 8
 #: Every row is a measurement, and its source is the comment above it. A language with no row takes
 #: `FALLBACK`, and the basis sentence says so.
 RATES: dict[str, tuple[float, float]] = {
-    # Unreal's Engine/Source/Runtime, 18,263 files: 8,353 s extracting, 3,820 s after.
-    "cpp": (0.457, 0.209),
+    # Unreal's Engine/Source/Runtime, 18,263 files, 2026-11-04: 10,363 s extracting, 615 s
+    # after. The dearest tree per file measured, because headers grow with the tree: OpenUSD
+    # took 0.176 s a file and Runtime/Core 0.068 s, so it prices those high.
+    "cpp": (0.567, 0.034),
     # Society, 628 files: 37.7 s whole, cold. The split is unrecorded, so it is halved.
     "python": (0.030, 0.030),
     # 443 files: 1.5 s extracting, 1.83 s wall.
@@ -56,8 +62,8 @@ RATES: dict[str, tuple[float, float]] = {
     "java": (0.013, 0.009),
 }
 FALLBACK = (0.06, 0.05)
-#: A file whose bytes are already in `source.db` is hashed and skipped: Runtime, nothing
-#: changed, 18,263 files in 39.7 s off the external volume.
+#: A file whose facts are in a current graph is hashed and skipped: Runtime, nothing changed,
+#: 18,263 files in 39.7 s off the external volume.
 CACHED_S = 0.0022
 
 #: The phase `_Progress` times the extraction under. Every other phase is "after".
@@ -96,7 +102,7 @@ def estimate(by_lang: Mapping[str, int], *, prior: Mapping[str, Any] | None = No
     """The range for reading these files, from this program's last run or from the rates.
 
     `prior` is a finished run's sidecar (`state == "done"`, with `timings` and `files`), or
-    `None`. `cached_possible` is whether a source cache exists for the extraction to skip
+    `None`. `cached_possible` is whether a current graph exists for the extraction to skip
     from, which is the only thing that lets the low end fall below the high one.
     """
     total = sum(by_lang.values())

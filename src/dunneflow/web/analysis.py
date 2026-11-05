@@ -39,6 +39,7 @@ from typing import Any
 
 from .. import revisions, runstate
 from ..runtime import self_argv
+from ..store import facts_held
 
 # The tail of the child's stderr kept for a failure's reason. A traceback is a few dozen
 # lines and a runaway is not, and the reason is rendered in a dialog -- so it is bounded,
@@ -223,7 +224,7 @@ def estimate_for(source: Path, out_root: Path, name: str) -> Cost:
     cut = parts_under(source)
     out_dir = out_root / name
     est = estimate(cut.by_lang, prior=runstate.read(out_dir),
-                   cached_possible=(out_dir / "source.db").exists())
+                   cached_possible=facts_held(out_dir))
     return Cost(words=est.words(), basis=est.basis, files=cut.total, low_s=est.low_s,
                 high_s=est.high_s, over_bound=not cut.whole, parts=len(cut.parts))
 

@@ -2116,3 +2116,24 @@ class Store:
         positionally in each one is how they drift apart.
         """
         return list(self.conn.execute(sql, args))
+
+
+def facts_held(out_dir: Path) -> bool:
+    """Whether this program has a graph the next run could skip reading from.
+
+    Asked of a read-only open, which refuses a stale graph and never discards one. The
+    extraction cache is the graph's `files` table, so `source.db` surviving says nothing.
+    """
+    from . import revisions
+
+    graph = revisions.newest(out_dir, "graph")
+    if graph is None:
+        return False
+    try:
+        store = Store(graph, writable=False)
+    except StaleGraphError:
+        return False
+    try:
+        return store.conn.execute("SELECT 1 FROM files LIMIT 1").fetchone() is not None
+    finally:
+        store.close()

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -23,6 +24,7 @@ import pytest
 from dunneflow import estimate, runstate
 from dunneflow.cli import build_parser
 from dunneflow.estimate import WARN_AFTER_MAX
+from dunneflow.store import facts_held
 
 #: The console script's own entry point, as `pyproject.toml` declares it.
 CLI = [sys.executable, "-c", "import sys; from dunneflow.cli import main; sys.exit(main())"]
@@ -42,6 +44,30 @@ def test_twice_the_cpus_is_half_the_time_and_a_cache_lowers_only_the_low_end() -
     assert sixteen.high_s == pytest.approx(eight.high_s / 2, rel=1e-3)
     cached = estimate.estimate({"cpp": 1000}, cpus=8, cached_possible=True)
     assert cached.high_s == eight.high_s and cached.low_s < cached.high_s
+
+
+def test_only_a_current_graph_lowers_the_low_end(sample_tree: Path, tmp_path: Path) -> None:
+    """The cache is the graph's `files` table. Runtime's graph went stale with `source.db`
+    intact, and the next run read all 18,263 files."""
+    out = tmp_path / "out"
+    program = out / "sample"
+    program.mkdir(parents=True)
+    (program / "source.db").write_bytes(b"")
+    assert not facts_held(program), "a source.db alone holds no facts"
+
+    r = subprocess.run([*CLI, "analyze", str(sample_tree), "--name", "sample",
+                        "--output", str(out), "--any-size", "--quiet"],
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=300)
+    assert r.returncode == 0, r.stderr
+    assert facts_held(program)
+
+    graph = next(program.glob("graph@*.db"))
+    with sqlite3.connect(graph) as conn:
+        conn.execute("UPDATE meta SET value = 'older' WHERE key = 'extractor'")
+    assert not facts_held(program), "a stale graph will be discarded, so it holds nothing"
+    with sqlite3.connect(graph) as conn:
+        assert conn.execute("SELECT value FROM meta WHERE key = 'extractor'"
+                            ).fetchone()[0] == "older", "asking must not discard it"
 
 
 def test_a_language_with_no_measurement_is_named_not_hidden() -> None:

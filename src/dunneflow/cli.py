@@ -65,7 +65,13 @@ from .runtime import (
 from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
 from .standards import STANDARDS_DB, standards_refusal
-from .store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
+from .store import (
+    StaleGraphError,
+    Store,
+    UnfinishedMapError,
+    facts_held,
+    unfinished_sentence,
+)
 from .walk import (
     TOO_BIG,
     Breakdown,
@@ -586,7 +592,7 @@ def _size_verdict(root: Path, args: argparse.Namespace,
 
     prior = runstate.read(out_dir) if out_dir is not None else None
     est = estimate_run(cut.by_lang, prior=prior,
-                       cached_possible=out_dir is not None and (out_dir / "source.db").exists())
+                       cached_possible=out_dir is not None and facts_held(out_dir))
     limit = args.warn_after * 60
     if cut.whole and est.high_s <= limit:
         return None

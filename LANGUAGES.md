@@ -488,3 +488,10 @@ reading: OpenUSD's 89 BROKEN were noted as "all Python" for two days, and 87 wer
 header (`pxr/pxr.h`, `*.generated.h`) is missing from any unconfigured tree, so 4,622 of OpenUSD's
 5,104 C++ files and 10,923 of Runtime's 18,259 read on past a missing include. And any data-sized
 `IN (?,…)` overflows at this scale, which is why they became `json_each`.
+
+**A parser that recovers can lose things without saying so.** A reader that takes a parser's word
+for what exists inherits every silent recovery it has. clang read `void U::F(X* p)` as a variable
+and skipped the body, with no error on the file, and a body wholly inside a macro has no `{` where
+one was looked for. Neither was visible in a count. Both came out only by reading each "leads
+nowhere" against the source and asking why, and "no definition by a text search" had been recorded
+as an answer on the way. Ask the source before the map.

@@ -452,7 +452,7 @@ Never use `output/cpp-scale/runtime.sh`: it deletes its output first.
 | nmap | 1 · 288 · 7 |
 
 The first table is from aa6007a. The findings for Core, Runtime and OpenUSD were detected again
-from those same graphs after the fix. git, nmap and tmux were read again at 7dfd3d5, and their
+from those same graphs after the fix. git, nmap and tmux were read again at the head, and their
 findings are unchanged. **Core, Runtime and OpenUSD have not been read since eb21b9a**, which
 changes the C++ reader, so their maps refuse to open until they are.
 
@@ -481,5 +481,24 @@ maclab uses LLVM 22.1.0's tarball and GIZA Visual Studio's clang 19.1.5, and eac
 suite and `ingest-conform cpp`, and read tmux. The first Windows build did not compile, and the first Linux run
 lost clang's own `stddef.h`; both are fixed and tested. A figure here is the Mac's.
 
-**About 103 of those 309 have no definition in their module's text** by a simple search, which
-misses macro-written ones. They have not been read one by one.
+**The rest of those 309 were this tool's as well, and "no definition" was wrong.** Classified
+against Runtime's source on 2026-11-05: 67 are setters a macro writes whole (`void
+U::Set##Name(T v) {...}`), which the reader refused as having no body, and 39 are `CustomThunk`,
+whose body is `exec<Name>`. Both are fixed. A third kind no text search could show: where a
+parameter's type is a name clang knows as something else, `void U::F(X* p)` is a variable to clang,
+and the body is skipped with nothing recorded. AugmentedReality had 10 of those and git 1; the
+reader recovers them from the tokens and counts them. A class clang cannot name at all still gives
+no cursor, and is not recovered.
+
+| retaken at the head | routines before | after | unexplained ways in |
+|---|---:|---:|---:|
+| `AugmentedReality` | | 598 | 0 of 145 |
+| `AIModule` | | 3,022 | 0 of 210 |
+| `Core` | 27,911 | 29,089 | |
+| tmux | 2,422 | 2,683 | |
+| git | 12,462 | 12,794 | |
+| nmap | 8,746 | 8,750 | |
+
+Findings on tmux, git, nmap and Core are unchanged, at 0, 1, 1 and 0 broken. **Runtime has not been
+retaken with any of this**, so its count of 309 is what these fixes were aimed at and not a
+result.

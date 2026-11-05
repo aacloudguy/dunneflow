@@ -164,7 +164,12 @@ inline std::vector<std::string> candidates() {
 #else
     std::string res = first_line("clang++ -print-resource-dir 2>/dev/null");
     if (!res.empty()) {
-        std::string lib = res + "/../..";
+        // Two components off, as text, never `res + "/../.."`: libclang finds its builtin
+        // headers by trimming the path it was opened by, also as text, and a `..` in it sent
+        // LLVM's Linux tarball looking in the wrong directory for `stddef.h`.
+        std::string lib = res;
+        for (int up = 0; up < 2 && lib.find('/') != std::string::npos; ++up)
+            lib = lib.substr(0, lib.find_last_of('/'));
 #ifdef __APPLE__
         out.push_back(lib + "/libclang.dylib");
 #else

@@ -25,9 +25,26 @@ import pytest
 
 from dunneflow.store import Store
 
-#: Past the limit of the SQLite this suite runs on, with margin, and checked against it so
-#: the test cannot pass merely because a later SQLite raised the ceiling.
+#: Past the lowest limit a SQLite here is built with, with margin.
 N = 33_000
+LIMIT = 32_766
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _every_sqlite_has_the_low_limit() -> Iterator[None]:
+    """A distribution may build SQLite with a higher limit: Ubuntu's is 250,000, where a
+    generated `?` per id would pass here and still fail on a machine with the default."""
+    real = sqlite3.connect
+
+    def capped(*args, **kwargs):
+        conn = real(*args, **kwargs)
+        conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, LIMIT)
+        return conn
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(sqlite3, "connect", capped)
+    yield
+    patch.undo()
 
 
 def _limit() -> int:

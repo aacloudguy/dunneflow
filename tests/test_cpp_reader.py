@@ -447,6 +447,16 @@ def test_a_redefinition_clang_refused_loses_a_tie(tmp_path):
 
 
 @needs_clang
+def test_the_compiler_s_own_headers_are_found(tmp_path):
+    """`stddef.h` is clang's, not the system's. libclang finds it from the path it was opened
+    by, so a `..` in that path lost it on Linux, and every C or C++ file read on without it."""
+    _, _, said = _tree(tmp_path, {
+        "a.c": "#include <stddef.h>\n#include <stdarg.h>\nvoid a(void) {}\n",
+        "b.cpp": "#include <string>\nvoid b() {}\n"})
+    assert "file not found" not in said, said
+
+
+@needs_clang
 def test_an_inferred_directory_never_shadows_the_system_s_own_headers(tmp_path):
     """nmap's libssh2 carries an OS/400 `stdio.h`: the one file in the tree to answer
     `<stdio.h>`, so its directory was inferred, and as `-I` it shadowed the system's own —

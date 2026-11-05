@@ -230,11 +230,11 @@ def ways_in_affected(store: Store, routine_ids: list[str]) -> list[dict]:
         return []
     return [dict(r) for r in store.query(
         "SELECT DISTINCT name, kind FROM entrypoints"
-        " WHERE routine_id IN (SELECT value FROM json_each(?1))"
+        " WHERE routine_id IN (SELECT value FROM json_each(:ids))"
         "    OR id IN (SELECT entrypoint_id FROM entrypoint_roots"
-        "               WHERE routine_id IN (SELECT value FROM json_each(?1)))"
+        "               WHERE routine_id IN (SELECT value FROM json_each(:ids)))"
         " ORDER BY name",
-        (json.dumps(list(routine_ids)),),
+        {"ids": json.dumps(list(routine_ids))},
     )]
 
 

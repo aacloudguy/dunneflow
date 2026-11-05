@@ -486,7 +486,8 @@ def _macro(tmp_path: Path, *, preset: bool = True) -> Store:
 
 
 @pytest.mark.parametrize("name", ["SetDensity", "SetHeight", "SetColour"])
-def test_a_function_a_macro_writes_whole_is_a_routine_and_binds(tmp_path: Path, name: str) -> None:
+def test_a_function_a_macro_writes_whole_is_a_routine_and_binds(
+        tmp_path: Path, name: str) -> None:
     store = _macro(tmp_path)
     try:
         assert [q for q, _ in _bound(store)[name]] == [f"AFog.{name}"]
@@ -497,7 +498,8 @@ def test_a_function_a_macro_writes_whole_is_a_routine_and_binds(tmp_path: Path, 
 def test_two_routines_one_macro_writes_on_one_line_stay_two(tmp_path: Path) -> None:
     store = _macro(tmp_path)
     try:
-        rows = store.query("SELECT id, line_start FROM routines WHERE name IN ('SetHeight', 'SetColour')")
+        rows = store.query(
+            "SELECT id, line_start FROM routines WHERE name IN ('SetHeight', 'SetColour')")
         assert len({r["id"] for r in rows}) == 2 and len({r["line_start"] for r in rows}) == 1
     finally:
         store.close()
@@ -527,7 +529,8 @@ def test_accessors_in_a_class_the_macro_named_are_the_macro_s(tmp_path: Path) ->
     try:
         analyze_tree(tmp_path, store)
         rows = store.query("SELECT qualname FROM routines ORDER BY qualname")
-        assert [r["qualname"] for r in rows] == ["Kept.Get"], "the file writes `Kept`, and not FStat_One"
+        assert [r["qualname"] for r in rows] == ["Kept.Get"], (
+            "the file writes `Kept`, and not FStat_One")
     finally:
         store.close()
 
@@ -614,7 +617,8 @@ def _misread(tmp_path: Path) -> Store:
 def test_a_function_clang_read_as_a_variable_is_still_a_routine(tmp_path: Path) -> None:
     store = _misread(tmp_path)
     try:
-        rows = store.query("SELECT qualname, line_start, line_end FROM routines WHERE name = 'Start'")
+        rows = store.query(
+            "SELECT qualname, line_start, line_end FROM routines WHERE name = 'Start'")
         assert [tuple(r) for r in rows] == [("ALib.Start", 3, 6)]
     finally:
         store.close()
@@ -624,7 +628,8 @@ def test_a_misread_function_keeps_what_its_body_writes(tmp_path: Path) -> None:
     store = _misread(tmp_path)
     try:
         called = store.query(
-            "SELECT c.callee_expr FROM calls c JOIN routines r ON r.id = c.caller_id WHERE r.name = 'Start'")
+            "SELECT c.callee_expr FROM calls c JOIN routines r ON r.id = c.caller_id"
+            " WHERE r.name = 'Start'")
         assert [r["callee_expr"] for r in called] == ["Other"]
         assert store.query("SELECT 1 FROM control k JOIN routines r ON r.id = k.routine_id"
                            " WHERE r.name = 'Start'"), "its `if` is written, so it is read"
@@ -643,7 +648,8 @@ def test_a_misread_function_binds_by_name_and_argument_count(tmp_path: Path) -> 
 def test_a_real_variable_is_not_a_misread_function(tmp_path: Path) -> None:
     store = _misread(tmp_path)
     try:
-        assert store.query("SELECT 1 FROM routines WHERE name IN ('plain', 'braced', 'Config')") == []
+        assert store.query(
+            "SELECT 1 FROM routines WHERE name IN ('plain', 'braced', 'Config')") == []
     finally:
         store.close()
 

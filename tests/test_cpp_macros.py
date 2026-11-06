@@ -99,3 +99,90 @@ def test_a_macro_that_wrote_a_declaration_is_not_the_next_one_s_decorator(tmp_pa
     assert "VAR" not in _routine(ff, "c").decorators
     assert _routine(ff, "d").line_start == 8
     assert {"MARK", "Thing"} <= set(_routine(ff, "d").decorators)
+
+
+_PRELUDE = (
+    "extern \"C\" { int connect(int, const void *, int); int rename(const char *, const char *); }\n"
+    "void helper(const char *);\n"
+)
+
+
+def _site(ff, edges, qualname: str, expr: str):
+    rid = _routine(ff, qualname).id
+    found = [edges[c.site_id] for c in ff.calls if c.caller_id == rid and c.callee_expr == expr]
+    assert len(found) == 1, (qualname, expr, found)
+    return found[0]
+
+
+def test_a_function_named_in_a_macro_s_arguments_is_the_macro_s_call(tmp_path):
+    """`CALL(connect, 1)` writes no call: the macro makes one, starting at that name. It was
+    reported as a macro that expands to no call, and reached nothing."""
+    ff, edges, _ = _read(tmp_path, _PRELUDE + (
+        "#define CALL(f, a) f(a, 0, 0)\n"
+        "void t() { CALL(connect, 1); }\n"
+    ))
+    e = _site(ff, edges, "t", "CALL")
+    assert (e.reason, e.frontier) == ("outside", "connect"), e
+
+
+def test_a_call_written_in_a_macro_s_arguments_stays_the_one_written(tmp_path):
+    """And the macro around it is not credited with it, or `RETRY` would be `connect` twice
+    over. A member call starts at its receiver, not at its name (`checkf(Key.IsValid())`)."""
+    ff, edges, _ = _read(tmp_path, _PRELUDE + (
+        "struct K { bool IsValid(); };\n"
+        "#define RETRY(e) do { e; } while (0)\n"
+        "void t(K key) { RETRY(connect(1, 0, 0)); RETRY(key.IsValid()); }\n"
+    ))
+    assert _site(ff, edges, "t", "connect").frontier == "connect"
+    assert _site(ff, edges, "t", "key.IsValid").frontier == "K.IsValid"
+    assert _hits(ff, "t") == {("NETWORK", "connect")}
+    rid = _routine(ff, "t").id
+    sites = [edges[c.site_id] for c in ff.calls if c.caller_id == rid and c.callee_expr == "RETRY"]
+    assert len(sites) == 2
+    for e in sites:
+        assert (e.reason, e.frontier) == ("unfollowed", "RETRY")
+        assert "no call of its own" in e.how
+
+
+def test_an_operator_in_a_macro_s_arguments_says_nothing_about_the_macro(tmp_path):
+    ff, edges, _ = _read(tmp_path, (
+        "struct V { V operator+(const V &) const; };\n"
+        "#define ID(e) (e)\n"
+        "void t(V a, V b) { ID(a + b); }\n"
+    ))
+    e = _site(ff, edges, "t", "ID")
+    assert (e.reason, e.frontier) == ("unfollowed", "ID"), e
+
+
+def test_a_macro_named_like_a_boundary_that_can_call_nothing_touches_nothing(tmp_path):
+    """`#define rename(a, b) 0` recorded FILE OUT at a line where no file is touched."""
+    ff, edges, _ = _read(tmp_path, _PRELUDE + (
+        "#undef rename\n"
+        "#define rename(a, b) 0\n"
+        "void t() { rename(\"a\", \"b\"); }\n"
+    ))
+    assert _hits(ff, "t") == set()
+    e = _site(ff, edges, "t", "rename")
+    assert (e.reason, e.frontier) == ("unfollowed", "rename")
+    assert "no call of its own" in e.how
+
+
+@pytest.mark.parametrize("body", ["open64", "SOMETHING_ELSE", "other(a)"])
+def test_a_macro_with_a_word_in_it_keeps_its_boundary_when_clang_shows_nothing(tmp_path, body):
+    """Clang drops a statement it cannot type, so silence does not mean the macro calls
+    nothing. `open(a)` over `undeclared` keeps its boundary; the definition has not said no.
+    The last word of the body is the one that matters, because a range can stop short of it."""
+    ff, edges, _ = _read(tmp_path, (
+        f"#define open(a) {body}\n"
+        "void t() { open(undeclared); }\n"
+    ))
+    assert _hits(ff, "t") == {("FILE", "open")}
+    e = _site(ff, edges, "t", "open")
+    assert e.reason == "unfollowed"
+    assert "clang recorded no call" in e.how
+
+
+def test_a_macro_defined_in_a_header_is_read_from_the_header(tmp_path):
+    (tmp_path / "z.h").write_text("#define rename(a, b) 0\n", encoding="utf-8")
+    ff, _, _ = _read(tmp_path, '#include "z.h"\nvoid t() { rename(1, 2); }\n')
+    assert _hits(ff, "t") == set()

@@ -85,6 +85,7 @@ struct Site {
     bool untyped = false;       // an argument clang could not type, under an overload set
     std::string macro;          // the function-like macro written here, when it is not one call
     std::vector<std::string> macro_usrs;  // what it calls instead, when it calls several things
+    bool macro_no_call = false;  // and its definition has nothing in it that could call anything
     std::string construct_usr;  // a construction's record
     std::string receiver_usr;   // a member call's receiver type
 };
@@ -685,6 +686,7 @@ private:
                     extent(c, a, b);
                     self->x_.macro_spans.push_back({a, b});
                     self->x_.macro_names[a] = spelling(c);
+                    self->macro_cursors_[a] = c;
                 }
                 return CXChildVisit_Continue;
             },
@@ -1404,6 +1406,8 @@ private:
     std::set<unsigned> constructions_;  // offsets where what is written constructs a type
     std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
     std::map<unsigned, std::vector<std::pair<CXCursor, CXCursor>>> macro_calls_;  // by the macro's offset
+    std::map<unsigned, CXCursor> macro_cursors_;  // each expansion in this file, by its offset
+    std::map<unsigned, std::vector<std::pair<CXCursor, bool>>> macro_bodies_;  // `writes_no_call`, by hash
 
     // **Which call a macro written as a call is.** One that calls a function of its own name
     // is that call: git's `error(...)` is `(error(...), const_error())`. Otherwise one with a
@@ -1427,6 +1431,54 @@ private:
         return true;
     }
     std::map<const Routine*, std::vector<Pending>> pending_;
+
+    // Would the token scan name a call starting at this offset?
+    bool written_call_at(unsigned off) const {
+        size_t i = x_.tok_at(off);
+        if (i >= x_.toks.size() || x_.toks[i].off != off) return false;
+        size_t j;
+        std::string expr = fold_declarator(x_.toks, i, j);
+        return !expr.empty() && j < x_.toks.size() && x_.toks[j].text == "(";
+    }
+
+    // **Does this macro's definition have nothing in it that could call anything?** Every word
+    // in its body is a parameter or a keyword: `#define rename(a, b) 0`, `#define N_(s) (s)`,
+    // `#define RETRY(e) do { e; } while (0)`. Asked of the definition because clang's silence
+    // cannot answer it: a statement clang could not type, which at Unreal's scale is common,
+    // leaves no call under a macro that plainly has one. A word that is anything else may be
+    // a function or another macro, so it is a no.
+    bool writes_no_call(unsigned off) {
+        auto at = macro_cursors_.find(off);
+        if (at == macro_cursors_.end()) return false;
+        CXCursor def = C().clang_getCursorReferenced(at->second);
+        if (C().clang_Cursor_isNull(def)) return false;
+        auto& met = macro_bodies_[C().clang_hashCursor(def)];
+        for (const auto& [o, answer] : met)
+            if (C().clang_equalCursors(o, def)) return answer;
+        CXToken* toks = nullptr;
+        unsigned n = 0;
+        C().clang_tokenize(x_.tu, C().clang_getCursorExtent(def), &toks, &n);
+        bool none = n > 0;
+        std::set<std::string> params;
+        unsigned i = 1;  // the macro's own name is first
+        if (C().clang_Cursor_isMacroFunctionLike(def))
+            for (i = 2; i < n; i++) {
+                std::string t = clang::str(C().clang_getTokenSpelling(x_.tu, toks[i]));
+                if (t == ")") {
+                    i++;
+                    break;
+                }
+                if (C().clang_getTokenKind(toks[i]) == CXToken_Identifier) params.insert(t);
+            }
+        for (; none && i < n; i++) {
+            if (C().clang_getTokenKind(toks[i]) != CXToken_Identifier) continue;
+            std::string t = clang::str(C().clang_getTokenSpelling(x_.tu, toks[i]));
+            if (t != "__VA_ARGS__" && !params.count(t)) none = false;
+        }
+        if (toks) C().clang_disposeTokens(x_.tu, toks, n);
+        met.push_back({def, none});
+        return none;
+    }
 
     // In a routine's body, during the walk: note what clang made of each call.
     void note_call(CXCursor c, CXCursor parent) {
@@ -1455,7 +1507,19 @@ private:
         }
         // Every call a macro written here expands to, by the macro's offset: which of them
         // the written call is, is decided at `emit_calls`, and not by which came first.
-        if (x_.macro_names.count(a)) macro_calls_[a].push_back({c, ref});
+        if (x_.macro_names.count(a)) {
+            macro_calls_[a].push_back({c, ref});
+        } else if (const auto* m = x_.macro_at(a)) {
+            // Inside the macro's arguments, which is not the same thing as written in them.
+            // `RETRY(connect(fd))` writes the call and the scan will name it. `CALL(connect, fd)`
+            // writes a name, and the call is the macro's, starting at that name. An operator or
+            // a constructor at such a place is what its arguments are made of, and says nothing
+            // about the macro.
+            bool quiet = !C().clang_Cursor_isNull(ref) &&
+                         (C().clang_getCursorKind(ref) == CXCursor_Constructor ||
+                          spelling(ref).rfind("operator", 0) == 0);
+            if (!quiet && !written_call_at(a)) macro_calls_[m->first].push_back({c, ref});
+        }
         bool ctor = !C().clang_Cursor_isNull(ref) && C().clang_getCursorKind(ref) == CXCursor_Constructor;
         if (ctor && C().clang_getCursorKind(parent) == CXCursor_CXXNewExpr) return;  // the `new` names it
         if (ctor) {
@@ -1758,7 +1822,12 @@ private:
             if (p.close > p.open) s.args = args_between(p.open, p.close);
             s.is_construction = p.construction;
             x_.ff.calls.push_back(s);
-            boundaries(owner, s);
+            // A macro that can call nothing is not the function it is named after, and a rule
+            // that names the function has not met it: `#define rename(a, b) 0` touches no file.
+            auto named = x_.macro_names.find(p.off);
+            bool no_call = named != x_.macro_names.end() && named->second == p.expr && !p.construction &&
+                           !p.macro_written && !macro_calls_.count(p.off) && writes_no_call(p.off);
+            if (!no_call) boundaries(owner, s);
 
             Site e;
             e.site_id = s.site_id;
@@ -1777,6 +1846,7 @@ private:
                     resolve(e, call, ref);
                 } else {
                     e.macro = mac->second;
+                    e.macro_no_call = no_call;
                     auto mc = macro_calls_.find(p.off);
                     if (mc != macro_calls_.end())
                         for (const auto& [c, r] : mc->second)

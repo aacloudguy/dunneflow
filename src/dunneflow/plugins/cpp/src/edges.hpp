@@ -210,8 +210,9 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         } else if (!s.macro.empty()) {
             e.reason = "unfollowed";
             e.frontier = s.macro;
-            e.how = s.macro_usrs.empty() ? "clang · a macro that expands to no call"
-                                         : "clang · a macro that expands to several calls";
+            e.how = !s.macro_usrs.empty() ? "clang · a macro that expands to several calls"
+                    : s.macro_no_call     ? "clang · a macro that expands to no call of its own"
+                                          : "clang · a macro under which clang recorded no call";
             macros++;
             unknown++;
         } else if (s.untyped || (s.usr.empty() && !s.bound)) {

@@ -508,6 +508,7 @@ inline bool has_final(CXCursor c) {
 
 struct Routine {
     facts::Routine r;
+    unsigned decl_lo = 0;               // where the declaration starts, header and all
     unsigned body_lo = 0, body_hi = 0;  // offsets of `{` and `}`
     bool macro_written = false;         // no `{` is written here: a macro wrote the whole body
 };
@@ -541,6 +542,8 @@ private:
     std::set<std::pair<std::string, unsigned>> stream_lines_;
     std::set<unsigned> annotated_;              // declaration offsets already given an entrypoint
     std::vector<CXCursor> vars_;               // variable declarations being read, innermost last
+    std::map<unsigned, std::vector<CXCursor>> walked_;  // records and enums already walked, by hash
+    std::set<unsigned> macros_that_declare_;   // by the expansion's offset
     facts::Routine module_scope_;
     bool module_scope_used_ = false;
 
@@ -557,6 +560,14 @@ private:
 
     void visit(CXCursor c) { C().clang_visitChildren(c, trampoline, this); }
 
+    bool first_walk(CXCursor c) {
+        auto& met = walked_[C().clang_hashCursor(c)];
+        for (const auto& o : met)
+            if (C().clang_equalCursors(o, c)) return false;
+        met.push_back(c);
+        return true;
+    }
+
     void one(CXCursor c, CXCursor parent) {
         CXCursorKind k = C().clang_getCursorKind(c);
         if (!in_main(c)) {
@@ -567,9 +578,18 @@ private:
             // X-macro fragment's members the same way. Nothing of the includer's is
             // recorded; its children are each asked again.
             if (x_.through && (k == CXCursor_Namespace || k == CXCursor_LinkageSpec ||
-                               k == CXCursor_UnexposedDecl || is_record_kind(k)))
+                               k == CXCursor_UnexposedDecl || is_record_kind(k)) &&
+                (!is_record_kind(k) || first_walk(c)))
                 visit(c);
             return;
+        }
+
+        // A macro holding the end of a declaration wrote something, so it decorates nothing
+        // that comes after it: `decorators`.
+        if (C().clang_isDeclaration(k)) {
+            unsigned a, b;
+            extent(c, a, b);
+            if (const auto* m = x_.macro_at(b)) macros_that_declare_.insert(m->first);
         }
 
         if (k == CXCursor_InclusionDirective) return include(c);
@@ -593,6 +613,11 @@ private:
             return;
         }
         if ((is_record_kind(k) || k == CXCursor_EnumDecl) && C().clang_isCursorDefinition(c)) {
+            // Once, though the walk meets it twice: `struct X { X() {} } g;` is a declaration
+            // and again the child of `g`'s, which read every method in it twice. By the cursor
+            // and not by extent, because a macro that writes two records gives both of them
+            // the macro's own extent.
+            if (!first_walk(c)) return;
             record(c, k);
             visit(c);
             return;
@@ -714,6 +739,9 @@ private:
             auto it = std::find_if(x_.macro_spans.begin(), x_.macro_spans.end(),
                                    [&](const std::pair<unsigned, unsigned>& s) { return s.second == p; });
             if (it == x_.macro_spans.end() || it->first >= at) break;
+            // A macro that wrote a declaration is that declaration, not this one's decorator:
+            // `WHOLE(a)` then `void b() {}` had `b` starting on `WHOLE`'s line.
+            if (macros_that_declare_.count(it->first)) break;
             // `#include UE_INLINE_GENERATED_CPP_BY_NAME(X)` touches what follows it and is not
             // written on it: a directive decorates nothing.
             size_t line = x_.line_starts[x_.line_of(it->first) - 1];
@@ -746,7 +774,7 @@ private:
             while (p > 0 && std::isspace(static_cast<unsigned char>(x_.text[p - 1]))) p--;
             auto it = std::find_if(x_.macro_spans.begin(), x_.macro_spans.end(),
                                    [&](const std::pair<unsigned, unsigned>& s) { return s.second == p; });
-            if (it == x_.macro_spans.end() || it->first >= at) return out;
+            if (it == x_.macro_spans.end() || it->first >= at || macros_that_declare_.count(it->first)) return out;
             at = it->first;
             if (x_.macro_names[at] != macro) continue;
             int depth = 0;
@@ -993,6 +1021,7 @@ private:
         int n = ++seen_routines_[qualname];
 
         auto r = std::make_unique<Routine>();
+        r->decl_lo = a;
         r->body_lo = lo;
         r->body_hi = hi;
         size_t first = x_.tok_at(lo);
@@ -1156,9 +1185,6 @@ private:
     void record(CXCursor c, CXCursorKind k) {
         unsigned a, b;
         extent(c, a, b);
-        // Once, though the walk meets it twice: `struct { int a; } g;` is a declaration at
-        // file scope and again the child of `g`'s, and was two structures.
-        if (!records_read_.insert({a, b}).second) return;
         bool nested;
         std::string outer;
         auto parts = scope_parts(c, nested, outer);
@@ -1377,7 +1403,6 @@ private:
     std::map<unsigned, std::pair<CXCursor, CXCursor>> resolved_;
     std::set<unsigned> constructions_;  // offsets where what is written constructs a type
     std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
-    std::set<std::pair<unsigned, unsigned>> records_read_;  // by extent, so each is read once
     std::map<unsigned, std::vector<std::pair<CXCursor, CXCursor>>> macro_calls_;  // by the macro's offset
 
     // **Which call a macro written as a call is.** One that calls a function of its own name
@@ -1639,11 +1664,13 @@ private:
         return true;
     }
 
-    // The ranges inside `r`'s body that belong to a routine nested in it.
+    // The ranges inside `r`'s body that belong to a routine nested in it, from where its
+    // declaration starts: the header of a local class's constructor is not a call to it.
     std::vector<std::pair<unsigned, unsigned>> inner(const Routine* r) {
         std::vector<std::pair<unsigned, unsigned>> out;
         for (const auto& o : routines_)
-            if (o.get() != r && o->body_lo > r->body_lo && o->body_hi <= r->body_hi) out.push_back({o->body_lo, o->body_hi});
+            if (o.get() != r && o->body_lo > r->body_lo && o->body_hi <= r->body_hi)
+                out.push_back({o->decl_lo > r->body_lo ? o->decl_lo : o->body_lo, o->body_hi});
         // Directives and inactive arms are stepped over as a nested routine is. A span's
         // second offset is its *last token's*, which is what the scans' jump expects.
         for (const auto& [a, b] : x_.pp_spans)

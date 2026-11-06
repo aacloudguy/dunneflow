@@ -64,6 +64,8 @@
     X(clang_getCursorUSR)                       \
     X(clang_Cursor_isNull)                      \
     X(clang_equalCursors)                       \
+    X(clang_hashCursor)                         \
+    X(clang_isDeclaration)                      \
     X(clang_Cursor_isAnonymous)                 \
     X(clang_Cursor_isInlineNamespace)           \
     X(clang_getCursorType)                      \

@@ -93,6 +93,7 @@ struct Site {
 struct Def {
     std::string usr, file, name, qualname;
     int args = -1;
+    std::string written;  // the parameter types as written; see `written_types`
     long line = 0;
     bool has_body = true;
     bool is_record = false;
@@ -104,7 +105,10 @@ struct Def {
 struct Mark {
     std::string entrypoint_id, usr, name, qualname, written_at;
     int args = -1;
-    std::vector<std::string> markers;  // every word of the marking macro, as `decorators` read it
+    std::string written;               // the parameter types as written; see `written_types`
+    // The words a body rule may answer to: the macro's specifiers where the rule names one,
+    // and otherwise every word of the marking macro, as `decorators` read it.
+    std::vector<std::string> markers;
     bool pure = false;                 // declared `= 0`
 };
 
@@ -710,6 +714,11 @@ private:
             auto it = std::find_if(x_.macro_spans.begin(), x_.macro_spans.end(),
                                    [&](const std::pair<unsigned, unsigned>& s) { return s.second == p; });
             if (it == x_.macro_spans.end() || it->first >= at) break;
+            // `#include UE_INLINE_GENERATED_CPP_BY_NAME(X)` touches what follows it and is not
+            // written on it: a directive decorates nothing.
+            size_t line = x_.line_starts[x_.line_of(it->first) - 1];
+            while (line < it->first && std::isspace(static_cast<unsigned char>(x_.text[line]))) line++;
+            if (x_.text[line] == '#') break;
             found.push_back(*it);
             at = it->first;
         }
@@ -725,6 +734,91 @@ private:
                     out.push_back(x_.toks[i].text);
         }
         return out;
+    }
+
+    // `UFUNCTION(reliable, Category=Client, meta=(exec))` -> reliable: the identifiers directly
+    // in the macro's own parentheses, and not what a `=` gives one of them.
+    std::vector<std::string> specifiers(unsigned decl_start, const std::string& macro) {
+        std::vector<std::string> out;
+        unsigned at = decl_start;
+        while (true) {
+            size_t p = at;
+            while (p > 0 && std::isspace(static_cast<unsigned char>(x_.text[p - 1]))) p--;
+            auto it = std::find_if(x_.macro_spans.begin(), x_.macro_spans.end(),
+                                   [&](const std::pair<unsigned, unsigned>& s) { return s.second == p; });
+            if (it == x_.macro_spans.end() || it->first >= at) return out;
+            at = it->first;
+            if (x_.macro_names[at] != macro) continue;
+            int depth = 0;
+            bool value = false;
+            for (size_t i = x_.tok_at(at) + 1; i < x_.toks.size() && x_.toks[i].off < it->second; i++) {
+                const std::string& t = x_.toks[i].text;
+                if (t == "(") depth++;
+                else if (t == ")") depth--;
+                else if (depth == 1 && t == ",") value = false;
+                else if (depth == 1 && t == "=") value = true;
+                else if (depth == 1 && !value && x_.toks[i].kind == IDENT) out.push_back(t);
+            }
+            return out;
+        }
+    }
+
+    // **The parameter types as written**, one string per declaration of a function, so that a
+    // declaration and its definition can be compared when their USRs cannot: parameter names,
+    // defaults, `class`/`struct`/`enum`/`typename` and a leading annotation macro
+    // (`UPARAM(ref)`) are what the two may differ by and still be one function. Empty when the
+    // name is not written here, which a macro-written function or an operator may not be: then
+    // nothing is compared. `const T` unnamed loses its `T` as a name would, and so does not
+    // match: a miss leaves a way in visibly unbound, and never binds the wrong overload.
+    std::string written_types(const std::string& name, unsigned from, unsigned to) const {
+        size_t i = x_.tok_at(from);
+        for (; i + 1 < x_.toks.size() && x_.toks[i].off < to; i++)
+            if (x_.toks[i].text == name && x_.toks[i + 1].text == "(") break;
+        if (i + 1 >= x_.toks.size() || x_.toks[i].off >= to || x_.toks[i].text != name) return "";
+        std::string out = "(";
+        std::vector<const Tok*> param;
+        auto flush = [&]() {
+            size_t from_ = 0, depth_ = 0;
+            if (param.size() > 1 && param[0]->kind == IDENT && looks_macro(param[0]->text) && param[1]->text == "(") {
+                for (size_t k = 1; k < param.size(); k++) {
+                    if (param[k]->text == "(") depth_++;
+                    else if (param[k]->text == ")" && --depth_ == 0) {
+                        from_ = k + 1;
+                        break;
+                    }
+                }
+            }
+            std::vector<std::string> kept;
+            bool named = false;
+            for (size_t k = from_; k < param.size() && param[k]->text != "="; k++) {
+                const std::string& t = param[k]->text;
+                named = param[k]->kind == IDENT;
+                if (t != "class" && t != "struct" && t != "enum" && t != "typename") kept.push_back(t);
+            }
+            if (kept.size() > 1 && named) kept.pop_back();
+            for (const auto& t : kept) out += t + " ";
+            out += ",";
+            param.clear();
+        };
+        int depth = 0, angle = 0;
+        for (size_t k = i + 2; k < x_.toks.size(); k++) {
+            const Tok& t = x_.toks[k];
+            if (t.kind == COMMENT) continue;
+            if (t.text == "(" || t.text == "[" || t.text == "{") depth++;
+            else if (t.text == ")" && depth == 0) {
+                if (!param.empty()) flush();
+                return out + ")";
+            } else if (t.text == ")" || t.text == "]" || t.text == "}") depth--;
+            else if (t.text == "<") angle++;
+            else if (t.text == ">") angle--;
+            else if (t.text == ">>") angle -= 2;
+            else if (t.text == "," && depth == 0 && angle <= 0) {
+                flush();
+                continue;
+            }
+            param.push_back(&t);
+        }
+        return "";
     }
 
     // The comment block that touches a declaration, stripped of its markers.
@@ -951,6 +1045,9 @@ private:
         d.args = C().clang_getCursorKind(c) == CXCursor_VarDecl
                      ? written_args(x_.tok_at(lo) > 0 ? x_.tok_at(lo) - 1 : 0)
                      : C().clang_Cursor_getNumArguments(c);
+        // A function clang read as a variable keeps the count alone: that is what `written_args`
+        // above is for, and such a definition is not held to what its declaration writes.
+        if (C().clang_getCursorKind(c) != CXCursor_VarDecl) d.written = written_types(name, a, lo);
         // Said, not decided here: an invalid definition only loses a tie (`edges.hpp`).
         d.invalid = C().clang_isInvalidDeclaration(c) != 0;
         x_.out->defs.push_back(d);
@@ -1215,13 +1312,19 @@ private:
         for (const auto& rule : x_.rules->entrypoints) {
             bool hit = false;
             for (const auto& d : decs) hit = hit || rule.matches(d);
+            std::vector<std::string> specs;
+            if (!rule.specifiers_of.empty()) specs = specifiers(a, rule.specifiers_of);
+            for (const auto& s : specs) hit = hit || rule.matches_specifier(s);
             if (!hit) continue;
             facts::Entrypoint e;
             // **The USR is in the id**: two overloads of one name, both marked, were one
             // way in -- the second `INSERT OR REPLACE`d the first -- and 157 of Runtime's
-            // Blueprint ways in were overloads. A name is not an identity (rule 106).
+            // Blueprint ways in were overloads. A name is not an identity (rule 106). **And
+            // the USR is only as good as the parse**: two overloads whose types are both
+            // missing have one, so what they write is in the id as well.
             std::string u = usr(c);
-            e.id = ids::entrypoint_id(x_.rel, {qualname, rule.kind, u});
+            std::string types = written_types(spelling(c), a, b);
+            e.id = ids::entrypoint_id(x_.rel, {qualname, rule.kind, u, types});
             e.kind = rule.kind;
             e.name = spelling(c);
             if (C().clang_isCursorDefinition(c)) {
@@ -1238,7 +1341,8 @@ private:
                 m.qualname = qualname;
                 m.written_at = x_.rel + ":" + std::to_string(x_.line_of(a));
                 m.args = C().clang_Cursor_getNumArguments(c);
-                m.markers = decs;
+                m.written = types;
+                m.markers = rule.specifiers_of.empty() ? decs : specs;
                 m.pure = C().clang_CXXMethod_isPureVirtual(c) != 0;
                 x_.out->marks.push_back(std::move(m));
             }

@@ -314,27 +314,52 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     // **A USR is only as good as the parse that made it.** `ValueOrBBKeyBlueprintUtility.h`
     // names `UBehaviorTreeComponent` without declaring it, so read alone its `GetBool` has a
     // different USR from the definition its `.cpp` sees with the type in hand. There, and only
-    // when no USR answers, one definition of that qualified name and argument count answers,
+    // when no USR answers, one definition of that qualified name and those types as written
+    // answers, or, where one side has no types to compare, of that argument count,
     // provided one marked declaration asks: overloads stay apart, and two askers bind nothing.
+    //
+    // **The types as written come first, and they outrank the count.** `SaveGame.h`'s two
+    // `LoadOrCreateSaveGameForLocalPlayer` have three arguments each, one takes an
+    // `APlayerController*` and one a `const ULocalPlayer*`, and only the first is marked: the
+    // count has two answers, and the words on the page have one. Where both sides write their
+    // types and they differ, the count is not asked at all: it would give a marked overload
+    // whose body is elsewhere the definition of the sibling that is not marked (rule 1).
     using Shape = std::pair<std::string, int>;
     std::map<Shape, std::vector<Where>> shaped;
+    std::map<std::string, std::vector<Where>> written;  // by qualified name + the types written
+    std::map<Shape, std::string> shape_written;         // read only where a shape has one body
     std::map<std::string, std::vector<Where>> named;  // a body a marker names, whatever its shape
     for (const auto& d : t.defs) {
         if (d.is_record || d.qualname.empty()) continue;
         Where w{d.file, d.name, d.line, d.invalid};
         auto& v = shaped[{d.qualname, d.args}];
         if (std::find(v.begin(), v.end(), w) == v.end()) v.push_back(w);
+        shape_written[{d.qualname, d.args}] = d.written;
+        if (!d.written.empty()) {
+            auto& t = written[d.qualname + d.written];
+            if (std::find(t.begin(), t.end(), w) == t.end()) t.push_back(w);
+        }
         auto& n = named[d.qualname];
         if (std::find(n.begin(), n.end(), w) == n.end()) n.push_back(w);
     }
     std::map<Shape, std::set<std::string>> askers;
     // By where each is written, not by id: two overloads whose types were both missing can
     // share a USR, and so an id.
-    for (const auto& m : t.marks) askers[{m.qualname, m.args}].insert(m.written_at);
+    std::map<std::string, std::set<std::string>> writers;
+    for (const auto& m : t.marks) {
+        askers[{m.qualname, m.args}].insert(m.written_at);
+        if (!m.written.empty()) writers[m.qualname + m.written].insert(m.written_at);
+    }
     auto one_shaped = [&](const extract::Mark& m, const std::string& suffix) -> const std::vector<Where>* {
+        if (!m.written.empty() && writers[m.qualname + m.written].size() == 1) {
+            auto w = written.find(m.qualname + suffix + m.written);
+            if (w != written.end() && w->second.size() == 1) return &w->second;
+        }
         if (askers[{m.qualname, m.args}].size() != 1) return nullptr;
         auto it = shaped.find({m.qualname + suffix, m.args});
-        return it != shaped.end() && it->second.size() == 1 ? &it->second : nullptr;
+        if (it == shaped.end() || it->second.size() != 1) return nullptr;
+        const std::string& theirs = shape_written[{m.qualname + suffix, m.args}];
+        return m.written.empty() || theirs.empty() ? &it->second : nullptr;
     };
     for (const auto& m : t.marks) {
         if (!sent.insert(m.entrypoint_id).second) continue;  // a header read twice marks it twice
@@ -348,7 +373,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         auto own = bodies.find(m.usr);
         const rules::Preset::Body* rule = nullptr;
         for (const auto& w : m.markers) {
-            auto r = t.body_rules.find(w);
+            auto r = t.body_rules.find(rules::folded(w));
             if (r != t.body_rules.end()) {
                 rule = &r->second;
                 break;
@@ -448,7 +473,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         notes.push_back("edges: " + std::to_string(sent.size()) + " ways in marked on a declaration; " +
                         std::to_string(by_usr) + " bound to their definition by USR, " + std::to_string(by_suffix) +
                         " to the body their marker names, " + std::to_string(by_shape) +
-                        " by qualified name and argument count where the USRs differ, " +
+                        " by qualified name and the types written, or the argument count, where the USRs differ, " +
                         std::to_string(explained) +
                         " with no body in C++ by their marker, " + std::to_string(overridden) + " pure virtual, " +
                         std::to_string(two_bodies) + " defined more than once, and " + std::to_string(no_body) +

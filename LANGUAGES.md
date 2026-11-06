@@ -478,8 +478,10 @@ C and C++ on libclang took four seams the other readers did not need.
   leave a map with no edges that the next run saw nothing wrong with.
 - **`supplies_bindings`.** A way in marked on a declaration is bound by the reader. A USR is the
   right key and not a sufficient one: a header read alone may not know a type its `.cpp` does, and
-  then the two have different USRs. So qualified name and argument count answer where no USR does,
-  if there is one such definition and one declaration asking.
+  then the two have different USRs. So the qualified name and the parameter types as written answer
+  where no USR does, if there is one such definition and one declaration asking. Argument count
+  stands in only where one side has no types to compare; where both write types and they differ, it
+  is not asked, because it would hand a marked overload the body of a sibling that is not marked.
 - **A framework's code generator is data.** Which marker means which body is in the preset's
   `bodies` in `cpp.yaml`, not in the reader.
 

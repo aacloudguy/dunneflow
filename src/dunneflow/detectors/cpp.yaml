@@ -166,16 +166,26 @@ entrypoints:
   # that Blueprint calls, and nothing in the C++ itself calls it — so without this it is a
   # routine with no callers, which reads as dead code in a worklist. `LIBRARY` is the kind
   # because that is exactly what it is: a way in for something outside this program.
+  #
+  # `specifiers_of`: **UnrealHeaderTool reads a specifier in any case**
+  # (`UhtSpecifierTable.cs`: `StringViewComparer.OrdinalIgnoreCase`), and Unreal writes them
+  # both ways: 67 of Runtime's functions are `UFUNCTION(exec)`, and 50 are replicated in
+  # lowercase. So a word in the macro's own parentheses counts in any case. A value does not
+  # (`Category=Client`), nor does a word in some other macro: a word written exactly as a rule
+  # has it counts wherever it is, because `meta=(CallInEditor="true")` is a real one.
   - kind: LIBRARY
+    specifiers_of: UFUNCTION
     decorator_method: [BlueprintCallable, BlueprintImplementableEvent,
                        BlueprintNativeEvent, BlueprintPure, CallInEditor]
     evidence: "callable from Blueprint (UFUNCTION)"
   # A replicated function runs on the other side of the network by the engine's doing.
   - kind: SIGNAL
+    specifiers_of: UFUNCTION
     decorator_method: [Server, Client, NetMulticast, Reliable, Unreliable]
     evidence: "invoked over the network by replication (UFUNCTION)"
   # An exec function is typed into the console by a person.
   - kind: CLI
+    specifiers_of: UFUNCTION
     decorator_method: [Exec]
     evidence: "callable from the console (UFUNCTION Exec)"
 

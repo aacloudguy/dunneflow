@@ -374,20 +374,21 @@ def test_a_declaration_whose_usr_differs_is_bound_by_name_and_argument_count(
         store.close()
 
 
-def test_two_declarations_asking_for_one_shape_bind_nothing(tmp_path: Path) -> None:
-    """`Pair(UType*)` and `Pair(UOther*)` are the same name and count: which is which is the
-    USR's to say, and here it cannot."""
+def test_two_declarations_of_one_shape_are_told_apart_by_the_types_they_write(
+        tmp_path: Path) -> None:
+    """`Pair(UType*)` and `Pair(UOther*)` are the same name and count, and neither USR is the
+    definition's. What each writes says which is which."""
     store = _helper(tmp_path)
     try:
-        assert {q for q, _ in _bound(store)["Pair"]} == {None}
+        assert _bound(store)["Pair"] == [("AHelper.Pair", 5), ("AHelper.Pair", 6)]
     finally:
         store.close()
 
 
-def test_one_definition_two_declarations_could_mean_is_given_to_neither(tmp_path: Path) -> None:
+def test_one_definition_goes_to_the_declaration_that_writes_its_types(tmp_path: Path) -> None:
     store = _helper(tmp_path)
     try:
-        assert {q for q, _ in _bound(store)["Lone"]} == {None}
+        assert sorted(q or "" for q, _ in _bound(store)["Lone"]) == ["", "AHelper.Lone"]
     finally:
         store.close()
 
@@ -653,3 +654,256 @@ def test_a_real_variable_is_not_a_misread_function(tmp_path: Path) -> None:
     finally:
         store.close()
 
+
+
+# ------------------------------------------------------------- a specifier's case is not its own
+#
+# The last 7 of Runtime's ENTRYPOINT_NO_TARGET, read against the source on 2026-11-06. Five were
+# `UFUNCTION(reliable, client, ...)`: UnrealHeaderTool's specifier table compares ignoring case
+# (`UhtSpecifierTable.cs`, `StringViewComparer.OrdinalIgnoreCase`), and the rules did not, so the
+# body rule was never found. The same miss kept 117 functions from being ways in at all, 67 of
+# them `UFUNCTION(exec)`, and those made no finding.
+
+SPECIFIER_H = """\
+#pragma once
+#define UFUNCTION(...)
+#define GROUP(...)
+class AShip {
+public:
+    UFUNCTION(exec)
+    void Cheat();
+    UFUNCTION(reliable, client)
+    void ClientPing(int x);
+    void ClientPing_Implementation(int x);
+    UFUNCTION(unreliable, client, BlueprintCallable)
+    void ClientShake(int x);
+    void ClientShake_Implementation(int x);
+    UFUNCTION(BlueprintCallable, Category=CustomThunk)
+    int Score();
+    UFUNCTION(BlueprintCallable, Category=Game::CustomThunk)
+    int Rank();
+    UFUNCTION(Category=Navigation, meta=(CallInEditor="true"))
+    void Snap();
+    UFUNCTION(Category=exec)
+    void Filed();
+    UFUNCTION(meta=(exec))
+    void Noted();
+    UFUNCTION(Group(exec))
+    void Nested();
+    GROUP(client)
+    void Grouped();
+};
+"""
+SPECIFIER_CPP = """\
+#include "Ship.h"
+void AShip::Cheat() {}
+void AShip::ClientPing_Implementation(int x) {}
+void AShip::ClientShake_Implementation(int x) {}
+int AShip::Score() { return 1; }
+int AShip::Rank() { return 2; }
+void AShip::Snap() {}
+void AShip::Filed() {}
+void AShip::Noted() {}
+void AShip::Nested() {}
+void AShip::Grouped() {}
+"""
+
+
+def _ship(tmp_path: Path) -> Store:
+    if _WHY:
+        pytest.skip(_WHY)
+    top = tmp_path / "Runtime"
+    (top / "Core" / "Public" / "HAL").mkdir(parents=True)
+    (top / "Core" / "Public" / "HAL" / "Platform.h").write_text("", encoding="utf-8")
+    game = top / "Game"
+    game.mkdir(parents=True)
+    (game / "Ship.h").write_text(SPECIFIER_H, encoding="utf-8")
+    (game / "Ship.cpp").write_text(SPECIFIER_CPP, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(game, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    return store
+
+
+def test_a_lowercase_specifier_is_the_specifier(tmp_path: Path) -> None:
+    store = _ship(tmp_path)
+    try:
+        kinds = {str(r["name"]): str(r["kind"]) for r in store.query(
+            "SELECT name, kind FROM entrypoints")}
+        assert kinds["Cheat"] == "CLI"
+        assert kinds["ClientPing"] == "SIGNAL"
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("name, body", [
+    ("ClientPing", "AShip.ClientPing_Implementation"),
+    ("ClientShake", "AShip.ClientShake_Implementation"),
+])
+def test_a_lowercase_specifier_finds_its_body(tmp_path: Path, name: str, body: str) -> None:
+    store = _ship(tmp_path)
+    try:
+        assert [q for q, _ in _bound(store)[name]] == [body]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("name", ["Score", "Rank"])
+def test_a_value_is_not_a_specifier(tmp_path: Path, name: str) -> None:
+    """`Category=CustomThunk` names a category. Read as the specifier it would send a function
+    with a body of its own looking for `execScore`."""
+    store = _ship(tmp_path)
+    try:
+        assert [q for q, _ in _bound(store)[name]] == [f"AShip.{name}"]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("name", ["Filed", "Noted", "Nested", "Grouped"])
+def test_any_case_stops_at_the_specifiers_of_the_macro(tmp_path: Path, name: str) -> None:
+    store = _ship(tmp_path)
+    try:
+        assert name not in _bound(store)
+    finally:
+        store.close()
+
+
+def test_a_word_written_exactly_still_counts_where_it_is_written(tmp_path: Path) -> None:
+    """`meta=(CallInEditor="true")` is how a real one in `Engine/` is written."""
+    store = _ship(tmp_path)
+    try:
+        assert [q for q, _ in _bound(store)["Snap"]] == ["AShip.Snap"]
+    finally:
+        store.close()
+
+
+# ------------------------------------------------------------- overloads, by the types written
+#
+# The other 2 of the 7: `ULocalPlayerSaveGame::LoadOrCreateSaveGameForLocalPlayer` takes an
+# `APlayerController*` where it is marked and a `const ULocalPlayer*` where it is not, and both
+# have three arguments. `SaveGame.h` read alone does not give the USR its `.cpp` does, so the
+# count was all there was, and the count has two answers.
+
+SAVE_H = """\
+#pragma once
+#define UFUNCTION(...)
+#define UPARAM(...)
+class ULocal;
+class APC;
+class USave {
+public:
+    UFUNCTION(BlueprintCallable)
+    static int Load(TMissing<USave> c, APC* pc, const int& slot = 0);
+    static int Load(TMissing<USave> c, const ULocal* lp, const int& slot = 0);
+    UFUNCTION(BlueprintCallable)
+    static int Ref(UPARAM(ref) TMissing<USave>& c, class APC* pc);
+    static int Ref(TMissing<USave>& c, const ULocal* lp);
+    UFUNCTION(reliable, client)
+    void Send(TMissing<USave> c, APC* pc);
+    void Send_Implementation(TMissing<USave> c, APC* pc);
+    void Send_Implementation(TMissing<USave> c, const ULocal* lp);
+    UFUNCTION(BlueprintCallable)
+    static int Other(TMissing<USave> c, APC* pc);
+    static int Other(TMissing<USave> c, const ULocal* lp);
+    UFUNCTION(BlueprintCallable)
+    static int Spelt(TMissing<USave> c, APC* pc);
+    UFUNCTION(BlueprintCallable)
+    static int Spelt(TMissing<USave> c, const ULocal* lp);
+};
+"""
+SAVE_CPP = """\
+class ULocal {};
+class APC {};
+template <class T> class TMissing {};
+#include "Save.h"
+using PC = APC;
+using LP = const ULocal;
+int USave::Load(TMissing<USave> c, APC* controller, const int& slot) { return 1; }
+int USave::Load(TMissing<USave> c, const ULocal* player, const int& slot) { return 2; }
+int USave::Ref(TMissing<USave>& c, APC* pc) { return 3; }
+int USave::Ref(TMissing<USave>& c, const ULocal* lp) { return 4; }
+void USave::Send_Implementation(TMissing<USave> c, APC* pc) {}
+void USave::Send_Implementation(TMissing<USave> c, const ULocal* lp) {}
+int USave::Other(TMissing<USave> c, const ULocal* lp) { return 5; }
+int USave::Spelt(TMissing<USave> c, PC* pc) { return 6; }
+int USave::Spelt(TMissing<USave> c, LP* lp) { return 7; }
+"""
+
+
+def _save(tmp_path: Path) -> Store:
+    if _WHY:
+        pytest.skip(_WHY)
+    top = tmp_path / "Runtime"
+    (top / "Core" / "Public" / "HAL").mkdir(parents=True)
+    (top / "Core" / "Public" / "HAL" / "Platform.h").write_text("", encoding="utf-8")
+    game = top / "Game"
+    game.mkdir(parents=True)
+    (game / "Save.h").write_text(SAVE_H, encoding="utf-8")
+    (game / "Save.cpp").write_text(SAVE_CPP, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(game, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    return store
+
+
+@pytest.mark.parametrize("name, line", [("Load", 7), ("Ref", 9)])
+def test_a_marked_overload_is_bound_to_the_definition_that_writes_its_types(
+        tmp_path: Path, name: str, line: int) -> None:
+    store = _save(tmp_path)
+    try:
+        assert _bound(store)[name] == [(f"USave.{name}", line)]
+    finally:
+        store.close()
+
+
+def test_a_marker_s_body_is_chosen_by_the_types_written(tmp_path: Path) -> None:
+    store = _save(tmp_path)
+    try:
+        assert _bound(store)["Send"] == [("USave.Send_Implementation", 11)]
+    finally:
+        store.close()
+
+
+def test_a_marked_overload_with_no_body_is_not_given_its_sibling_s(tmp_path: Path) -> None:
+    """One definition, of the overload that is not marked: the types say it is not this one,
+    and a count alone would have taken it."""
+    store = _save(tmp_path)
+    try:
+        assert {q for q, _ in _bound(store)["Other"]} == {None}
+    finally:
+        store.close()
+
+
+def test_types_spelled_differently_bind_nothing(tmp_path: Path) -> None:
+    store = _save(tmp_path)
+    try:
+        assert {q for q, _ in _bound(store)["Spelt"]} == {None}
+    finally:
+        store.close()
+
+
+# ------------------------------------------------------------------- a macro in a directive
+
+def test_a_macro_in_an_include_is_not_the_next_function_s_decorator(tmp_path: Path) -> None:
+    """`#include UE_INLINE_GENERATED_CPP_BY_NAME(SaveGame)` is in nearly every Unreal `.cpp`, and
+    it was the decorator of whatever came next, whose first line it became."""
+    if _WHY:
+        pytest.skip(_WHY)
+    root = tmp_path / "Source"
+    root.mkdir()
+    (root / "Inc.h").write_text("#pragma once\n", encoding="utf-8")
+    (root / "Run.cpp").write_text(
+        '#define GEN(x) "Inc.h"\n'
+        "#include GEN(Run)\n"
+        "\n"
+        "int first() { return 1; }\n",
+        encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    try:
+        row = store.query("SELECT line_start, decorators FROM routines WHERE name = 'first'")[0]
+        assert (row["line_start"], row["decorators"]) == (4, "[]")
+    finally:
+        store.close()

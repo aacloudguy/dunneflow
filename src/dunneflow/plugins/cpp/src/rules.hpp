@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cctype>
 #include <map>
 #include <optional>
 #include <set>
@@ -17,6 +18,11 @@
 #include "json.hpp"
 
 namespace rules {
+
+inline std::string folded(std::string s) {
+    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
 
 // One entry under `boundaries:`, matched against a call's dotted form.
 struct Boundary {
@@ -50,6 +56,9 @@ struct Boundary {
 struct Entrypoint {
     std::string kind, evidence;
     std::vector<std::string> decorator_method;
+    // A framework may read its macro's specifiers in any case (`detectors/cpp.yaml` says which
+    // macro, and why). Only the specifiers: a value in it, or a word in another macro, is not one.
+    std::string specifiers_of;
 
     // `EntrypointRule.matches_decorator`: the last segment of the dotted decorator.
     bool matches(const std::string& dotted) const {
@@ -58,6 +67,11 @@ struct Entrypoint {
         std::string tail = dot == std::string::npos ? dotted : dotted.substr(dot + 1);
         for (const auto& m : decorator_method)
             if (tail == m) return true;
+        return false;
+    }
+    bool matches_specifier(const std::string& word) const {
+        for (const auto& m : decorator_method)
+            if (folded(word) == folded(m)) return true;
         return false;
     }
 };
@@ -89,7 +103,7 @@ struct Preset {
         std::string prefix;  // the body is the method of this prefix plus the name, whatever its
                              // parameters, and what runs even when the name has a body too
     };
-    std::map<std::string, Body> bodies;
+    std::map<std::string, Body> bodies;  // by the marker, folded: see `specifiers_of`
 };
 
 struct Rules {
@@ -132,6 +146,7 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         x.kind = e["kind"].str();
         x.evidence = e["evidence"].str();
         x.decorator_method = e["decorator_method"].strings();
+        x.specifiers_of = e["specifiers_of"].str();
         r.entrypoints.push_back(std::move(x));
     }
     for (const auto& n : raw["entry_names"].strings()) r.entry_names.insert(n);
@@ -151,7 +166,7 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         }
         x.module_file_suffix = p["module_defines"]["file_suffix"].str();
         x.module_define = p["module_defines"]["define"].str();
-        for (const auto& [marker, b] : p["bodies"].map()) x.bodies[marker] = {b["suffix"].str(), b["why"].str(), b["prefix"].str()};
+        for (const auto& [marker, b] : p["bodies"].map()) x.bodies[folded(marker)] = {b["suffix"].str(), b["why"].str(), b["prefix"].str()};
         if (x.name.empty() || x.marker.empty()) {
             notes.push_back("a preset in detectors/cpp.yaml has no name or no marker, and is not used");
             continue;

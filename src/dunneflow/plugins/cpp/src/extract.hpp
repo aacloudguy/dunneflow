@@ -516,6 +516,7 @@ struct Routine {
     unsigned body_lo = 0, body_hi = 0;  // offsets of `{` and `}`
     bool macro_written = false;         // no `{` is written here: a macro wrote the opening
     bool half_written = false;          // and somebody wrote the rest: `BEGIN hand(); END`
+    size_t ff_index = 0;                // its row in `FileFacts.routines`
 };
 
 class Reader {
@@ -543,6 +544,7 @@ public:
             module_scope_used_ = true;
         }
         literals();
+        macro_sites();
         if (module_scope_used_) x_.ff.module_scope = module_scope_;
     }
 
@@ -557,6 +559,8 @@ private:
     std::vector<CXCursor> vars_;               // variable declarations being read, innermost last
     std::map<unsigned, std::vector<CXCursor>> walked_;  // records and enums already walked, by hash
     std::set<unsigned> macros_that_declare_;   // by the expansion's offset
+    std::set<unsigned> macros_that_annotate_;  // and those written directly before a declaration
+    std::vector<std::pair<unsigned, unsigned>> declaration_spans_;  // each top-level declaration's extent
     facts::Routine module_scope_;
     bool module_scope_used_ = false;
     Routine scope_;                            // the module scope, as the owner of a call
@@ -606,6 +610,14 @@ private:
             unsigned a, b;
             extent(c, a, b);
             if (const auto* m = x_.macro_at(b)) macros_that_declare_.insert(m->first);
+            // A use anywhere in a top-level declaration is part of declaring it. Those do not
+            // nest, or a thousand fields would be a thousand spans to walk back over.
+            CXCursorKind pk = C().clang_getCursorKind(parent);
+            bool container = k == CXCursor_Namespace || k == CXCursor_LinkageSpec || k == CXCursor_UnexposedDecl;
+            bool top = C().clang_getCursorKind(C().clang_getCursorSemanticParent(c)) == CXCursor_TranslationUnit ||
+                       pk == CXCursor_TranslationUnit || pk == CXCursor_Namespace || pk == CXCursor_LinkageSpec ||
+                       pk == CXCursor_UnexposedDecl;
+            if (top && !container) declaration_spans_.push_back({a, b});
         }
 
         if (k == CXCursor_InclusionDirective) return include(c);
@@ -679,7 +691,13 @@ private:
             unevaluated_--;
             return;
         }
-        if (k == CXCursor_AsmStmt || k == CXCursor_MSAsmStmt) x_.out->asm_statements++;
+        if (k == CXCursor_AsmStmt || k == CXCursor_MSAsmStmt) {
+            x_.out->asm_statements++;
+            if (!stack_.empty()) {
+                auto& row = x_.ff.routines[stack_.back()->ff_index];
+                row.opaque_asm = row.opaque_asm + 1;
+            }
+        }
         if (k == CXCursor_AsmLabelAttr) x_.out->asm_labels++;
         if (k == CXCursor_DeclRefExpr || k == CXCursor_MemberRefExpr) value_use(c);
         if (!stack_.empty()) {
@@ -780,6 +798,7 @@ private:
             // A macro that wrote a declaration is that declaration, not this one's decorator:
             // `WHOLE(a)` then `void b() {}` had `b` starting on `WHOLE`'s line.
             if (macros_that_declare_.count(it->first)) break;
+            macros_that_annotate_.insert(it->first);
             // `#include UE_INLINE_GENERATED_CPP_BY_NAME(X)` touches what follows it and is not
             // written on it: a directive decorates nothing.
             size_t line = x_.line_starts[x_.line_of(it->first) - 1];
@@ -951,20 +970,10 @@ private:
         extent(b.found, lo, hi);
         // A function a macro writes whole has its body at the macro's own offset, where no
         // `{` is written: `void U::Set##Name(T v) { ... }`. Unreal's 67 pasted setters were
-        // refused here as having no body, and so was every such function in any tree.
-        //
-        // Not inside a record the macro also named, which `record` already leaves as the
-        // macro's: `DECLARE_CYCLE_STAT` is a `struct FStat_X` with seven accessors, 441 times
-        // over in Core alone, and none of them is anything a reader came to find.
-        if (x_.in_macro(lo)) {
-            CXCursor owner = C().clang_getCursorSemanticParent(c);
-            unsigned ra, rb;
-            if (is_record_kind(C().clang_getCursorKind(owner)) && in_main(owner)) {
-                extent(owner, ra, rb);
-                if (!x_.written_in_macro(ra, spelling(owner))) return false;
-            }
-            return !C().clang_CXXMethod_isDefaulted(c);
-        }
+        // refused here as having no body, and so was every such function in any tree. All of
+        // them are routines, marked `body_by`: leaving out what a macro wrote leaves out the
+        // places a macro can hide something, and folding is the map's decision to make.
+        if (x_.in_macro(lo)) return !C().clang_CXXMethod_isDefaulted(c);
         // `= default` is given a body by clang and has none as written: not a routine.
         size_t i = x_.tok_at(lo);
         return i < x_.toks.size() && x_.toks[i].off == lo && (x_.toks[i].text == "{" || x_.toks[i].text == "try");
@@ -1078,6 +1087,8 @@ private:
         f.decorators = decorators(a, header);
         f.line_start = x_.line_of(header);
         f.line_end = x_.line_of(hi > 0 ? hi - 1 : hi);
+        f.name_by = written_by(C().clang_getCursorLocation(c));
+        if (r->macro_written && x_.in_macro(lo)) f.body_by = def_of(x_.macro_at(lo)->first);
         CXCursorKind k = C().clang_getCursorKind(c);
         f.params = params(c, a, lo);
         if (k != CXCursor_Constructor && k != CXCursor_Destructor) {
@@ -1093,6 +1104,7 @@ private:
         CX_CXXAccessSpecifier acc = C().clang_getCXXAccessSpecifier(c);
         f.visibility = (acc == CX_CXXPrivate || acc == CX_CXXProtected) ? "private" : "public";
         f.body_hash = ids::hash_source(x_.text.substr(lo, hi - lo));
+        r->ff_index = x_.ff.routines.size();
         x_.ff.routines.push_back(f);
 
         if (x_.rules->entry_names.count(name) && record.empty()) {
@@ -1239,12 +1251,6 @@ private:
             // its expansion location, so it cannot say.
             if (x_.in_macro(a)) return;
             name = "<anonymous>";
-        } else if (!x_.written_in_macro(a, name)) {
-            // A record a macro names by pasting is the macro's too: Unreal's
-            // `DECLARE_CYCLE_STAT(..., STAT_X, ...)` is a `struct FStat_STAT_X`, and there
-            // were hundreds. One whose name the file writes is kept: `TAILQ_HEAD(joblist,
-            // job)` is the `struct joblist` tmux goes on to use by that name.
-            return;
         }
         std::string qualname = join(parts, name);
         int n = ++seen_records_[qualname];
@@ -1258,6 +1264,7 @@ private:
         decorators(a, header);
         s.line = x_.line_of(header);
         s.docstring = leading_comment(header);
+        s.name_by = written_by(C().clang_getCursorLocation(c));
 
         struct Walk {
             Reader* self;
@@ -1446,6 +1453,7 @@ private:
     std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
     std::map<unsigned, std::vector<std::pair<CXCursor, CXCursor>>> macro_calls_;  // by the macro's offset
     std::map<unsigned, CXCursor> macro_cursors_;  // each expansion in this file, by its offset
+    std::set<std::string> defs_recorded_;  // definitions this file has already reported
     std::map<unsigned, std::vector<std::pair<CXCursor, bool>>> macro_bodies_;  // `writes_no_call`, by hash
 
     // **Which call a macro written as a call is.** One that calls a function of its own name
@@ -1470,6 +1478,112 @@ private:
         return true;
     }
     std::map<const Routine*, std::vector<Pending>> pending_;
+
+    // ---------------------------------------------------------- macros as facts --- //
+
+    // The definition an expansion here uses: its id, recorded the first time it is met. Blank
+    // only where clang kept no expansion at that offset, which a span never is.
+    std::string def_of(unsigned off) {
+        auto at = macro_cursors_.find(off);
+        if (at == macro_cursors_.end()) return "";
+        CXCursor def = C().clang_getCursorReferenced(at->second);
+        std::string name = spelling(at->second);
+        std::string file, origin = "builtin";
+        unsigned line = 0;
+        if (!C().clang_Cursor_isNull(def)) {
+            CXSourceLocation loc = C().clang_getCursorLocation(def);
+            CXFile f = nullptr;
+            unsigned col = 0, o = 0;
+            C().clang_getFileLocation(loc, &f, &line, &col, &o);
+            if (f) {
+                // By path and never by `clang_Location_isInSystemHeader`: an Unreal module's
+                // own headers read as system headers, because they arrive by `-idirafter`.
+                std::string g = std::filesystem::path(clang::str(C().clang_getFileName(f))).lexically_normal().generic_string();
+                if (!x_.root.empty() && g.rfind(x_.root, 0) == 0) {
+                    file = g.substr(x_.root.size());
+                    origin = "tree";
+                } else {
+                    size_t last = g.find_last_of('/');
+                    size_t before = last == std::string::npos || last == 0 ? std::string::npos : g.find_last_of('/', last - 1);
+                    file = before == std::string::npos ? g : g.substr(before + 1);
+                    origin = "outside";
+                }
+            } else {
+                CXString presumed;
+                C().clang_getPresumedLocation(loc, &presumed, nullptr, nullptr);
+                std::string where = clang::str(presumed);
+                if (where.find("command line") != std::string::npos) origin = "command_line";
+            }
+        }
+        std::string id = ids::definition_id(file.empty() ? origin : file, name, static_cast<int>(line));
+        if (defs_recorded_.insert(id).second) {
+            facts::MacroDef d;
+            d.id = id;
+            d.name = name;
+            d.file = file;
+            d.line = line;
+            d.origin = origin == "tree"           ? facts::MacroOrigin::TREE
+                       : origin == "outside"      ? facts::MacroOrigin::OUTSIDE
+                       : origin == "command_line" ? facts::MacroOrigin::COMMAND_LINE
+                                                  : facts::MacroOrigin::BUILTIN;
+            x_.ff.macro_defs.push_back(std::move(d));
+        }
+        return id;
+    }
+
+    // The macro that wrote what is at this location, if a macro's span holds it.
+    std::string written_by(CXSourceLocation loc) {
+        unsigned at;
+        if (!offset_of(loc, at)) return "";
+        const auto* m = x_.macro_at(at);
+        return m ? def_of(m->first) : "";
+    }
+
+    // Every use of a macro, once the walk has said what is where. Swept in order: both the
+    // uses and the routines are sorted by offset, and a file can hold thousands of each.
+    void macro_sites() {
+        std::vector<const Routine*> by_start;
+        for (const auto& r : routines_) by_start.push_back(r.get());
+        std::sort(by_start.begin(), by_start.end(), [](const Routine* a, const Routine* b) {
+            return a->body_lo != b->body_lo ? a->body_lo < b->body_lo : a->body_hi > b->body_hi;
+        });
+        std::sort(declaration_spans_.begin(), declaration_spans_.end());
+        std::vector<const Routine*> open;
+        size_t next = 0;
+        for (const auto& [off, name] : x_.macro_names) {
+            if (x_.in_pp(off)) {
+                x_.ff.macro_directive_uses = x_.ff.macro_directive_uses + 1;
+                continue;
+            }
+            // Strictly after the opening: `WHOLE(a)` holds `a`'s body at its own offset, and
+            // is not a use inside `a`.
+            while (next < by_start.size() && by_start[next]->body_lo < off) open.push_back(by_start[next++]);
+            while (!open.empty() && open.back()->body_hi <= off) open.pop_back();
+            facts::MacroSite s;
+            s.def_id = def_of(off);
+            s.name = name;
+            s.line = x_.line_of(off);
+            if (!open.empty()) {
+                s.position = facts::MacroPosition::STATEMENT;
+                s.routine_id = open.back()->r.id;
+            } else if (macros_that_declare_.count(off) || macros_that_annotate_.count(off) || in_declaration(off)) {
+                s.position = facts::MacroPosition::DECLARATION;
+            } else {
+                s.position = facts::MacroPosition::FILE_SCOPE;
+            }
+            x_.ff.macro_sites.push_back(std::move(s));
+        }
+    }
+
+    bool in_declaration(unsigned off) const {
+        auto it = std::upper_bound(declaration_spans_.begin(), declaration_spans_.end(), std::make_pair(off, ~0u));
+        // `struct X { } v;` is two declarations that overlap, and nothing nests deeper.
+        for (int walked = 0; it != declaration_spans_.begin() && walked < 4; walked++) {
+            --it;
+            if (it->second > off) return true;
+        }
+        return false;
+    }
 
     // Would the token scan name a call starting at this offset?
     bool written_call_at(unsigned off) const {

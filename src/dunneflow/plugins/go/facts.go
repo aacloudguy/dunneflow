@@ -16,7 +16,7 @@ package main
 import "encoding/json"
 
 // SchemaVersion is `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-const SchemaVersion = 18
+const SchemaVersion = 19
 
 // List is a slice that encodes as `[]` when it is nil, because the codec refuses `null`
 // where it expects a list.
@@ -123,6 +123,27 @@ const (
 	LiteralKindInterpolated LiteralKind = "INTERPOLATED"
 )
 
+// MacroOrigin is `schema.MacroOrigin`.
+type MacroOrigin string
+
+// The members of MacroOrigin.
+const (
+	MacroOriginTree        MacroOrigin = "tree"
+	MacroOriginOutside     MacroOrigin = "outside"
+	MacroOriginCommandLine MacroOrigin = "command_line"
+	MacroOriginBuiltin     MacroOrigin = "builtin"
+)
+
+// MacroPosition is `schema.MacroPosition`.
+type MacroPosition string
+
+// The members of MacroPosition.
+const (
+	MacroPositionStatement   MacroPosition = "statement"
+	MacroPositionDeclaration MacroPosition = "declaration"
+	MacroPositionFileScope   MacroPosition = "file_scope"
+)
+
 // StructureKind is `schema.StructureKind`.
 type StructureKind string
 
@@ -169,6 +190,9 @@ type Routine struct {
 	IsNested    bool             `json:"is_nested,omitempty"`
 	Visibility  string           `json:"visibility,omitempty"`
 	BodyHash    string           `json:"body_hash,omitempty"`
+	NameBy      string           `json:"name_by,omitempty"`
+	BodyBy      string           `json:"body_by,omitempty"`
+	OpaqueAsm   int              `json:"opaque_asm,omitempty"`
 }
 
 // Param is `schema.Param`.
@@ -241,6 +265,7 @@ type DataStructure struct {
 	Docstring   *string          `json:"docstring,omitempty"`
 	Bases       List[string]     `json:"bases,omitempty"`
 	Annotations List[Annotation] `json:"annotations,omitempty"`
+	NameBy      string           `json:"name_by,omitempty"`
 }
 
 // Field is `schema.Field_`.
@@ -418,37 +443,58 @@ type IpcRegistration struct {
 	Line int    `json:"line"`
 }
 
+// MacroDef is `schema.MacroDef`.
+type MacroDef struct {
+	Id     string      `json:"id"`
+	Name   string      `json:"name"`
+	File   string      `json:"file"`
+	Line   int         `json:"line"`
+	Origin MacroOrigin `json:"origin"`
+}
+
+// MacroSite is `schema.MacroSite`.
+type MacroSite struct {
+	DefId     string        `json:"def_id"`
+	Name      string        `json:"name"`
+	Line      int           `json:"line"`
+	Position  MacroPosition `json:"position"`
+	RoutineId *string       `json:"routine_id,omitempty"`
+}
+
 // FileFacts is `schema.FileFacts`.
 type FileFacts struct {
-	Path             string                `json:"path"`
-	Lang             string                `json:"lang"`
-	Module           string                `json:"module"`
-	ContentHash      string                `json:"content_hash"`
-	Doc              string                `json:"doc,omitempty"`
-	Routines         List[Routine]         `json:"routines,omitempty"`
-	Calls            List[CallSite]        `json:"calls,omitempty"`
-	Boundaries       List[BoundaryHit]     `json:"boundaries,omitempty"`
-	Structures       List[DataStructure]   `json:"structures,omitempty"`
-	Entrypoints      List[Entrypoint]      `json:"entrypoints,omitempty"`
-	Imports          List[ImportRec]       `json:"imports,omitempty"`
-	CliApps          List[CliApp]          `json:"cli_apps,omitempty"`
-	CliMounts        List[CliMount]        `json:"cli_mounts,omitempty"`
-	Sql              List[SqlStatement]    `json:"sql,omitempty"`
-	Network          List[NetworkCall]     `json:"network,omitempty"`
-	Classes          List[ClassDef]        `json:"classes,omitempty"`
-	Tables           List[TableSchema]     `json:"tables,omitempty"`
-	Indexes          List[IndexSchema]     `json:"indexes,omitempty"`
-	Artefacts        List[Artefact]        `json:"artefacts,omitempty"`
-	Constants        List[Constant]        `json:"constants,omitempty"`
-	Control          List[ControlPoint]    `json:"control,omitempty"`
-	ControlArms      List[ControlArm]      `json:"control_arms,omitempty"`
-	Literals         List[StringLiteral]   `json:"literals,omitempty"`
-	ModuleScope      *Routine              `json:"module_scope,omitempty"`
-	LiteralsDropped  int                   `json:"literals_dropped,omitempty"`
-	TestsDropped     int                   `json:"tests_dropped,omitempty"`
-	ReadThrough      string                `json:"read_through,omitempty"`
-	IpcRegistrations List[IpcRegistration] `json:"ipc_registrations,omitempty"`
-	Errors           List[string]          `json:"errors,omitempty"`
+	Path               string                `json:"path"`
+	Lang               string                `json:"lang"`
+	Module             string                `json:"module"`
+	ContentHash        string                `json:"content_hash"`
+	Doc                string                `json:"doc,omitempty"`
+	Routines           List[Routine]         `json:"routines,omitempty"`
+	Calls              List[CallSite]        `json:"calls,omitempty"`
+	Boundaries         List[BoundaryHit]     `json:"boundaries,omitempty"`
+	Structures         List[DataStructure]   `json:"structures,omitempty"`
+	Entrypoints        List[Entrypoint]      `json:"entrypoints,omitempty"`
+	Imports            List[ImportRec]       `json:"imports,omitempty"`
+	CliApps            List[CliApp]          `json:"cli_apps,omitempty"`
+	CliMounts          List[CliMount]        `json:"cli_mounts,omitempty"`
+	Sql                List[SqlStatement]    `json:"sql,omitempty"`
+	Network            List[NetworkCall]     `json:"network,omitempty"`
+	Classes            List[ClassDef]        `json:"classes,omitempty"`
+	Tables             List[TableSchema]     `json:"tables,omitempty"`
+	Indexes            List[IndexSchema]     `json:"indexes,omitempty"`
+	Artefacts          List[Artefact]        `json:"artefacts,omitempty"`
+	Constants          List[Constant]        `json:"constants,omitempty"`
+	Control            List[ControlPoint]    `json:"control,omitempty"`
+	ControlArms        List[ControlArm]      `json:"control_arms,omitempty"`
+	Literals           List[StringLiteral]   `json:"literals,omitempty"`
+	ModuleScope        *Routine              `json:"module_scope,omitempty"`
+	LiteralsDropped    int                   `json:"literals_dropped,omitempty"`
+	TestsDropped       int                   `json:"tests_dropped,omitempty"`
+	ReadThrough        string                `json:"read_through,omitempty"`
+	IpcRegistrations   List[IpcRegistration] `json:"ipc_registrations,omitempty"`
+	MacroDefs          List[MacroDef]        `json:"macro_defs,omitempty"`
+	MacroSites         List[MacroSite]       `json:"macro_sites,omitempty"`
+	MacroDirectiveUses int                   `json:"macro_directive_uses,omitempty"`
+	Errors             List[string]          `json:"errors,omitempty"`
 }
 
 // Answer is `schema.Answer`.

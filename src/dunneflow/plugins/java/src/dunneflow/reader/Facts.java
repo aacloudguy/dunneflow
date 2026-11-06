@@ -25,7 +25,7 @@ public final class Facts {
     private Facts() {}
 
     /** `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name. */
-    public static final long SCHEMA_VERSION = 18;
+    public static final long SCHEMA_VERSION = 19;
 
     /** `schema.ArmKind`. */
     public enum ArmKind implements Json.Writable {
@@ -183,6 +183,45 @@ public final class Facts {
         }
     }
 
+    /** `schema.MacroOrigin`. */
+    public enum MacroOrigin implements Json.Writable {
+        TREE("tree"),
+        OUTSIDE("outside"),
+        COMMAND_LINE("command_line"),
+        BUILTIN("builtin");
+
+        /** The schema's own spelling, which is the wire's. */
+        public final String wire;
+
+        MacroOrigin(String wire) {
+            this.wire = wire;
+        }
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            Json.writeString(out, wire);
+        }
+    }
+
+    /** `schema.MacroPosition`. */
+    public enum MacroPosition implements Json.Writable {
+        STATEMENT("statement"),
+        DECLARATION("declaration"),
+        FILE_SCOPE("file_scope");
+
+        /** The schema's own spelling, which is the wire's. */
+        public final String wire;
+
+        MacroPosition(String wire) {
+            this.wire = wire;
+        }
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            Json.writeString(out, wire);
+        }
+    }
+
     /** `schema.StructureKind`. */
     public enum StructureKind implements Json.Writable {
         DATACLASS("DATACLASS"),
@@ -247,6 +286,9 @@ public final class Facts {
         public boolean is_nested = false;
         public String visibility = "public";
         public String body_hash = "";
+        public String name_by = "";
+        public String body_by = "";
+        public long opaque_asm = 0L;
 
         @Override
         public void writeJson(StringBuilder out) {
@@ -309,6 +351,15 @@ public final class Facts {
             }
             if (!Objects.equals(body_hash, "")) {
                 Json.field(out, first, "body_hash", body_hash);
+            }
+            if (!Objects.equals(name_by, "")) {
+                Json.field(out, first, "name_by", name_by);
+            }
+            if (!Objects.equals(body_by, "")) {
+                Json.field(out, first, "body_by", body_by);
+            }
+            if (opaque_asm != 0L) {
+                Json.field(out, first, "opaque_asm", opaque_asm);
             }
             out.append('}');
         }
@@ -529,6 +580,7 @@ public final class Facts {
         public String docstring = null;
         public List<String> bases = new ArrayList<>();
         public List<Annotation> annotations = new ArrayList<>();
+        public String name_by = "";
 
         @Override
         public void writeJson(StringBuilder out) {
@@ -566,6 +618,9 @@ public final class Facts {
             }
             if (!annotations.isEmpty()) {
                 Json.field(out, first, "annotations", annotations);
+            }
+            if (!Objects.equals(name_by, "")) {
+                Json.field(out, first, "name_by", name_by);
             }
             out.append('}');
         }
@@ -1200,6 +1255,71 @@ public final class Facts {
         }
     }
 
+    /** `schema.MacroDef`. */
+    public static final class MacroDef implements Json.Writable {
+        public String id = null;
+        public String name = null;
+        public String file = null;
+        public long line;
+        public MacroOrigin origin = null;
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            out.append('{');
+            boolean[] first = {true};
+            if (id == null) {
+                throw new IllegalStateException("MacroDef.id is required and was never set");
+            }
+            Json.field(out, first, "id", id);
+            if (name == null) {
+                throw new IllegalStateException("MacroDef.name is required and was never set");
+            }
+            Json.field(out, first, "name", name);
+            if (file == null) {
+                throw new IllegalStateException("MacroDef.file is required and was never set");
+            }
+            Json.field(out, first, "file", file);
+            Json.field(out, first, "line", line);
+            if (origin == null) {
+                throw new IllegalStateException("MacroDef.origin is required and was never set");
+            }
+            Json.field(out, first, "origin", origin);
+            out.append('}');
+        }
+    }
+
+    /** `schema.MacroSite`. */
+    public static final class MacroSite implements Json.Writable {
+        public String def_id = null;
+        public String name = null;
+        public long line;
+        public MacroPosition position = null;
+        public String routine_id = null;
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            out.append('{');
+            boolean[] first = {true};
+            if (def_id == null) {
+                throw new IllegalStateException("MacroSite.def_id is required and was never set");
+            }
+            Json.field(out, first, "def_id", def_id);
+            if (name == null) {
+                throw new IllegalStateException("MacroSite.name is required and was never set");
+            }
+            Json.field(out, first, "name", name);
+            Json.field(out, first, "line", line);
+            if (position == null) {
+                throw new IllegalStateException("MacroSite.position is required and was never set");
+            }
+            Json.field(out, first, "position", position);
+            if (!Objects.equals(routine_id, null)) {
+                Json.field(out, first, "routine_id", routine_id);
+            }
+            out.append('}');
+        }
+    }
+
     /** `schema.FileFacts`. */
     public static final class FileFacts implements Json.Writable {
         public String path = null;
@@ -1230,6 +1350,9 @@ public final class Facts {
         public long tests_dropped = 0L;
         public String read_through = "";
         public List<IpcRegistration> ipc_registrations = new ArrayList<>();
+        public List<MacroDef> macro_defs = new ArrayList<>();
+        public List<MacroSite> macro_sites = new ArrayList<>();
+        public long macro_directive_uses = 0L;
         public List<String> errors = new ArrayList<>();
 
         @Override
@@ -1323,6 +1446,15 @@ public final class Facts {
             }
             if (!ipc_registrations.isEmpty()) {
                 Json.field(out, first, "ipc_registrations", ipc_registrations);
+            }
+            if (!macro_defs.isEmpty()) {
+                Json.field(out, first, "macro_defs", macro_defs);
+            }
+            if (!macro_sites.isEmpty()) {
+                Json.field(out, first, "macro_sites", macro_sites);
+            }
+            if (macro_directive_uses != 0L) {
+                Json.field(out, first, "macro_directive_uses", macro_directive_uses);
             }
             if (!errors.isEmpty()) {
                 Json.field(out, first, "errors", errors);

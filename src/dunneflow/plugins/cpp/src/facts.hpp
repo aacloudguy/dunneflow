@@ -26,7 +26,7 @@
 namespace facts {
 
 // `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-constexpr int64_t SCHEMA_VERSION = 18;
+constexpr int64_t SCHEMA_VERSION = 19;
 
 inline void required(const char* what) {
     throw std::logic_error(std::string(what) + " is required and was never set");
@@ -103,6 +103,21 @@ namespace LiteralKind {
 inline const std::string PLAIN = "PLAIN";
 inline const std::string INTERPOLATED = "INTERPOLATED";
 }  // namespace LiteralKind
+
+// `schema.MacroOrigin`, by its wire spelling.
+namespace MacroOrigin {
+inline const std::string TREE = "tree";
+inline const std::string OUTSIDE = "outside";
+inline const std::string COMMAND_LINE = "command_line";
+inline const std::string BUILTIN = "builtin";
+}  // namespace MacroOrigin
+
+// `schema.MacroPosition`, by its wire spelling.
+namespace MacroPosition {
+inline const std::string STATEMENT = "statement";
+inline const std::string DECLARATION = "declaration";
+inline const std::string FILE_SCOPE = "file_scope";
+}  // namespace MacroPosition
 
 // `schema.StructureKind`, by its wire spelling.
 namespace StructureKind {
@@ -202,6 +217,9 @@ struct Routine {
     bool is_nested = false;
     std::string visibility = "public";
     std::string body_hash = "";
+    std::string name_by = "";
+    std::string body_by = "";
+    int64_t opaque_asm = 0;
 
     void write_json(std::string& out) const {
         out += '{';
@@ -230,6 +248,9 @@ struct Routine {
         if (is_nested != false) json::field(out, first, "is_nested", is_nested);
         if (visibility != "public") json::field(out, first, "visibility", visibility);
         if (body_hash != "") json::field(out, first, "body_hash", body_hash);
+        if (name_by != "") json::field(out, first, "name_by", name_by);
+        if (body_by != "") json::field(out, first, "body_by", body_by);
+        if (opaque_asm != 0) json::field(out, first, "opaque_asm", opaque_asm);
         out += '}';
     }
 };
@@ -346,6 +367,7 @@ struct DataStructure {
     std::optional<std::string> docstring;
     std::vector<std::string> bases;
     std::vector<Annotation> annotations;
+    std::string name_by = "";
 
     void write_json(std::string& out) const {
         out += '{';
@@ -365,6 +387,7 @@ struct DataStructure {
         if (docstring) json::field(out, first, "docstring", *docstring);
         if (!bases.empty()) json::field(out, first, "bases", bases);
         if (!annotations.empty()) json::field(out, first, "annotations", annotations);
+        if (name_by != "") json::field(out, first, "name_by", name_by);
         out += '}';
     }
 };
@@ -781,6 +804,53 @@ struct IpcRegistration {
     }
 };
 
+// `schema.MacroDef`.
+struct MacroDef {
+    std::optional<std::string> id;
+    std::optional<std::string> name;
+    std::optional<std::string> file;
+    int64_t line = 0;
+    std::optional<std::string> origin;
+
+    void write_json(std::string& out) const {
+        out += '{';
+        bool first = true;
+        if (!id) required("MacroDef.id");
+        json::field(out, first, "id", *id);
+        if (!name) required("MacroDef.name");
+        json::field(out, first, "name", *name);
+        if (!file) required("MacroDef.file");
+        json::field(out, first, "file", *file);
+        json::field(out, first, "line", line);
+        if (!origin) required("MacroDef.origin");
+        json::field(out, first, "origin", *origin);
+        out += '}';
+    }
+};
+
+// `schema.MacroSite`.
+struct MacroSite {
+    std::optional<std::string> def_id;
+    std::optional<std::string> name;
+    int64_t line = 0;
+    std::optional<std::string> position;
+    std::optional<std::string> routine_id;
+
+    void write_json(std::string& out) const {
+        out += '{';
+        bool first = true;
+        if (!def_id) required("MacroSite.def_id");
+        json::field(out, first, "def_id", *def_id);
+        if (!name) required("MacroSite.name");
+        json::field(out, first, "name", *name);
+        json::field(out, first, "line", line);
+        if (!position) required("MacroSite.position");
+        json::field(out, first, "position", *position);
+        if (routine_id) json::field(out, first, "routine_id", *routine_id);
+        out += '}';
+    }
+};
+
 // `schema.FileFacts`.
 struct FileFacts {
     std::optional<std::string> path;
@@ -811,6 +881,9 @@ struct FileFacts {
     int64_t tests_dropped = 0;
     std::string read_through = "";
     std::vector<IpcRegistration> ipc_registrations;
+    std::vector<MacroDef> macro_defs;
+    std::vector<MacroSite> macro_sites;
+    int64_t macro_directive_uses = 0;
     std::vector<std::string> errors;
 
     void write_json(std::string& out) const {
@@ -848,6 +921,9 @@ struct FileFacts {
         if (tests_dropped != 0) json::field(out, first, "tests_dropped", tests_dropped);
         if (read_through != "") json::field(out, first, "read_through", read_through);
         if (!ipc_registrations.empty()) json::field(out, first, "ipc_registrations", ipc_registrations);
+        if (!macro_defs.empty()) json::field(out, first, "macro_defs", macro_defs);
+        if (!macro_sites.empty()) json::field(out, first, "macro_sites", macro_sites);
+        if (macro_directive_uses != 0) json::field(out, first, "macro_directive_uses", macro_directive_uses);
         if (!errors.empty()) json::field(out, first, "errors", errors);
         out += '}';
     }

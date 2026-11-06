@@ -53,7 +53,7 @@ from typing import Literal
 #     application calls by name, and the link that names it.
 # 18: `FileFacts.read_through`, and `files.read_through`: the file a fragment was parsed
 #     through, because a fragment's facts mean what its includer put in front of it.
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 # --------------------------------------------------------------------------- #
@@ -297,6 +297,14 @@ class Routine:
     is_nested: bool = False
     visibility: Literal["public", "private"] = "public"
     body_hash: str = ""  # changes when the routine's source changes; identity does not
+    # **Which macro wrote it**, each a `MacroDef.id`, blank where nobody did. Two questions,
+    # because `SIG(f) { hand(); }` and `void f() BODY` are opposite things: one gives a
+    # hand-written body a name somebody cannot grep for, the other hides a body behind a name
+    # somebody can. One hop: what a macro's own body expands is not in clang's record.
+    name_by: str = ""
+    body_by: str = ""
+    # Inline assembly statements in its body: what it does is not in this map.
+    opaque_asm: int = 0
 
     def signature(self) -> str:
         """Render the signature the way it would be read, not the way it was written."""
@@ -723,6 +731,55 @@ class DataStructure:
     docstring: str | None = None
     bases: list[str] = field(default_factory=list)
     annotations: list[Annotation] = field(default_factory=list)
+    name_by: str = ""  # the `MacroDef.id` that wrote its name, as on `Routine`
+
+
+class MacroOrigin(StrEnum):
+    """Where a macro is defined, which decides how much a use of it can hide."""
+
+    TREE = "tree"                  # in the tree being read: the program's own choice
+    OUTSIDE = "outside"            # in a header from elsewhere: a library's or the platform's
+    COMMAND_LINE = "command_line"  # `-D`: in the build, which is not in the source at all
+    BUILTIN = "builtin"            # the compiler's own: `__FILE__`, `__APPLE__`
+
+
+class MacroPosition(StrEnum):
+    """What a macro's use is standing in for at the place it is written."""
+
+    STATEMENT = "statement"      # inside a routine's body
+    DECLARATION = "declaration"  # declares something, annotates a declaration, or is in a class
+    FILE_SCOPE = "file_scope"    # at the top of a file, with neither of those to say for it
+
+
+@dataclass(slots=True)
+class MacroDef:
+    """One definition of a macro: the identity a use is counted under.
+
+    **A name is not an identity.** `#undef check` then `#define check(x) system(x)` is not
+    Core's `check`, and folding the two would hide exactly the one that matters. Several files
+    report the same definition and the store keeps one row. `file` is relative where the tree
+    holds it, and otherwise its last two path segments (`sys/socket.h`), because a stored path
+    is a key (rule 60) and where an SDK is installed is not a fact about the program.
+    """
+
+    id: str
+    name: str
+    file: str
+    line: int
+    origin: MacroOrigin
+
+
+@dataclass(slots=True)
+class MacroSite:
+    """One use of a macro. Counts are queries over these, so each number can open its places
+    (rule 13). A use inside a directive (`#if ID(1)`) is not one: it decides what is read and
+    runs nothing, so `FileFacts.macro_directive_uses` counts it."""
+
+    def_id: str
+    name: str
+    line: int
+    position: MacroPosition
+    routine_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -1054,6 +1111,11 @@ class FileFacts:
     read_through: str = ""
     # Names this file hands to an IPC dispatch. See `IpcRegistration`. Schema 17.
     ipc_registrations: list[IpcRegistration] = field(default_factory=list)
+    # Macros, as their own fact. Schema 19. Only a reader whose toolchain expands them fills
+    # these: which readers those are is `macro_expansion` in each language's rules.
+    macro_defs: list[MacroDef] = field(default_factory=list)
+    macro_sites: list[MacroSite] = field(default_factory=list)
+    macro_directive_uses: int = 0
     errors: list[str] = field(default_factory=list)
 
 

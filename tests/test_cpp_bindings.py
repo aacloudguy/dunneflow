@@ -519,8 +519,10 @@ def test_what_a_macro_written_body_calls_is_its_own(tmp_path: Path) -> None:
         store.close()
 
 
-def test_accessors_in_a_class_the_macro_named_are_the_macro_s(tmp_path: Path) -> None:
-    """`DECLARE_CYCLE_STAT`: seven accessors per stat, 441 stats in Core, nothing to find."""
+def test_accessors_in_a_class_the_macro_named_are_routines_and_say_so(tmp_path: Path) -> None:
+    """`DECLARE_CYCLE_STAT`: seven accessors per stat, 441 stats in Core. These were left out
+    until 2026-11-06, and leaving them out leaves out anywhere a macro might hide something.
+    They are in the map, marked, and folding them is the map's decision."""
     (tmp_path / "s.cpp").write_text(
         "#define STAT(Id) struct FStat_##Id { static int Get() { return 1; } };\n"
         "STAT(One)\nSTAT(Two)\n"
@@ -529,9 +531,11 @@ def test_accessors_in_a_class_the_macro_named_are_the_macro_s(tmp_path: Path) ->
     store = Store(tmp_path / "g.db")
     try:
         analyze_tree(tmp_path, store)
-        rows = store.query("SELECT qualname FROM routines ORDER BY qualname")
-        assert [r["qualname"] for r in rows] == ["Kept.Get"], (
-            "the file writes `Kept`, and not FStat_One")
+        rows = store.query(
+            "SELECT r.qualname, d.name AS body_by FROM routines r"
+            " JOIN macro_defs d ON d.id = r.body_by ORDER BY r.qualname")
+        assert [(r["qualname"], r["body_by"]) for r in rows] == [
+            ("FStat_One.Get", "STAT"), ("FStat_Two.Get", "STAT"), ("Kept.Get", "HEAD")]
     finally:
         store.close()
 

@@ -17,7 +17,7 @@ use crate::json::{write_str, ToJson};
 use std::collections::BTreeMap;
 
 /// `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-pub const SCHEMA_VERSION: i64 = 18;
+pub const SCHEMA_VERSION: i64 = 19;
 
 /// `schema.ArmKind`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -247,6 +247,60 @@ impl ToJson for LiteralKind {
     }
 }
 
+/// `schema.MacroOrigin`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MacroOrigin {
+    #[default]
+    Tree,
+    Outside,
+    CommandLine,
+    Builtin,
+}
+
+impl MacroOrigin {
+    /// The schema's own spelling, which is the wire's.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MacroOrigin::Tree => "tree",
+            MacroOrigin::Outside => "outside",
+            MacroOrigin::CommandLine => "command_line",
+            MacroOrigin::Builtin => "builtin",
+        }
+    }
+}
+
+impl ToJson for MacroOrigin {
+    fn write_json(&self, out: &mut String) {
+        write_str(out, self.as_str());
+    }
+}
+
+/// `schema.MacroPosition`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MacroPosition {
+    #[default]
+    Statement,
+    Declaration,
+    FileScope,
+}
+
+impl MacroPosition {
+    /// The schema's own spelling, which is the wire's.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MacroPosition::Statement => "statement",
+            MacroPosition::Declaration => "declaration",
+            MacroPosition::FileScope => "file_scope",
+        }
+    }
+}
+
+impl ToJson for MacroPosition {
+    fn write_json(&self, out: &mut String) {
+        write_str(out, self.as_str());
+    }
+}
+
 /// `schema.StructureKind`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum StructureKind {
@@ -331,6 +385,9 @@ pub struct Routine {
     pub is_nested: bool,
     pub visibility: String,
     pub body_hash: String,
+    pub name_by: String,
+    pub body_by: String,
+    pub opaque_asm: i64,
 }
 
 impl ToJson for Routine {
@@ -380,6 +437,15 @@ impl ToJson for Routine {
         }
         if self.body_hash != zero.body_hash {
             crate::json::field(out, &mut first, "body_hash", &self.body_hash);
+        }
+        if self.name_by != zero.name_by {
+            crate::json::field(out, &mut first, "name_by", &self.name_by);
+        }
+        if self.body_by != zero.body_by {
+            crate::json::field(out, &mut first, "body_by", &self.body_by);
+        }
+        if self.opaque_asm != zero.opaque_asm {
+            crate::json::field(out, &mut first, "opaque_asm", &self.opaque_asm);
         }
         out.push('}');
     }
@@ -586,6 +652,7 @@ pub struct DataStructure {
     pub docstring: Option<String>,
     pub bases: Vec<String>,
     pub annotations: Vec<Annotation>,
+    pub name_by: String,
 }
 
 impl ToJson for DataStructure {
@@ -610,6 +677,9 @@ impl ToJson for DataStructure {
         }
         if self.annotations != zero.annotations {
             crate::json::field(out, &mut first, "annotations", &self.annotations);
+        }
+        if self.name_by != zero.name_by {
+            crate::json::field(out, &mut first, "name_by", &self.name_by);
         }
         out.push('}');
     }
@@ -1142,6 +1212,55 @@ impl ToJson for IpcRegistration {
     }
 }
 
+/// `schema.MacroDef`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MacroDef {
+    pub id: String,
+    pub name: String,
+    pub file: String,
+    pub line: i64,
+    pub origin: MacroOrigin,
+}
+
+impl ToJson for MacroDef {
+    fn write_json(&self, out: &mut String) {
+        out.push('{');
+        let mut first = true;
+        crate::json::field(out, &mut first, "id", &self.id);
+        crate::json::field(out, &mut first, "name", &self.name);
+        crate::json::field(out, &mut first, "file", &self.file);
+        crate::json::field(out, &mut first, "line", &self.line);
+        crate::json::field(out, &mut first, "origin", &self.origin);
+        out.push('}');
+    }
+}
+
+/// `schema.MacroSite`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MacroSite {
+    pub def_id: String,
+    pub name: String,
+    pub line: i64,
+    pub position: MacroPosition,
+    pub routine_id: Option<String>,
+}
+
+impl ToJson for MacroSite {
+    fn write_json(&self, out: &mut String) {
+        let zero = Self::default();
+        out.push('{');
+        let mut first = true;
+        crate::json::field(out, &mut first, "def_id", &self.def_id);
+        crate::json::field(out, &mut first, "name", &self.name);
+        crate::json::field(out, &mut first, "line", &self.line);
+        crate::json::field(out, &mut first, "position", &self.position);
+        if self.routine_id != zero.routine_id {
+            crate::json::field(out, &mut first, "routine_id", &self.routine_id);
+        }
+        out.push('}');
+    }
+}
+
 /// `schema.FileFacts`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileFacts {
@@ -1173,6 +1292,9 @@ pub struct FileFacts {
     pub tests_dropped: i64,
     pub read_through: String,
     pub ipc_registrations: Vec<IpcRegistration>,
+    pub macro_defs: Vec<MacroDef>,
+    pub macro_sites: Vec<MacroSite>,
+    pub macro_directive_uses: i64,
     pub errors: Vec<String>,
 }
 
@@ -1256,6 +1378,15 @@ impl ToJson for FileFacts {
         }
         if self.ipc_registrations != zero.ipc_registrations {
             crate::json::field(out, &mut first, "ipc_registrations", &self.ipc_registrations);
+        }
+        if self.macro_defs != zero.macro_defs {
+            crate::json::field(out, &mut first, "macro_defs", &self.macro_defs);
+        }
+        if self.macro_sites != zero.macro_sites {
+            crate::json::field(out, &mut first, "macro_sites", &self.macro_sites);
+        }
+        if self.macro_directive_uses != zero.macro_directive_uses {
+            crate::json::field(out, &mut first, "macro_directive_uses", &self.macro_directive_uses);
         }
         if self.errors != zero.errors {
             crate::json::field(out, &mut first, "errors", &self.errors);

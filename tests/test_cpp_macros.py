@@ -301,3 +301,118 @@ def test_a_prefix_does_not_claim_a_path_s_methods_or_a_name_that_shares_its_lett
         "void t(std::filesystem::path p) { p.string(); PQueueUp(); std::filesystem::exists(p); }\n"
     ))
     assert _hits(ff, "t") == {("FILE", "std.filesystem.exists")}
+
+
+def _defs(ff) -> dict[str, str]:
+    return {d.id: d.name for d in ff.macro_defs}
+
+
+def test_who_wrote_a_routine_s_name_and_who_wrote_its_body_are_two_questions(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "#define SIG(n) void n()\n"
+        "#define BODY { }\n"
+        "#define WHOLE(n) void n() { }\n"
+        "#define PASTED(n) void get_##n() { }\n"
+        "#define BEGIN void half() {\n"
+        "#define END }\n"
+        "SIG(sig_only) { }\n"
+        "void body_only() BODY\n"
+        "WHOLE(whole)\n"
+        "PASTED(x)\n"
+        "BEGIN int a; END\n"
+        "void hand() { }\n"
+    ))
+    defs = _defs(ff)
+    got = {r.qualname: (defs.get(r.name_by, ""), defs.get(r.body_by, "")) for r in ff.routines}
+    assert got == {
+        "sig_only": ("SIG", ""),
+        "body_only": ("", "BODY"),
+        "whole": ("WHOLE", "WHOLE"),
+        "get_x": ("PASTED", "PASTED"),
+        "half": ("BEGIN", "BEGIN"),
+        "hand": ("", ""),
+    }
+
+
+def test_a_redefined_macro_is_a_second_definition_and_not_the_same_name(tmp_path):
+    """Folding on the name would put a `system` call under Core's `check`."""
+    ff, _, _ = _read(tmp_path, (
+        "#define check(x) ((void)0)\n"
+        "void a() { check(1); }\n"
+        "#undef check\n"
+        "#define check(x) system(x)\n"
+        "void b() { check(1); }\n"
+    ))
+    uses = {_routine(ff, q).id: q for q in ("a", "b")}
+    by = {uses[s.routine_id]: s.def_id for s in ff.macro_sites if s.routine_id in uses}
+    assert by["a"] != by["b"]
+    assert sorted((d.name, d.line) for d in ff.macro_defs) == [("check", 1), ("check", 4)]
+
+
+def test_each_use_says_what_it_stands_in_for(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "#define NOTHING\n"
+        "#define ONE 1\n"
+        "#define MAKE(n) int n;\n"
+        "#define MARK(x)\n"
+        "NOTHING\n"                  # line 5: stands for nothing at all
+        "MAKE(v)\n"                  # line 6: declares `v`
+        "MARK(a)\n"                  # line 7: annotates `f`
+        "void f() { int x = ONE; }\n"  # line 8: inside a body
+        "struct S { MAKE(m) };\n"    # line 9: inside a record
+        "#if ONE\n"                  # line 10: decides what is read, and is not a use
+        "#endif\n"
+        "struct T { int a; NOTHING };\n"  # line 12: in a record, declaring nothing
+        "#define WHOLE(n) void n() { }\n"
+        "WHOLE(w)\n"                 # line 14: is `w`, and is not a use inside it
+        "void p(int x NOTHING);\n"   # line 15: in a prototype's parameters
+        "int table[] = { ONE };\n"   # line 16: in a table
+        "namespace n { NOTHING }\n"  # line 17: a namespace declares nothing by holding it
+    ))
+    got = {(s.name, s.line): (s.position.value, s.routine_id) for s in ff.macro_sites}
+    assert got == {
+        ("NOTHING", 5): ("file_scope", None),
+        ("MAKE", 6): ("declaration", None),
+        ("MARK", 7): ("declaration", None),
+        ("ONE", 8): ("statement", _routine(ff, "f").id),
+        ("MAKE", 9): ("declaration", None),
+        ("NOTHING", 12): ("declaration", None),
+        ("WHOLE", 14): ("declaration", None),
+        ("NOTHING", 15): ("declaration", None),
+        ("ONE", 16): ("declaration", None),
+        ("NOTHING", 17): ("file_scope", None),
+    }
+    assert ff.macro_directive_uses == 1
+
+
+def test_a_definition_says_where_it_came_from(tmp_path):
+    """By path: `clang_Location_isInSystemHeader` calls an Unreal module's own headers system
+    headers, because they arrive by `-idirafter`. Outside the tree only the last two segments
+    are stored, since where an SDK is installed is no fact about the program (rule 60)."""
+    out = tmp_path / "elsewhere" / "sys"
+    out.mkdir(parents=True)
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (out / "lib.h").write_text("#define LIBM 1\n", encoding="utf-8")
+    (tree / "own.h").write_text("#define OWN 1\n", encoding="utf-8")
+    (tree / "compile_commands.json").write_text(
+        json.dumps([{"directory": str(tree), "file": "m.cpp",
+                     "arguments": ["clang++", f"-I{out}", "-DCMD=3", "-c", "m.cpp"]}]),
+        encoding="utf-8")
+    ff, _, _ = _read(tree, (
+        '#include "own.h"\n#include <lib.h>\n'
+        "int a = OWN + LIBM + CMD + __LINE__;\n"
+    ))
+    got = {d.name: (d.origin.value, d.file) for d in ff.macro_defs}
+    assert got["OWN"] == ("tree", "own.h")
+    assert got["LIBM"] == ("outside", "sys/lib.h")
+    assert got["CMD"] == ("command_line", "")
+    assert got["__LINE__"] == ("builtin", "")
+
+
+def test_a_routine_counts_the_assembly_it_holds(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "void a() { __asm__(\"nop\"); __asm__(\"nop\"); }\n"
+        "void b() { }\n"
+    ))
+    assert (_routine(ff, "a").opaque_asm, _routine(ff, "b").opaque_asm) == (2, 0)

@@ -557,14 +557,16 @@ def test_a_variable_a_macro_declares_does_not_hide_the_macro_s_call(tmp_path):
 
 
 @needs_clang
-def test_a_record_a_macro_names_by_pasting_is_not_a_structure(tmp_path):
+def test_a_record_a_macro_names_is_a_structure_and_says_so(tmp_path):
     """`DECLARE_CYCLE_STAT(..., STAT_X, ...)` is a `struct FStat_STAT_X`, hundreds of them in
-    Core; a record whose name the file writes, as `TAILQ_HEAD(joblist, job)` does, is kept."""
+    Core. Left out until 2026-11-06; kept now, and marked for the map to fold."""
     facts, _, _ = _tree(tmp_path, {"s.cpp": (
         "#define STAT(N) struct FStat_##N { int v; };\n"
         "#define HEAD(N) struct N { int first; };\n"
         "STAT(Draw)\nHEAD(joblist)\n")})
-    assert [s.name for s in facts["s.cpp"].structures] == ["joblist"]
+    defs = {d.id: d.name for d in facts["s.cpp"].macro_defs}
+    assert [(s.name, defs[s.name_by]) for s in facts["s.cpp"].structures] == [
+        ("FStat_Draw", "STAT"), ("joblist", "HEAD")]
 
 
 @needs_clang

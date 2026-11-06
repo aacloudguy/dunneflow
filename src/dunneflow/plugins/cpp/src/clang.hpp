@@ -56,6 +56,7 @@
     X(clang_Location_isInSystemHeader)          \
     X(clang_getCursorReferenced)                \
     X(clang_Cursor_isMacroFunctionLike)         \
+    X(clang_getPresumedLocation)                \
     X(clang_getCursorDefinition)                \
     X(clang_isCursorDefinition)                 \
     X(clang_isInvalidDeclaration)               \

@@ -79,6 +79,7 @@ FACTS: dict[str, tuple[str, str]] = {
     "sql_ops":    ("routine_id", "operation, direction, tbl"),
     "net_calls":  ("routine_id", "protocol, verb, destination, port, timeout, retries"),
     "params":     ("routine_id", "idx, name, type, dflt, kind"),
+    "macro_sites": ("routine_id", "name"),
 }
 
 # Owners whose facts differ between the two graphs, **either way round**. A fact only

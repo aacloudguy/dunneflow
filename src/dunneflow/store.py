@@ -102,7 +102,10 @@ CREATE TABLE IF NOT EXISTS routines (
     class_name TEXT,
     is_nested  INTEGER NOT NULL DEFAULT 0,
     visibility TEXT NOT NULL DEFAULT 'public',
-    body_hash  TEXT NOT NULL DEFAULT ''
+    body_hash  TEXT NOT NULL DEFAULT '',
+    name_by    TEXT NOT NULL DEFAULT '',
+    body_by    TEXT NOT NULL DEFAULT '',
+    opaque_asm INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS params (
@@ -332,7 +335,31 @@ CREATE TABLE IF NOT EXISTS structures (
     line      INTEGER NOT NULL,
     lang      TEXT NOT NULL,
     docstring TEXT,
-    bases     TEXT NOT NULL DEFAULT '[]'
+    bases     TEXT NOT NULL DEFAULT '[]',
+    name_by   TEXT NOT NULL DEFAULT ''
+);
+
+-- **One row per definition, and a definition is not owned by the file that uses it**: a header
+-- outside the tree has no `files` row, and a re-read of one file must not take away a definition
+-- other files still use. So nothing forgets these per file; `sweep_macro_defs` removes the ones
+-- no use reaches, once, when an analysis finishes.
+CREATE TABLE IF NOT EXISTS macro_defs (
+    id     TEXT PRIMARY KEY,
+    name   TEXT NOT NULL,
+    file   TEXT NOT NULL,
+    line   INTEGER NOT NULL,
+    origin TEXT NOT NULL
+);
+
+-- One row per use. The name is here as well as on the definition so that `web/changes.py` can
+-- compare uses across two versions, where a definition's id moves with its line.
+CREATE TABLE IF NOT EXISTS macro_sites (
+    file       TEXT NOT NULL,
+    line       INTEGER NOT NULL,
+    def_id     TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    position   TEXT NOT NULL,
+    routine_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS fields (
@@ -539,6 +566,9 @@ CREATE INDEX IF NOT EXISTS ix_bound_file       ON boundaries(file);
 CREATE INDEX IF NOT EXISTS ix_control_routine  ON control(routine_id, line_start, line_end);
 CREATE INDEX IF NOT EXISTS ix_control_point    ON control(point_id);
 CREATE INDEX IF NOT EXISTS ix_arms_point       ON control_arms(point_id);
+CREATE INDEX IF NOT EXISTS ix_macro_sites_def   ON macro_sites(def_id);
+CREATE INDEX IF NOT EXISTS ix_macro_sites_file  ON macro_sites(file);
+CREATE INDEX IF NOT EXISTS ix_macro_sites_owner ON macro_sites(routine_id);
 CREATE INDEX IF NOT EXISTS ix_arms_routine     ON control_arms(routine_id, line_start, line_end);
 CREATE INDEX IF NOT EXISTS ix_control_kind     ON control(kind);
 CREATE INDEX IF NOT EXISTS ix_control_file     ON control(file);
@@ -1208,7 +1238,8 @@ class Store:
         for table in ("routines", "structures", "calls", "boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
-                      "artefacts", "constants", "control", "ipc_registrations"):
+                      "artefacts", "constants", "control", "ipc_registrations",
+                      "macro_sites"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
         # **`supplied_edges` is deliberately not here**, and it is the one table a file's
@@ -1294,13 +1325,13 @@ class Store:
             c.execute(
                 "INSERT INTO routines(id,name,qualname,module,file,line_start,line_end,lang,"
                 "returns,docstring,decorators,is_async,is_method,class_name,is_nested,"
-                "visibility,body_hash)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "visibility,body_hash,name_by,body_by,opaque_asm)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     r.id, r.name, r.qualname, r.module, r.file, r.line_start, r.line_end,
                     r.lang, r.returns, r.docstring, json.dumps(r.decorators),
                     int(r.is_async), int(r.is_method), r.class_name, int(r.is_nested),
-                    r.visibility, r.body_hash,
+                    r.visibility, r.body_hash, r.name_by, r.body_by, r.opaque_asm,
                 ),
             )
             c.executemany(
@@ -1318,10 +1349,10 @@ class Store:
             )
         for s in ff.structures:
             c.execute(
-                "INSERT INTO structures(id,name,kind,module,file,line,lang,docstring,bases)"
-                " VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO structures(id,name,kind,module,file,line,lang,docstring,bases,"
+                "name_by) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (s.id, s.name, s.kind.value, s.module, s.file, s.line, s.lang, s.docstring,
-                 json.dumps(s.bases)),
+                 json.dumps(s.bases), s.name_by),
             )
             c.executemany(
                 "INSERT INTO fields(structure_id,idx,name,type,dflt,comment) VALUES(?,?,?,?,?,?)",
@@ -1360,6 +1391,16 @@ class Store:
             [(p.point_id, ff.path, p.routine_id, p.kind.value, p.line_start, p.line_end,
               p.depth, p.header, p.arms, p.exits, p.word, p.once_start, p.once_end)
              for p in ff.control],
+        )
+        c.executemany(
+            "INSERT OR IGNORE INTO macro_defs(id,name,file,line,origin) VALUES(?,?,?,?,?)",
+            [(d.id, d.name, d.file, d.line, d.origin.value) for d in ff.macro_defs],
+        )
+        c.executemany(
+            "INSERT INTO macro_sites(file,line,def_id,name,position,routine_id)"
+            " VALUES(?,?,?,?,?,?)",
+            [(ff.path, m.line, m.def_id, m.name, m.position.value, m.routine_id)
+             for m in ff.macro_sites],
         )
         c.executemany(
             "INSERT INTO control_arms"
@@ -1490,6 +1531,13 @@ class Store:
         for t in ("calls", "boundaries", "routines"):
             self.conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()
 
+    def sweep_macro_defs(self) -> None:
+        """Remove the definitions no use reaches. Once per analysis: asked per file, over
+        18,000 files, this one query would be most of a run (rule 55)."""
+        self.conn.execute(
+            "DELETE FROM macro_defs WHERE id NOT IN (SELECT def_id FROM macro_sites)"
+        )
+
     def counts(self) -> dict[str, int]:
         if not self.writable and self.get_meta("complete") == "yes":
             # Recorded by the analysis that finished this map, which nothing has written to
@@ -1501,7 +1549,8 @@ class Store:
         out: dict[str, int] = {}
         for t in ("files", "routines", "calls", "boundaries", "structures", "entrypoints",
                   "annotations", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
-                  "db_indexes", "net_calls", "control", "control_arms"):
+                  "db_indexes", "net_calls", "control", "control_arms",
+                  "macro_defs", "macro_sites"):
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"
@@ -1588,7 +1637,8 @@ class Store:
             comments=comments, annotations=annots, is_async=bool(row["is_async"]),
             is_method=bool(row["is_method"]), class_name=row["class_name"],
             is_nested=bool(row["is_nested"]), visibility=row["visibility"],
-            body_hash=row["body_hash"],
+            body_hash=row["body_hash"], name_by=row["name_by"], body_by=row["body_by"],
+            opaque_asm=row["opaque_asm"],
         )
 
     def entrypoints(self) -> list[Entrypoint]:

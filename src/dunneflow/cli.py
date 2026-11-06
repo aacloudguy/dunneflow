@@ -1385,6 +1385,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # Every `COUNT(*)` reads the whole table, and on a large map on the external volume the
     # cover spent 86 s doing it at every open (BACKLOG 8). Written beside `complete`, so a
     # map that has these counts is one whose analysis finished; `Store.counts` checks both.
+    store.sweep_macro_defs()
     store.set_meta("counts", json.dumps(store.counts(), sort_keys=True))
     store.set_meta_now("complete", "yes")
     store.close()

@@ -22,7 +22,7 @@
  */
 
 /** `schema.SCHEMA_VERSION`. A plugin declaring another number is refused by name. */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 export type ArmKind = "if" | "elif" | "else" | "else if" | "case" | "default" | "try" | "except" | "catch" | "finally" | "for" | "while" | "do";
 
@@ -37,6 +37,10 @@ export type Direction = "IN" | "OUT" | "BOTH";
 export type EntrypointKind = "CLI" | "MAIN" | "MCP_TOOL" | "HTTP_ROUTE" | "QUEUE_CONSUMER" | "SCHEDULED" | "SIGNAL" | "LIBRARY" | "IPC_COMMAND";
 
 export type LiteralKind = "PLAIN" | "INTERPOLATED";
+
+export type MacroOrigin = "tree" | "outside" | "command_line" | "builtin";
+
+export type MacroPosition = "statement" | "declaration" | "file_scope";
 
 export type StructureKind = "DATACLASS" | "PYDANTIC" | "TYPEDDICT" | "NAMEDTUPLE" | "ENUM" | "CLASS" | "INTERFACE" | "TYPE_ALIAS";
 
@@ -62,6 +66,9 @@ export interface Routine {
   is_nested?: boolean;
   visibility?: "public" | "private";
   body_hash?: string;
+  name_by?: string;
+  body_by?: string;
+  opaque_asm?: number;
 }
 
 export interface Param {
@@ -127,6 +134,7 @@ export interface DataStructure {
   docstring?: string | null;
   bases?: string[];
   annotations?: Annotation[];
+  name_by?: string;
 }
 
 export interface Field_ {
@@ -288,6 +296,22 @@ export interface IpcRegistration {
   line: number;
 }
 
+export interface MacroDef {
+  id: string;
+  name: string;
+  file: string;
+  line: number;
+  origin: MacroOrigin;
+}
+
+export interface MacroSite {
+  def_id: string;
+  name: string;
+  line: number;
+  position: MacroPosition;
+  routine_id?: string | null;
+}
+
 export interface FileFacts {
   path: string;
   lang: string;
@@ -317,6 +341,9 @@ export interface FileFacts {
   tests_dropped?: number;
   read_through?: string;
   ipc_registrations?: IpcRegistration[];
+  macro_defs?: MacroDef[];
+  macro_sites?: MacroSite[];
+  macro_directive_uses?: number;
   errors?: string[];
 }
 

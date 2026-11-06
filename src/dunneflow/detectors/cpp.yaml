@@ -62,6 +62,15 @@ boundaries:
             IFileManager.Get.CreateFileReader, IPlatformFile.OpenRead]
     method: [LoadFileToString, LoadFileToArray, CreateFileReader, OpenRead]
     target_arg: 0
+  # Code read in from a file and run. The path is the first argument, so the map names what
+  # was loaded. `LoadLibrary` itself is a Windows macro, and it is the name as written that a
+  # rule meets. These are exact names, never a prefix: Core has its own
+  # `LoadLibraryWithSearchPaths`, and a prefix would call that a boundary (rule 5).
+  - kind: FILE
+    direction: IN
+    exact: [dlopen, dlmopen, LoadLibrary, LoadLibraryA, LoadLibraryW, LoadLibraryEx,
+            LoadLibraryExA, LoadLibraryExW]
+    target_arg: 0
   - kind: FILE
     direction: OUT
     exact: [fwrite, fputs, fputc, fprintf, write, ftruncate, remove, rename, unlink,
@@ -94,6 +103,8 @@ boundaries:
     direction: BOTH
     exact: [socket, connect, bind, listen, accept, accept4, send, sendto, sendmsg, recv,
             recvfrom, recvmsg, getaddrinfo, getnameinfo, gethostbyname, gethostbyaddr,
+            WSASocketA, WSASocketW, WSAConnect, WSAAccept, WSASend, WSASendTo, WSASendMsg,
+            WSARecv, WSARecvFrom,
             SSL_connect, SSL_accept, SSL_read, SSL_write, SSL_read_ex, SSL_write_ex,
             FHttpModule.Get.CreateRequest, FTcpSocketBuilder, FUdpSocketBuilder]
     prefix: [curl_easy_, curl_multi_, curl_global_, FHttpModule., ISocketSubsystem.]
@@ -118,6 +129,27 @@ boundaries:
             FPlatformProcess.LaunchURL]
     method: [CreateProc, ExecProcess, LaunchURL]
     target_arg: 0
+  # The rest of what a program asks of the operating system about a process, its own included.
+  # None of these is a file or a socket, and nothing in the map shows what follows from them.
+  # They keep the normal salience on purpose: they are few, and they are what a reader wants
+  # to find. `syscall`'s first argument is the call's number, `SYS_futex`, which says what it
+  # does; `ptrace`'s second is the process it acts on; and a function looked up by name is
+  # named by the second argument of both `dlsym` and `GetProcAddress`.
+  - kind: PROCESS
+    direction: BOTH
+    exact: [syscall]
+    target_arg: 0
+  - kind: PROCESS
+    direction: BOTH
+    exact: [ptrace]
+    target_arg: 1
+  - kind: PROCESS
+    direction: IN
+    exact: [dlsym, dlvsym, GetProcAddress]
+    target_arg: 1
+  - kind: PROCESS
+    direction: BOTH
+    exact: [mprotect, VirtualProtect, VirtualProtectEx]
 
   # ----------------------------------------------------------------------- stdio ---
   # `salience: low` for the same reason Python's `print` carries it: a log line is a

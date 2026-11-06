@@ -266,6 +266,51 @@ def test_c_is_read(read):
 
 
 @needs_clang
+def test_what_loads_code_and_asks_the_kernel_is_a_boundary(tmp_path):
+    """Each of these was in no rule, so a hand-written call to one recorded nothing. The target
+    is the argument that says what was touched, which differs by call."""
+    f = tmp_path / "doors.c"
+    f.write_text(
+        "void *dlopen(const char *, int);\n"
+        "void *dlsym(void *, const char *);\n"
+        "void *LoadLibraryW(const short *);\n"
+        "void *GetProcAddress(void *, const char *);\n"
+        "long ptrace(int, int, void *, void *);\n"
+        "int mprotect(void *, unsigned long, int);\n"
+        "int VirtualProtect(void *, unsigned long, int, int *);\n"
+        "long syscall(long, ...);\n"
+        "int WSASend(int, void *, int, int *, int, void *, void *);\n"
+        "void *LoadLibraryWithSearchPaths(const char *);\n"
+        "void run(const char *lib, const short *wide, void *addr, int pid, int sock) {\n"
+        "    void *h = dlopen(lib, 1);\n"
+        '    dlsym(h, "start");\n'
+        "    void *w = LoadLibraryW(wide);\n"
+        '    GetProcAddress(w, "begin");\n'
+        "    ptrace(1, pid, 0, 0);\n"
+        "    mprotect(addr, 4096, 7);\n"
+        "    VirtualProtect(addr, 4096, 64, 0);\n"
+        "    syscall(SYS_futex, addr);\n"
+        "    WSASend(sock, 0, 1, 0, 0, 0, 0);\n"
+        "    LoadLibraryWithSearchPaths(lib);\n"
+        "}\n"
+    )
+    facts, _ = _read(tmp_path, [f])
+    hits = {(b.evidence, b.kind.value, b.direction.value, b.target)
+            for b in facts["doors.c"].boundaries}
+    assert hits == {
+        ("dlopen", "FILE", "IN", "lib"),
+        ("dlsym", "PROCESS", "IN", '"start"'),
+        ("LoadLibraryW", "FILE", "IN", "wide"),
+        ("GetProcAddress", "PROCESS", "IN", '"begin"'),
+        ("ptrace", "PROCESS", "BOTH", "pid"),
+        ("mprotect", "PROCESS", "BOTH", ""),
+        ("VirtualProtect", "PROCESS", "BOTH", ""),
+        ("syscall", "PROCESS", "BOTH", "SYS_futex"),
+        ("WSASend", "NETWORK", "BOTH", "sock"),
+    }, hits
+
+
+@needs_clang
 def test_a_crlf_file_hashes_as_the_host_reads_it(tmp_path):
     """`SOURCE_TEXT`: the reader parses and hashes the text the host hashed, so a CRLF file is
     not refused as having changed while it was read."""

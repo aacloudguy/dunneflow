@@ -121,6 +121,7 @@ export interface BoundaryHit {
   line: number;
   evidence?: string;
   salience?: string;
+  through_macro?: string;
 }
 
 export interface DataStructure {
@@ -310,6 +311,7 @@ export interface MacroSite {
   line: number;
   position: MacroPosition;
   routine_id?: string | null;
+  shadows?: string;
 }
 
 export interface FileFacts {
@@ -363,6 +365,6 @@ export interface SuppliedEdge {
   candidates?: number;
   constructs?: string;
   frontier?: string;
-  reason?: "" | "outside" | "untyped" | "dynamic" | "bound" | "unfollowed";
+  reason?: "" | "outside" | "untyped" | "dynamic" | "bound" | "unfollowed" | "expanded";
   answers?: Answer[];
 }

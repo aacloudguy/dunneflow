@@ -244,13 +244,14 @@ type CallArg struct {
 
 // BoundaryHit is `schema.BoundaryHit`.
 type BoundaryHit struct {
-	RoutineId string       `json:"routine_id"`
-	Kind      BoundaryKind `json:"kind"`
-	Direction Direction    `json:"direction"`
-	Target    string       `json:"target"`
-	Line      int          `json:"line"`
-	Evidence  string       `json:"evidence,omitempty"`
-	Salience  string       `json:"salience,omitempty"`
+	RoutineId    string       `json:"routine_id"`
+	Kind         BoundaryKind `json:"kind"`
+	Direction    Direction    `json:"direction"`
+	Target       string       `json:"target"`
+	Line         int          `json:"line"`
+	Evidence     string       `json:"evidence,omitempty"`
+	Salience     string       `json:"salience,omitempty"`
+	ThroughMacro string       `json:"through_macro,omitempty"`
 }
 
 // DataStructure is `schema.DataStructure`.
@@ -459,6 +460,7 @@ type MacroSite struct {
 	Line      int           `json:"line"`
 	Position  MacroPosition `json:"position"`
 	RoutineId *string       `json:"routine_id,omitempty"`
+	Shadows   string        `json:"shadows,omitempty"`
 }
 
 // FileFacts is `schema.FileFacts`.

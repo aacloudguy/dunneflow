@@ -263,7 +263,7 @@ std::string hello() {
     f += ",\"protocol\":" + std::to_string(PROTOCOL) + ",\"schema_version\":" +
          std::to_string(facts::SCHEMA_VERSION) +
          ",\"capabilities\":{\"supplies_edges\":" + std::string(edges::SUPPLIES ? "true" : "false") +
-         ",\"supplies_bindings\":true,\"supplies_uses\":true,\"reports_literals\":true}";
+         ",\"supplies_bindings\":true,\"supplies_uses\":true,\"supplies_macro_callees\":true,\"reports_literals\":true}";
     return f;
 }
 
@@ -341,7 +341,10 @@ void edges_reply(const json::Value& id) {
         [&](const std::string& edge) { send("{\"t\":\"edge\",\"id\":" + id_json(id) + ",\"edge\":" + edge + "}"); },
         [&](const std::string& done) { send("{\"t\":\"edges_done\",\"id\":" + id_json(id) + "," + done + "}"); },
         [&](const std::string& b) { send("{\"t\":\"binding\",\"id\":" + id_json(id) + ",\"binding\":" + b + "}"); },
-        [&](const std::string& u) { send("{\"t\":\"use\",\"id\":" + id_json(id) + ",\"use\":" + u + "}"); });
+        [&](const std::string& u) { send("{\"t\":\"use\",\"id\":" + id_json(id) + ",\"use\":" + u + "}"); },
+        [&](const std::string& m) {
+            send("{\"t\":\"macro_callee\",\"id\":" + id_json(id) + ",\"macro_callee\":" + m + "}");
+        });
 }
 
 void handle(const std::string& line) {

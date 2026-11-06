@@ -536,6 +536,7 @@ public final class Facts {
         public long line;
         public String evidence = "";
         public String salience = "normal";
+        public String through_macro = "";
 
         @Override
         public void writeJson(StringBuilder out) {
@@ -563,6 +564,9 @@ public final class Facts {
             }
             if (!Objects.equals(salience, "normal")) {
                 Json.field(out, first, "salience", salience);
+            }
+            if (!Objects.equals(through_macro, "")) {
+                Json.field(out, first, "through_macro", through_macro);
             }
             out.append('}');
         }
@@ -1295,6 +1299,7 @@ public final class Facts {
         public long line;
         public MacroPosition position = null;
         public String routine_id = null;
+        public String shadows = "";
 
         @Override
         public void writeJson(StringBuilder out) {
@@ -1315,6 +1320,9 @@ public final class Facts {
             Json.field(out, first, "position", position);
             if (!Objects.equals(routine_id, null)) {
                 Json.field(out, first, "routine_id", routine_id);
+            }
+            if (!Objects.equals(shadows, "")) {
+                Json.field(out, first, "shadows", shadows);
             }
             out.append('}');
         }

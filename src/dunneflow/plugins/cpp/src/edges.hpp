@@ -23,6 +23,8 @@
 //   - `unfollowed`, with the macro's name as the frontier: a function-like macro that
 //     expands to no call (`N_("x")`, `OPT_BOOL(...)`), which is Rust's word for its own
 //     `macro_rules!`. One that expands to a call is that call's edge.
+//   - `expanded`: one that makes several, some of them this tree's. There is no one edge to
+//     draw, and `macro_callees` says where it goes, so it is not one nobody could follow.
 
 #pragma once
 
@@ -44,6 +46,7 @@ constexpr bool SUPPLIES = true;
 
 struct Tree {
     std::vector<extract::Site> sites;
+    std::vector<extract::Reach> reaches;
     std::vector<extract::Def> defs;
     std::vector<extract::Over> overs;
     std::vector<std::pair<std::string, std::string>> bases;
@@ -78,6 +81,7 @@ struct Tree {
             else fragments_alone.push_back(r.rel);
         }
         for (auto& s : r.sites) sites.push_back(std::move(s));
+        for (auto& m : r.reaches) reaches.push_back(std::move(m));
         for (auto& d : r.defs) defs.push_back(std::move(d));
         for (auto& o : r.overs) overs.push_back(std::move(o));
         for (auto& b : r.bases) bases.push_back(std::move(b));
@@ -110,7 +114,8 @@ inline std::string sibling_usr(const std::string& usr, const std::string& name, 
 inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                  const std::function<void(const std::string&)>& done,
                  const std::function<void(const std::string&)>& bind = nullptr,
-                 const std::function<void(const std::string&)>& use = nullptr) {
+                 const std::function<void(const std::string&)>& use = nullptr,
+                 const std::function<void(const std::string&)>& macro = nullptr) {
     // Definitions by USR. Two definitions of one USR in one tree is a choice nobody can make
     // from here (rule 1), and the call stays without an edge, counted.
     std::map<std::string, std::vector<Where>> bodies;
@@ -183,13 +188,14 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         return narrowed;
     };
 
+    std::string notes_macros;
     // In a fixed order: the edges never depend on which thread finished first (rule 66).
     std::sort(t.sites.begin(), t.sites.end(), [](const extract::Site& a, const extract::Site& b) {
         return std::tie(a.caller_id, a.site_id) < std::tie(b.caller_id, b.site_id);
     });
 
     long supplied = 0, outside = 0, unknown = 0, dynamic = 0, ambiguous = 0, untyped = 0, bound = 0, constructs = 0,
-         macros = 0;
+         macros = 0, expanded = 0;
     for (const auto& s : t.sites) {
         facts::SuppliedEdge e;
         e.site_id = s.site_id;
@@ -211,12 +217,16 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
             e.frontier = s.macro;
             e.how = "clang · a macro whose calls are all outside this tree";
             outside++;
+        } else if (!s.macro.empty() && !s.macro_usrs.empty()) {
+            e.reason = "expanded";
+            e.frontier = s.macro;
+            e.how = "clang · a macro that expands to several calls";
+            expanded++;
         } else if (!s.macro.empty()) {
             e.reason = "unfollowed";
             e.frontier = s.macro;
-            e.how = !s.macro_usrs.empty() ? "clang · a macro that expands to several calls"
-                    : s.macro_no_call     ? "clang · a macro that expands to no call of its own"
-                                          : "clang · a macro under which clang recorded no call";
+            e.how = s.macro_no_call ? "clang · a macro that expands to no call of its own"
+                                    : "clang · a macro under which clang recorded no call";
             macros++;
             unknown++;
         } else if (s.untyped || (s.usr.empty() && !s.bound)) {
@@ -308,6 +318,55 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         e.write_json(out);
         edge(out);
     }
+
+    // **Where each macro's expansion goes.** Only here can it be said whether a callee is the
+    // tree's own, and a boundary is a call that leaves (rule 2): `connect` under a macro is
+    // NETWORK unless this tree defines a `connect`, whatever header declares it. Sorted, so the
+    // rows never depend on which thread finished first (rule 66).
+    std::sort(t.reaches.begin(), t.reaches.end(), [](const extract::Reach& a, const extract::Reach& b) {
+        return std::tie(a.file, a.line, a.def_id, a.routine_id, a.callee) <
+               std::tie(b.file, b.line, b.def_id, b.routine_id, b.callee);
+    });
+    long macro_rows = 0, through_macros = 0;
+    for (const auto& m : t.reaches) {
+        facts::SuppliedMacroCallee row;
+        row.file = m.file;
+        row.line = m.line;
+        row.def_id = m.def_id;
+        row.routine_id = m.routine_id;
+        row.callee = m.callee;
+        row.indirect = m.usr.empty();
+        row.count = m.count;
+        auto found = bodies.find(m.usr);
+        if (found != bodies.end()) {
+            const Where* own = found->second.size() == 1 ? &found->second[0] : nullptr;
+            if (!own)
+                for (const auto& w : found->second)
+                    if (w.file == m.seen) own = &w;
+            if (own) {
+                row.target_file = own->file;
+                row.target_line = own->line;
+                row.target_name = own->name;
+            } else {
+                row.candidates = static_cast<int64_t>(found->second.size());
+            }
+        } else {
+            for (const auto& h : m.hits) {
+                row.hits.push_back(h);
+                through_macros++;
+            }
+        }
+        macro_rows++;
+        if (macro) {
+            std::string out;
+            row.write_json(out);
+            macro(out);
+        }
+    }
+    if (macro_rows)
+        notes_macros = std::to_string(macro_rows) + " places a macro's expansion goes, " +
+                       std::to_string(through_macros) + " of them boundaries nobody wrote at that line, and " +
+                       std::to_string(expanded) + " macros written as a call that make several";
 
     // The ways in marked on a declaration, bound by USR. In a fixed order (rule 66), and one
     // binding per mark whatever it found: a mark sent with nothing in it is the reader
@@ -496,6 +555,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         notes.push_back("edges: " + std::to_string(t.unnamed_calls) +
                         " calls in macro-written bodies and file-scope initialisers that clang could not name, "
                         "so they are in no routine's calls");
+    if (!notes_macros.empty()) notes.push_back("edges: " + notes_macros);
     if (t.misread)
         notes.push_back("edges: " + std::to_string(t.misread) +
                         " functions clang read as variables, so what they call is named as written and "
@@ -537,7 +597,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
         notes.push_back("edges: " + std::to_string(t.skipped_lines) +
                         " lines are in #if arms this configuration does not take, and were not read");
 
-    std::string d = "\"supplied\":" + std::to_string(supplied) + ",\"unresolved\":" + std::to_string(outside + unknown) +
+    std::string d = "\"supplied\":" + std::to_string(supplied) + ",\"unresolved\":" + std::to_string(outside + unknown + expanded) +
                     ",\"outside\":" + std::to_string(outside) + ",\"unknown\":" + std::to_string(unknown) + ",\"notes\":";
     json::write(d, notes);
     d += ",\"read_beyond\":";
@@ -546,6 +606,7 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
     json::write(d, std::vector<std::string>(t.inputs.begin(), t.inputs.end()));
     if (bind) d += ",\"bindings\":" + std::to_string(sent.size());
     if (use) d += ",\"uses\":" + std::to_string(used);
+    if (macro) d += ",\"macro_callees\":" + std::to_string(macro_rows);
     done(d);
 }
 

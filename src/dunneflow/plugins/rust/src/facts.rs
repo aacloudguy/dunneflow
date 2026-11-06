@@ -617,6 +617,7 @@ pub struct BoundaryHit {
     pub line: i64,
     pub evidence: String,
     pub salience: String,
+    pub through_macro: String,
 }
 
 impl ToJson for BoundaryHit {
@@ -634,6 +635,9 @@ impl ToJson for BoundaryHit {
         }
         if self.salience != zero.salience {
             crate::json::field(out, &mut first, "salience", &self.salience);
+        }
+        if self.through_macro != zero.through_macro {
+            crate::json::field(out, &mut first, "through_macro", &self.through_macro);
         }
         out.push('}');
     }
@@ -1243,6 +1247,7 @@ pub struct MacroSite {
     pub line: i64,
     pub position: MacroPosition,
     pub routine_id: Option<String>,
+    pub shadows: String,
 }
 
 impl ToJson for MacroSite {
@@ -1256,6 +1261,9 @@ impl ToJson for MacroSite {
         crate::json::field(out, &mut first, "position", &self.position);
         if self.routine_id != zero.routine_id {
             crate::json::field(out, &mut first, "routine_id", &self.routine_id);
+        }
+        if self.shadows != zero.shadows {
+            crate::json::field(out, &mut first, "shadows", &self.shadows);
         }
         out.push('}');
     }

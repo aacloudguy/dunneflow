@@ -613,7 +613,7 @@ def test_a_macro_that_expands_to_several_calls_is_none_of_them(tmp_path):
         'void f(char *a, char *b) { LOG("x"); error("y"); copy(a, b, 1); }\n')})
     by = _by_expr(facts, got)
     log = by[("m.cpp", "LOG")]
-    assert (log.reason, log.frontier, log.constructs) == ("unfollowed", "LOG", "")
+    assert (log.reason, log.frontier, log.constructs) == ("expanded", "LOG", "")
     err = by[("m.cpp", "error")]
     assert (err.reason, err.frontier) == ("outside", "error")
     # Several calls and none of them here: macOS's fortified `memcpy`. It leaves, as written.

@@ -30,6 +30,7 @@ from ..schema import (
     Routine,
     SuppliedBinding,
     SuppliedEdge,
+    SuppliedMacroCallee,
     SuppliedUse,
 )
 
@@ -287,6 +288,8 @@ class PluginManifest:
     supplies_bindings: bool = False
     # **The reader says which routines are named as values** (`SuppliedUse`), in the edge pass.
     supplies_uses: bool = False
+    # And `macro_callee` frames (`SuppliedMacroCallee`): where its macros' expansions go.
+    supplies_macro_callees: bool = False
     # **A file's facts depend on other files**, so its own hash cannot decide whether it is
     # read (rule 81): a C file's calls are whatever its headers' macros expand to. Any change
     # to this language's files, or to what `edges_inputs` named, re-reads all of them.
@@ -385,6 +388,8 @@ class IngestPlugin(Protocol):
     edge_bindings: list[SuppliedBinding]
     # The routines named as values -- the `use` frames of the last `edges` stream.
     edge_uses: list[SuppliedUse]
+    # Where macros' expansions go -- the `macro_callee` frames of the last `edges` stream.
+    edge_macros: list[SuppliedMacroCallee]
     # What the reader said when `open` built its session — how it divided the file set
     # into compilations, how long that took, whatever else it has to declare. Empty for a
     # reader that opens nothing, and the `opened` frame carried both fields for three

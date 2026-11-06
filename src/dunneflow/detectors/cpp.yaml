@@ -194,8 +194,17 @@ boundaries:
   - kind: STDIO
     direction: OUT
     salience: low
-    exact: [printf, vprintf, puts, putchar, perror, UE_LOG, UE_LOGFMT, UE_CLOG]
+    exact: [printf, vprintf, puts, putchar, perror]
     prefix: [std.printf]
+    target_arg: 0
+  # `names_macro`: this rule is about the macro itself, so what it reaches does not contradict
+  # it. Reading Unreal's own Core, `UE_LOG` reaches `FMsg::Logf`, which that tree defines, and
+  # without this that reads as a name saying one thing and an expansion doing another.
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    exact: [UE_LOG, UE_LOGFMT, UE_CLOG]
+    names_macro: true
     target_arg: 0
   - kind: STDIO
     direction: IN

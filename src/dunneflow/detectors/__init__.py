@@ -678,6 +678,7 @@ FRONTIER_WORDS: dict[str, str] = {
     "dynamic": "dispatch over several implementors",
     "bound": "a closure or function value the routine holds",
     "unfollowed": "a path the reader could not follow",
+    "expanded": "a macro that makes several calls",
 }
 
 

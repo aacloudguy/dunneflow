@@ -29,6 +29,7 @@ struct Boundary {
     std::string kind, direction = "BOTH", salience = "normal";
     std::vector<std::string> exact, prefix, method, contains;
     std::optional<int64_t> target_arg;
+    bool names_macro = false;  // about the macro itself: what it reaches cannot contradict it
 
     // `BoundaryRule.matches_call`: the four tests and nothing else.
     bool matches(const std::string& dotted) const {
@@ -131,6 +132,7 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         x.method = b["method"].strings();
         x.contains = b["contains"].strings();
         if (!b["target_arg"].is_null()) x.target_arg = b["target_arg"].integer();
+        x.names_macro = b["names_macro"].boolean();
         std::string target = b["target"].str();
         if (!target.empty() && target != "arg") {
             // Refused rather than defaulted: a strategy nobody reads is a boundary row naming

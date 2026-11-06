@@ -376,10 +376,13 @@ class CallSite:
 # what it is, as far as the reader knows); `untyped` is a receiver whose type the source
 # does not write down; `dynamic` is dispatch over several implementors (`candidates` says
 # how many); `bound` is a closure or a function value the routine holds; `unfollowed` is a
-# path the reader could not follow to anything. Empty is *nobody said*, which every reader
-# before Rust's is.
-Unresolved = Literal["", "outside", "untyped", "dynamic", "bound", "unfollowed"]
-UNRESOLVED_REASONS: tuple[str, ...] = ("outside", "untyped", "dynamic", "bound", "unfollowed")
+# path the reader could not follow to anything; `expanded` is a macro that makes several
+# calls, each of them in `macro_callees`, so the map knows where it goes and has no one edge to
+# draw, which is why it is not counted with the calls nobody could follow (rule 40). Empty is
+# *nobody said*, which every reader before Rust's is.
+Unresolved = Literal["", "outside", "untyped", "dynamic", "bound", "unfollowed", "expanded"]
+UNRESOLVED_REASONS: tuple[str, ...] = ("outside", "untyped", "dynamic", "bound", "unfollowed",
+                                       "expanded")
 
 @dataclass(slots=True)
 class Answer:
@@ -713,6 +716,9 @@ class BoundaryHit:
     line: int
     evidence: str = ""
     salience: str = "normal"  # high | normal | low -- lets noise be filtered, not lost
+    # The `MacroDef.id` whose expansion made this call, where nobody wrote it here. Blank for
+    # a call somebody wrote, which is every boundary in every other language.
+    through_macro: str = ""
 
 
 @dataclass(slots=True)
@@ -780,6 +786,38 @@ class MacroSite:
     line: int
     position: MacroPosition
     routine_id: str | None = None
+    # The boundary kind a rule would have called this, where the name says one thing and the
+    # expansion does another: `#define unlink(x) helper(x)` touches no file. It is recorded
+    # here and **never as a boundary with a flag on it**, or every reader of that table would
+    # have to know to ask.
+    shadows: str = ""
+
+
+@dataclass(slots=True)
+class SuppliedMacroCallee:
+    """Where a macro's expansion goes: one callee of the uses at one line, with how many.
+
+    **Whole-program, as `SuppliedEdge` is**, because whether a callee is the tree's own is only
+    known once every file has been parsed. Not a call site: nobody wrote this call, so it has
+    no `calls` row, and a written `connect` beside it keeps its site id. Followed for what a
+    routine reaches and never for flows or impact, or `FMsg::Logf` becomes everybody's
+    neighbour. `target_*` is blank for a callee this tree does not define, which is one that
+    leaves it unless `indirect` or `candidates` says otherwise. `hits` are the boundaries it
+    makes, which the host records in `boundaries` with `through_macro` set.
+    """
+
+    file: str
+    line: int
+    def_id: str
+    routine_id: str
+    callee: str = ""
+    target_file: str = ""
+    target_line: int = 0
+    target_name: str = ""
+    candidates: int = 0
+    indirect: bool = False
+    count: int = 1
+    hits: list[BoundaryHit] = field(default_factory=list)
 
 
 @dataclass(slots=True)

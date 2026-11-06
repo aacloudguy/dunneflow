@@ -33,6 +33,7 @@ from ..schema import (
     FileFacts,
     SuppliedBinding,
     SuppliedEdge,
+    SuppliedMacroCallee,
     SuppliedUse,
     hash_source,
     stored_path,
@@ -313,6 +314,7 @@ class OutOfProcessPlugin:
         self.edges_inputs: list[str] = []
         self.edge_bindings: list[SuppliedBinding] = []
         self.edge_uses: list[SuppliedUse] = []
+        self.edge_macros: list[SuppliedMacroCallee] = []
         # Fields an edge carried that this build does not read. Survivable by design — a
         # plugin built against a later schema knows about fields this one does not — but
         # never silent: a file can carry its dropped keys in `FileFacts.errors` and an
@@ -383,6 +385,7 @@ class OutOfProcessPlugin:
         self.edges_unknown = 0
         self.edge_bindings = []
         self.edge_uses = []
+        self.edge_macros = []
         for frame in worker.stream({"t": "edges"}, "edges_done"):
             if frame["t"] == "edges_done":
                 said = frame.get("supplied")
@@ -413,6 +416,12 @@ class OutOfProcessPlugin:
                         f"the {lang} plugin says it sent {used:,} uses and sent "
                         f"{len(self.edge_uses):,}."
                     )
+                macros = frame.get("macro_callees")
+                if isinstance(macros, int) and macros != len(self.edge_macros):
+                    raise ProtocolError(
+                        f"the {lang} plugin says it sent {macros:,} macro callees and sent "
+                        f"{len(self.edge_macros):,}."
+                    )
                 self.edges_outside = int(frame.get("outside") or 0)
                 self.edges_unknown = int(frame.get("unknown") or 0)
                 self.edges_read_beyond = [str(x) for x in frame.get("read_beyond") or []]
@@ -440,11 +449,22 @@ class OutOfProcessPlugin:
                         f"Refused rather than dropped, as an edge is."
                     ) from exc
                 continue
+            if frame["t"] == "macro_callee" and self.manifest.supplies_macro_callees:
+                try:
+                    self.edge_macros.append(
+                        decode(SuppliedMacroCallee, frame.get("macro_callee"), notes))
+                except CodecError as exc:
+                    raise ProtocolError(
+                        f"the {lang} plugin sent a macro callee this build cannot read: {exc}. "
+                        f"Refused rather than dropped, as an edge is."
+                    ) from exc
+                continue
             if frame["t"] != "edge":
                 raise ProtocolError(
                     f"the {lang} plugin sent {frame['t']!r} during an `edges` stream; the "
                     f"frames of one are `edge`, `edges_done` and -- from a reader that "
-                    f"declares `supplies_bindings` or `supplies_uses` -- `binding` and `use`."
+                    f"declares `supplies_bindings`, `supplies_uses` or "
+                    f"`supplies_macro_callees` -- `binding`, `use` and `macro_callee`."
                 )
             try:
                 edge = decode(SuppliedEdge, frame.get("edge"), notes)

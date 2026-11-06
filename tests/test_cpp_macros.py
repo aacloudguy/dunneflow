@@ -46,6 +46,22 @@ def _read(root: Path, text: str, name: str = "m.cpp"):
         PLUGIN.close()
 
 
+def _expanded(root: Path, files: dict[str, str]):
+    """Facts by file, and every `macro_callee` row, for a tree of several files."""
+    paths = []
+    for rel, text in files.items():
+        (root / rel).write_text(text, encoding="utf-8")
+        paths.append(root / rel)
+    assert PLUGIN is not None
+    PLUGIN.open(root, sorted(paths))
+    try:
+        facts = {x.path: x for x in PLUGIN.extract(sorted(paths), root)}
+        edges = {e.site_id: e for e in PLUGIN.edges()}
+        return facts, edges, list(PLUGIN.edge_macros)
+    finally:
+        PLUGIN.close()
+
+
 def _routine(ff, qualname: str):
     found = [r for r in ff.routines if r.qualname == qualname]
     assert len(found) == 1, (qualname, [r.qualname for r in ff.routines])
@@ -258,7 +274,7 @@ def test_a_body_half_written_by_a_macro_has_its_written_half_read(tmp_path):
     # All of it the macro's: nothing to scan, and what clang named is what there is.
     assert _calls(ff, "all") == ["helper"]
     aid = _routine(ff, "all").id
-    assert [p.word for p in ff.control if p.routine_id == aid] == []
+    assert [(p.word, p.header) for p in ff.control if p.routine_id == aid] == [("if", "WHOLE(all)")]
 
 
 def test_what_cannot_be_read_is_counted(tmp_path):
@@ -416,3 +432,187 @@ def test_a_routine_counts_the_assembly_it_holds(tmp_path):
         "void b() { }\n"
     ))
     assert (_routine(ff, "a").opaque_asm, _routine(ff, "b").opaque_asm) == (2, 0)
+
+
+def _through(rows) -> set[tuple[str, str, str]]:
+    return {(b.kind.value, b.evidence, b.target) for m in rows for b in m.hits}
+
+
+def test_a_macro_cannot_hide_a_boundary(tmp_path):
+    """`SEND(x)` expanding to `connect` recorded nothing at all. Nested, pasted, object-like
+    and with a name given in the arguments: each is a call that leaves the program."""
+    facts, _, rows = _expanded(tmp_path, {"m.cpp": _PRELUDE + (
+        "#define WRAP(a) connect(a, 0, 0)\n"
+        "#define SEND(a) WRAP(a)\n"
+        "#define CALL(f, a) f(a, 0, 0)\n"
+        "#define PASTE(a, b) a##b\n"
+        "#define BARE connect(9, 0, 0)\n"
+        "void nested(int fd) { SEND(fd); }\n"
+        "void named(int fd) { CALL(connect, fd); }\n"
+        "void pasted() { PASTE(con, nect)(1, 0, 0); }\n"
+        "void bare() { BARE; }\n"
+    )})
+    ff = facts["m.cpp"]
+    for q in ("nested", "named", "pasted", "bare"):
+        rid = _routine(ff, q).id
+        got = [m for m in rows if m.routine_id == rid]
+        assert any(b.kind.value == "NETWORK" for m in got for b in m.hits), (q, got)
+        assert all(m.target_file == "" for m in got)
+    # Named where somebody wrote it, and blank where only the macro's body says it.
+    assert ("NETWORK", "connect", "fd") in _through(
+        [m for m in rows if m.routine_id == _routine(ff, "nested").id])
+    assert ("NETWORK", "connect", "") in _through(
+        [m for m in rows if m.routine_id == _routine(ff, "bare").id])
+
+
+def test_a_macro_reaching_the_tree_s_own_function_of_that_name_is_not_a_boundary(tmp_path):
+    """Rule 2, and the reason this is decided after every file is parsed: `connect` is defined
+    in the other file, and nothing in this one can say so."""
+    facts, _, rows = _expanded(tmp_path, {
+        "a.cpp": "int connect(int, const void *, int);\n"
+                 "#define WRAP(a) connect(a, 0, 0)\n"
+                 "void t() { WRAP(1); }\n",
+        "b.cpp": "int connect(int, const void *, int) { return 0; }\n",
+    })
+    row = next(m for m in rows if m.routine_id == _routine(facts["a.cpp"], "t").id)
+    assert (row.target_file, row.target_name) == ("b.cpp", "connect")
+    assert row.hits == []
+
+
+def test_written_and_expanded_on_one_line_are_one_act(tmp_path):
+    """`UE_LOG` is STDIO by its own name, whatever it calls to do it."""
+    facts, _, rows = _expanded(tmp_path, {"m.cpp": (
+        "extern \"C\" { int printf(const char *, ...); int puts(const char *); }\n"
+        "#define UE_LOG(x) (printf(x), puts(x))\n"
+        "void t() { UE_LOG(\"a\"); }\n"
+    )})
+    ff = facts["m.cpp"]
+    assert _hits(ff, "t") == {("STDIO", "UE_LOG")}
+    assert _through(rows) == set()
+    assert {m.callee for m in rows} == {"printf", "puts"}
+
+
+def test_a_rule_that_names_a_macro_is_not_contradicted_by_what_it_reaches(tmp_path):
+    """Reading Core, `UE_LOG` reaches `FMsg::Logf`, which that tree defines. Beside it the same
+    shape under a function's name is a shadow: the rule says which it is about."""
+    ff, _, _ = _read(tmp_path, (
+        "void logf(const char *);\n"
+        "#define UE_LOG(x) logf(x)\n"
+        "#define puts(x) logf(x)\n"
+        "void a() { UE_LOG(\"x\"); }\n"
+        "void b() { puts(\"x\"); }\n"
+    ))
+    assert _hits(ff, "a") == {("STDIO", "UE_LOG")}
+    assert _hits(ff, "b") == set()
+    assert {(s.name, s.shadows) for s in ff.macro_sites} == {("UE_LOG", ""), ("puts", "STDIO")}
+
+
+def test_a_call_written_in_a_macro_s_arguments_does_not_count_twice(tmp_path):
+    facts, _, rows = _expanded(tmp_path, {"m.cpp": _PRELUDE + (
+        "#define RETRY(e) do { e; } while (0)\n"
+        "void t() { RETRY(connect(1, 0, 0)); }\n"
+    )})
+    assert _hits(facts["m.cpp"], "t") == {("NETWORK", "connect")}
+    assert rows == []
+
+
+def test_a_function_called_through_a_macro_s_lookup_is_indirect(tmp_path):
+    """`((fn)dlsym(0, s))()`: the lookup is a boundary, and the call it makes has no name."""
+    facts, _, rows = _expanded(tmp_path, {"m.cpp": (
+        "extern \"C\" void *dlsym(void *, const char *);\n"
+        "typedef int (*fn)();\n"
+        "#define FP(s) ((fn)dlsym(0, s))()\n"
+        "void t() { FP(\"d\"); }\n"
+    )})
+    assert _through(rows) == {("PROCESS", "dlsym", '"d"')}
+    assert [(m.callee, m.indirect) for m in rows if m.indirect] == [("", True)]
+
+
+def test_a_macro_named_like_a_boundary_that_reaches_the_tree_is_a_shadow_and_no_boundary(tmp_path):
+    ff, edges, _ = _read(tmp_path, (
+        "void helper(const char *);\n"
+        "#define unlink(x) helper(x)\n"
+        "void t() { unlink(\"a\"); }\n"
+    ))
+    assert _hits(ff, "t") == set()
+    assert [(s.name, s.shadows) for s in ff.macro_sites] == [("unlink", "FILE")]
+    assert _site(ff, edges, "t", "unlink").frontier == "helper"
+
+
+def test_a_platform_s_spelling_of_the_same_act_is_not_a_shadow(tmp_path):
+    """`open` becoming `open64`, and a library's function under the name, keep the boundary."""
+    ff, _, _ = _read(tmp_path, (
+        "int open64(const char *, int);\n"
+        "#define open(a, b) open64(a, b)\n"
+        "void t() { open(\"a\", 0); }\n"
+    ))
+    assert _hits(ff, "t") == {("FILE", "open")}
+    assert [s.shadows for s in ff.macro_sites if s.name == "open"] == [""]
+
+
+def test_a_macro_of_several_calls_is_expanded_and_not_unfollowable(tmp_path):
+    """`unfollowed` says nobody could follow it. This one's places are all in `macro_callees`,
+    and rule 40 says those are two numbers."""
+    facts, edges, rows = _expanded(tmp_path, {"m.cpp": (
+        "void a() {}\nvoid b() {}\n"
+        "#define BOTH() (a(), b())\n"
+        "void t() { BOTH(); }\n"
+    )})
+    ff = facts["m.cpp"]
+    e = _site(ff, edges, "t", "BOTH")
+    assert (e.reason, e.frontier, e.file) == ("expanded", "BOTH", "")
+    assert {(m.callee, m.target_name) for m in rows} == {("a", "a"), ("b", "b")}
+
+
+def test_a_written_call_keeps_its_site_id_beside_a_macro_that_makes_the_same_call(tmp_path):
+    base = (
+        "extern \"C\" int connect(int, const void *, int);\n"
+        "#define WRAP(a) connect(a, 0, 0)\n"
+        "void t() { connect(1, 0, 0); }\n"
+    )
+    plain, _, _ = _read(tmp_path, base)
+    with_macro, _, _ = _read(
+        tmp_path, base.replace("connect(1, 0, 0); }", "connect(1, 0, 0); WRAP(2); }"))
+    site = [c.site_id for c in plain.calls if c.callee_expr == "connect"]
+    assert site == [c.site_id for c in with_macro.calls if c.callee_expr == "connect"]
+
+
+def test_a_loop_in_a_body_a_macro_wrote_is_control_and_says_so(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "void h();\n"
+        "#define EACH(n) void n(int k) { for (int i = 0; i < k; i++) { if (i) h(); } }\n"
+        "EACH(all)\n"
+    ))
+    got = [(p.word, p.kind.value, p.depth, p.header, p.line_start) for p in ff.control]
+    assert got == [("for", "LOOP", 1, "EACH(all)", 3), ("if", "DECISION", 2, "EACH(all)", 3)]
+
+
+def test_a_hand_written_body_gets_no_control_from_a_macro_that_expands_to_an_if(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "void h();\n"
+        "#define check(x) do { if (!(x)) h(); } while (0)\n"
+        "void t(int a) { check(a); }\n"
+    ))
+    assert ff.control == []
+
+
+def test_the_store_keeps_a_macro_s_boundaries_with_the_rest_and_replaces_them(tmp_path):
+    """They are read as boundaries by everything, and a reread must not double them."""
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    store = Store(tmp_path / "g.db")
+    try:
+        for reread in range(2):
+            (tmp_path / "m.cpp").write_text(_PRELUDE + (
+                "#define WRAP(a) connect(a, 0, 0)\n"
+                "void t(int fd) { WRAP(fd); }\n"
+            ) + "\n" * reread, encoding="utf-8")
+            analyze_tree(tmp_path, store)
+            rows = store.query(
+                "SELECT b.kind, b.evidence, b.target, b.expanded, d.name FROM boundaries b"
+                " JOIN macro_defs d ON d.id = b.through_macro")
+            assert [tuple(r) for r in rows] == [("NETWORK", "connect", "fd", 1, "WRAP")]
+            assert store.query("SELECT callee FROM macro_callees")[0]["callee"] == "connect"
+    finally:
+        store.close()

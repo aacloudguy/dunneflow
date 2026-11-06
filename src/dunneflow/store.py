@@ -47,6 +47,7 @@ from .schema import (
     StructureKind,
     SuppliedBinding,
     SuppliedEdge,
+    SuppliedMacroCallee,
     SuppliedUse,
     TargetKind,
 )
@@ -287,7 +288,10 @@ CREATE TABLE IF NOT EXISTS boundaries (
     target     TEXT NOT NULL,
     line       INTEGER NOT NULL,
     evidence   TEXT NOT NULL DEFAULT '',
-    salience   TEXT NOT NULL DEFAULT 'normal'
+    salience   TEXT NOT NULL DEFAULT 'normal',
+    through_macro TEXT NOT NULL DEFAULT '',
+    -- From the edge pass rather than from this file's own facts, so replaced with it.
+    expanded   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS control (
@@ -359,7 +363,26 @@ CREATE TABLE IF NOT EXISTS macro_sites (
     def_id     TEXT NOT NULL,
     name       TEXT NOT NULL,
     position   TEXT NOT NULL,
-    routine_id TEXT
+    routine_id TEXT,
+    shadows    TEXT NOT NULL DEFAULT ''
+);
+
+-- `schema.SuppliedMacroCallee`. Whole per language, for `supplied_edges`' reason. A callee is
+-- joined to its routine by location, as `value_uses` is, because the host and not the reader
+-- owns routine ids.
+CREATE TABLE IF NOT EXISTS macro_callees (
+    lang        TEXT NOT NULL,
+    file        TEXT NOT NULL,
+    line        INTEGER NOT NULL,
+    def_id      TEXT NOT NULL,
+    routine_id  TEXT NOT NULL,
+    callee      TEXT NOT NULL DEFAULT '',
+    target_file TEXT NOT NULL DEFAULT '',
+    target_line INTEGER NOT NULL DEFAULT 0,
+    target_name TEXT NOT NULL DEFAULT '',
+    candidates  INTEGER NOT NULL DEFAULT 0,
+    indirect    INTEGER NOT NULL DEFAULT 0,
+    count       INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS fields (
@@ -567,6 +590,10 @@ CREATE INDEX IF NOT EXISTS ix_control_routine  ON control(routine_id, line_start
 CREATE INDEX IF NOT EXISTS ix_control_point    ON control(point_id);
 CREATE INDEX IF NOT EXISTS ix_arms_point       ON control_arms(point_id);
 CREATE INDEX IF NOT EXISTS ix_macro_sites_def   ON macro_sites(def_id);
+CREATE INDEX IF NOT EXISTS ix_macro_callees_def ON macro_callees(def_id);
+CREATE INDEX IF NOT EXISTS ix_macro_callees_who ON macro_callees(routine_id);
+CREATE INDEX IF NOT EXISTS ix_macro_callees_at
+    ON macro_callees(target_file, target_line, target_name);
 CREATE INDEX IF NOT EXISTS ix_macro_sites_file  ON macro_sites(file);
 CREATE INDEX IF NOT EXISTS ix_macro_sites_owner ON macro_sites(routine_id);
 CREATE INDEX IF NOT EXISTS ix_arms_routine     ON control_arms(routine_id, line_start, line_end);
@@ -1239,7 +1266,7 @@ class Store:
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
                       "artefacts", "constants", "control", "ipc_registrations",
-                      "macro_sites"):
+                      "macro_sites", "macro_callees"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
         # **`supplied_edges` is deliberately not here**, and it is the one table a file's
@@ -1283,6 +1310,32 @@ class Store:
             rows,
         )
         return len(rows)
+
+    def replace_macro_callees(self, lang: str, rows: Iterable[SuppliedMacroCallee]) -> None:
+        """Where this language's macros go, and the boundaries that makes. Whole, as above.
+
+        The boundaries live with the rest so that nothing reading them has to know where they
+        came from, and `expanded` is what lets this take back its own and only its own.
+        """
+        c = self.conn
+        c.execute("DELETE FROM macro_callees WHERE lang = ?", (lang,))
+        c.execute(
+            "DELETE FROM boundaries WHERE expanded = 1"
+            " AND file IN (SELECT path FROM files WHERE lang = ?)", (lang,))
+        listed = list(rows)
+        c.executemany(
+            "INSERT INTO macro_callees(lang,file,line,def_id,routine_id,callee,target_file,"
+            "target_line,target_name,candidates,indirect,count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(lang, m.file, m.line, m.def_id, m.routine_id, m.callee, m.target_file,
+              m.target_line, m.target_name, m.candidates, int(m.indirect), m.count)
+             for m in listed],
+        )
+        c.executemany(
+            "INSERT INTO boundaries(file,routine_id,kind,direction,target,line,evidence,salience,"
+            "through_macro,expanded) VALUES(?,?,?,?,?,?,?,?,?,1)",
+            [(m.file, m.routine_id, b.kind.value, b.direction.value, b.target, b.line,
+              b.evidence, b.salience, m.def_id) for m in listed for b in m.hits],
+        )
 
     def replace_supplied_bindings(self, lang: str,
                                   bindings: Iterable[SuppliedBinding]) -> int:
@@ -1378,10 +1431,10 @@ class Store:
              for k in ff.calls for a in k.args],
         )
         c.executemany(
-            "INSERT INTO boundaries(file,routine_id,kind,direction,target,line,evidence,salience)"
-            " VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO boundaries(file,routine_id,kind,direction,target,line,evidence,salience,"
+            "through_macro) VALUES(?,?,?,?,?,?,?,?,?)",
             [(ff.path, b.routine_id, b.kind.value, b.direction.value, b.target, b.line,
-              b.evidence, b.salience) for b in ff.boundaries],
+              b.evidence, b.salience, b.through_macro) for b in ff.boundaries],
         )
         c.executemany(
             "INSERT INTO control"
@@ -1397,9 +1450,9 @@ class Store:
             [(d.id, d.name, d.file, d.line, d.origin.value) for d in ff.macro_defs],
         )
         c.executemany(
-            "INSERT INTO macro_sites(file,line,def_id,name,position,routine_id)"
-            " VALUES(?,?,?,?,?,?)",
-            [(ff.path, m.line, m.def_id, m.name, m.position.value, m.routine_id)
+            "INSERT INTO macro_sites(file,line,def_id,name,position,routine_id,shadows)"
+            " VALUES(?,?,?,?,?,?,?)",
+            [(ff.path, m.line, m.def_id, m.name, m.position.value, m.routine_id, m.shadows)
              for m in ff.macro_sites],
         )
         c.executemany(
@@ -1550,7 +1603,7 @@ class Store:
         for t in ("files", "routines", "calls", "boundaries", "structures", "entrypoints",
                   "annotations", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                   "db_indexes", "net_calls", "control", "control_arms",
-                  "macro_defs", "macro_sites"):
+                  "macro_defs", "macro_sites", "macro_callees"):
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"

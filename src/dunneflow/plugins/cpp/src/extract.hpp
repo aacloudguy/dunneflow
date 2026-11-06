@@ -90,6 +90,15 @@ struct Site {
     std::string receiver_usr;   // a member call's receiver type
 };
 
+// One callee of the macro uses at one line, for the edge pass. Its USR is empty for a call
+// clang could name nothing for: a function value, usually.
+struct Reach {
+    std::string file, def_id, routine_id, callee, usr, seen;
+    long line = 0;
+    long count = 1;
+    std::vector<facts::BoundaryHit> hits;  // what it touches, if it leaves the tree
+};
+
 // One definition this file holds, as the edge pass names it to the host.
 struct Def {
     std::string usr, file, name, qualname;
@@ -125,6 +134,7 @@ struct Result {
     std::string facts_json;
     std::string hash;
     std::vector<Site> sites;
+    std::vector<Reach> reaches;
     std::vector<Def> defs;
     std::vector<Over> overs;
     std::vector<std::pair<std::string, std::string>> bases;  // record USR -> base USR
@@ -545,6 +555,7 @@ public:
         }
         literals();
         macro_sites();
+        macro_reaches();
         if (module_scope_used_) x_.ff.module_scope = module_scope_;
     }
 
@@ -690,6 +701,22 @@ private:
             visit(c);
             unevaluated_--;
             return;
+        }
+        if (!stack_.empty() && stack_.back()->macro_written && !stack_.back()->half_written) {
+            std::string word = k == CXCursor_ForStmt || k == CXCursor_CXXForRangeStmt ? "for"
+                               : k == CXCursor_WhileStmt                              ? "while"
+                               : k == CXCursor_DoStmt                                 ? "do"
+                               : k == CXCursor_IfStmt                                 ? "if"
+                               : k == CXCursor_SwitchStmt                             ? "switch"
+                               : k == CXCursor_CXXTryStmt                             ? "try"
+                                                                                      : "";
+            if (!word.empty()) {
+                macro_control(stack_.back(), word);
+                macro_depth_++;
+                visit(c);
+                macro_depth_--;
+                return;
+            }
         }
         if (k == CXCursor_AsmStmt || k == CXCursor_MSAsmStmt) {
             x_.out->asm_statements++;
@@ -1452,7 +1479,10 @@ private:
     std::set<unsigned> constructions_;  // offsets where what is written constructs a type
     std::set<unsigned> var_names_;      // offsets of declared names: `int x(5)` is not a call
     std::map<unsigned, std::vector<std::pair<CXCursor, CXCursor>>> macro_calls_;  // by the macro's offset
+    std::map<unsigned, Routine*> macro_owners_;   // the routine each such macro is written in
     std::map<unsigned, CXCursor> macro_cursors_;  // each expansion in this file, by its offset
+    std::set<std::tuple<std::string, long, std::string>> written_hits_;  // routine, line, kind
+    int macro_depth_ = 0;                      // control nested in a macro-written body
     std::set<std::string> defs_recorded_;  // definitions this file has already reported
     std::map<unsigned, std::vector<std::pair<CXCursor, bool>>> macro_bodies_;  // `writes_no_call`, by hash
 
@@ -1563,6 +1593,7 @@ private:
             s.def_id = def_of(off);
             s.name = name;
             s.line = x_.line_of(off);
+            s.shadows = shadowed_kind(off, name);
             if (!open.empty()) {
                 s.position = facts::MacroPosition::STATEMENT;
                 s.routine_id = open.back()->r.id;
@@ -1575,6 +1606,117 @@ private:
         }
     }
 
+    // **A macro named like a boundary that goes somewhere else**: `#define unlink(x) helper(x)`
+    // touches no file, so the rule's word for it is false. Only where the expansion is
+    // plainly the tree's own, under another name: `open` becoming `open64`, or `stat` becoming
+    // `__xstat`, is a platform's spelling of the same act, and a library's function could be
+    // anything, so neither is called a shadow (rule 1).
+    std::string shadowed_kind(unsigned off, const std::string& name) {
+        auto mc = macro_calls_.find(off);
+        if (mc == macro_calls_.end()) return "";
+        std::string kind;
+        for (const auto& rule : x_.rules->boundaries)
+            if (rule.matches(name)) {
+                if (rule.names_macro) return "";
+                kind = rule.kind;
+                break;
+            }
+        if (kind.empty()) return "";
+        bool any = false;
+        for (const auto& [c, r] : mc->second) {
+            if (C().clang_Cursor_isNull(r) || !is_function_kind(C().clang_getCursorKind(r))) continue;
+            std::string callee = spelling(r);
+            if (callee.rfind("__builtin", 0) == 0 || callee.rfind("operator", 0) == 0) continue;
+            if (C().clang_getCursorKind(r) == CXCursor_Constructor) continue;
+            if (outside_tree(r) || callee.find(name) != std::string::npos) return "";
+            any = true;
+        }
+        return any ? kind : "";
+    }
+
+    // **Where each macro use's expansion goes**, for the edge pass to finish. A row per callee
+    // per line: a thousand identical `check`s on a thousand lines stay a thousand places, and
+    // the same callee twice on one line is a count.
+    void macro_reaches() {
+        std::map<std::tuple<long, std::string, std::string, std::string>, Reach> rows;
+        for (const auto& [off, calls] : macro_calls_) {
+            auto who = macro_owners_.find(off);
+            if (who == macro_owners_.end() || x_.in_pp(off)) continue;
+            std::string def = def_of(off);
+            const std::string& owner = *who->second->r.id;
+            long line = x_.line_of(off);
+            for (const auto& [c, r] : calls) {
+                bool named = !C().clang_Cursor_isNull(r) && is_function_kind(C().clang_getCursorKind(r));
+                if (named && C().clang_getCursorKind(r) == CXCursor_Constructor) continue;
+                std::string name = named ? spelling(r) : "";
+                if (name.rfind("__builtin", 0) == 0 || name.rfind("operator", 0) == 0) continue;
+                std::string callee;
+                if (named) {
+                    bool nested;
+                    std::string rec;
+                    callee = join(scope_parts(r, nested, rec), routine_name(r));
+                }
+                auto key = std::make_tuple(line, def, owner, callee);
+                auto at = rows.find(key);
+                if (at != rows.end()) {
+                    at->second.count++;
+                    continue;
+                }
+                Reach m;
+                m.file = x_.rel;
+                m.line = line;
+                m.def_id = def;
+                m.routine_id = owner;
+                m.callee = callee;
+                if (named) {
+                    m.usr = usr(r);
+                    CXCursor d = C().clang_getCursorDefinition(r);
+                    if (!C().clang_Cursor_isNull(d)) {
+                        CXFile f = nullptr;
+                        C().clang_getExpansionLocation(C().clang_getCursorLocation(d), &f, nullptr, nullptr, nullptr);
+                        if (f) {
+                            std::string g = std::filesystem::path(clang::str(C().clang_getFileName(f))).lexically_normal().generic_string();
+                            if (!x_.root.empty() && g.rfind(x_.root, 0) == 0) m.seen = g.substr(x_.root.size());
+                        }
+                    }
+                    for (const auto& rule : x_.rules->boundaries) {
+                        if (!rule.matches(callee)) continue;
+                        // Written and expanded on one line are one act: `UE_LOG` is STDIO by
+                        // its own name, whatever it calls to do it.
+                        if (written_hits_.count({owner, line, rule.kind})) continue;
+                        facts::BoundaryHit h;
+                        h.routine_id = owner;
+                        h.kind = rule.kind;
+                        h.direction = rule.direction;
+                        h.target = rule.target_arg && *rule.target_arg >= 0 ? expanded_arg(c, *rule.target_arg, off) : "";
+                        h.line = line;
+                        h.evidence = callee;
+                        h.salience = rule.salience;
+                        m.hits.push_back(h);
+                    }
+                }
+                rows.emplace(key, std::move(m));
+            }
+        }
+        for (auto& [k, m] : rows) x_.out->reaches.push_back(std::move(m));
+    }
+
+    // An argument of a call a macro made, where somebody wrote it in the macro's arguments:
+    // `WRAP(fd)` names `fd`. Blank where it is in the macro's body, which is nothing anybody at
+    // this line wrote, and the map says "unnamed" for it.
+    std::string expanded_arg(CXCursor call, int idx, unsigned off) {
+        const auto* span = x_.macro_at(off);
+        if (!span || idx >= C().clang_Cursor_getNumArguments(call)) return "";
+        unsigned a, b;
+        extent(C().clang_Cursor_getArgument(call, static_cast<unsigned>(idx)), a, b);
+        if (a <= span->first || b > span->second || b <= a) return "";
+        size_t i = x_.tok_at(a);
+        if (i >= x_.toks.size() || x_.toks[i].off != a) return "";
+        size_t j = i;
+        while (j + 1 < x_.toks.size() && x_.toks[j + 1].off < b) j++;
+        return x_.slice(i, j);
+    }
+
     bool in_declaration(unsigned off) const {
         auto it = std::upper_bound(declaration_spans_.begin(), declaration_spans_.end(), std::make_pair(off, ~0u));
         // `struct X { } v;` is two declarations that overlap, and nothing nests deeper.
@@ -1583,6 +1725,33 @@ private:
             if (it->second > off) return true;
         }
         return false;
+    }
+
+    // **A loop in a body a macro wrote**, from clang, since nothing is written to scan: a loop
+    // that issues a call per item is a rate whoever typed it. Its header is the macro's use,
+    // which is the only text at that line. Only here: in a body somebody wrote, `check(x)`
+    // expands to an `if`, and that is not control anybody wrote.
+    void macro_control(Routine* owner, const std::string& word) {
+        const auto* span = x_.macro_at(owner->body_lo);
+        if (!span) return;
+        size_t i = x_.tok_at(span->first), j = i;
+        while (j + 1 < x_.toks.size() && x_.toks[j + 1].off < span->second) j++;
+        std::string header = x_.slice(i, j);
+        if (header.size() > 200) header.resize(200);
+        unsigned line = x_.line_of(span->first);
+        facts::ControlPoint p;
+        p.point_id = ids::make_id({*owner->r.id, std::to_string(line), word, std::to_string(x_.ff.control.size())});
+        p.routine_id = owner->r.id;
+        p.kind = word == "if" || word == "switch" ? facts::ControlKind::DECISION
+                 : word == "try"                  ? facts::ControlKind::HANDLER
+                                                  : facts::ControlKind::LOOP;
+        p.line_start = line;
+        p.line_end = line;
+        p.depth = macro_depth_ + 1;
+        p.header = header;
+        p.arms = 1;
+        p.word = word;
+        x_.ff.control.push_back(p);
     }
 
     // Would the token scan name a call starting at this offset?
@@ -1671,6 +1840,7 @@ private:
             // Nothing happens here, so nothing is the macro's or the file scope's.
         } else if (x_.macro_names.count(a)) {
             macro_calls_[a].push_back({c, ref});
+            macro_owners_[a] = owner;
         } else if (const auto* m = x_.macro_at(a)) {
             // Inside the macro's arguments, which is not the same thing as written in them.
             // `RETRY(connect(fd))` writes the call and the scan will name it. `CALL(connect, fd)`
@@ -1680,7 +1850,10 @@ private:
             bool quiet = !C().clang_Cursor_isNull(ref) &&
                          (C().clang_getCursorKind(ref) == CXCursor_Constructor ||
                           spelling(ref).rfind("operator", 0) == 0);
-            if (!quiet && !written_call_at(a)) macro_calls_[m->first].push_back({c, ref});
+            if (!quiet && !written_call_at(a)) {
+                macro_calls_[m->first].push_back({c, ref});
+                macro_owners_[m->first] = owner;
+            }
         }
         bool ctor = !C().clang_Cursor_isNull(ref) && C().clang_getCursorKind(ref) == CXCursor_Constructor;
         if (ctor && C().clang_getCursorKind(parent) == CXCursor_CXXNewExpr) return;  // the `new` names it
@@ -1989,7 +2162,14 @@ private:
             auto named = x_.macro_names.find(p.off);
             bool no_call = named != x_.macro_names.end() && named->second == p.expr && !p.construction &&
                            !p.macro_written && !macro_calls_.count(p.off) && writes_no_call(p.off);
-            bool touched = !no_call && boundaries(owner, s, *s.callee_expr);
+            bool shadowed = named != x_.macro_names.end() && named->second == p.expr && !p.construction &&
+                            !p.macro_written && !shadowed_kind(p.off, p.expr).empty();
+            // A call in a body a macro wrote is one nobody wrote here.
+            std::string through;
+            if (p.macro_written) {
+                if (const auto* m = x_.macro_at(p.off)) through = def_of(m->first);
+            }
+            bool touched = !no_call && !shadowed && boundaries(owner, s, *s.callee_expr, through);
 
             Site e;
             e.site_id = s.site_id;
@@ -2013,6 +2193,8 @@ private:
                     if (mc != macro_calls_.end())
                         for (const auto& [c, r] : mc->second)
                             if (!C().clang_Cursor_isNull(r)) e.macro_usrs.push_back(usr(r));
+                    std::sort(e.macro_usrs.begin(), e.macro_usrs.end());
+                    e.macro_usrs.erase(std::unique(e.macro_usrs.begin(), e.macro_usrs.end()), e.macro_usrs.end());
                 }
             } else if (p.resolved) {
                 resolve(e, p.call, p.ref);
@@ -2023,7 +2205,7 @@ private:
                 // name still comes first, since clang's loses what a rule needs:
                 // `IFileManager::Get().Delete(...)` is only `IFileManager.Delete` to it.
                 if (!touched && !p.macro_written && !e.is_ctor && !e.qualified.empty() && outside_tree(p.ref))
-                    boundaries(owner, s, e.qualified);
+                    boundaries(owner, s, e.qualified, "");
             } else {
                 e.untyped = true;  // written, and clang kept nothing to say what it reaches
             }
@@ -2140,7 +2322,7 @@ private:
         return g.rfind(x_.root, 0) != 0;
     }
 
-    bool boundaries(Routine* owner, const facts::CallSite& s, const std::string& name) {
+    bool boundaries(Routine* owner, const facts::CallSite& s, const std::string& name, const std::string& through) {
         bool any = false;
         for (const auto& rule : x_.rules->boundaries) {
             if (!rule.matches(name)) continue;
@@ -2158,6 +2340,8 @@ private:
             h.line = s.line;
             h.evidence = name;
             h.salience = rule.salience;
+            h.through_macro = through;
+            written_hits_.insert({*owner->r.id, static_cast<long>(s.line), rule.kind});
             x_.ff.boundaries.push_back(h);
         }
         return any;

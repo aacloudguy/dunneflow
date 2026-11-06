@@ -317,6 +317,7 @@ struct BoundaryHit {
     int64_t line = 0;
     std::string evidence = "";
     std::string salience = "normal";
+    std::string through_macro = "";
 
     void write_json(std::string& out) const {
         out += '{';
@@ -332,6 +333,7 @@ struct BoundaryHit {
         json::field(out, first, "line", line);
         if (evidence != "") json::field(out, first, "evidence", evidence);
         if (salience != "normal") json::field(out, first, "salience", salience);
+        if (through_macro != "") json::field(out, first, "through_macro", through_macro);
         out += '}';
     }
 };
@@ -835,6 +837,7 @@ struct MacroSite {
     int64_t line = 0;
     std::optional<std::string> position;
     std::optional<std::string> routine_id;
+    std::string shadows = "";
 
     void write_json(std::string& out) const {
         out += '{';
@@ -847,6 +850,7 @@ struct MacroSite {
         if (!position) required("MacroSite.position");
         json::field(out, first, "position", *position);
         if (routine_id) json::field(out, first, "routine_id", *routine_id);
+        if (shadows != "") json::field(out, first, "shadows", shadows);
         out += '}';
     }
 };
@@ -1018,6 +1022,43 @@ struct SuppliedUse {
         json::field(out, first, "line", line);
         if (!name) required("SuppliedUse.name");
         json::field(out, first, "name", *name);
+        out += '}';
+    }
+};
+
+// `schema.SuppliedMacroCallee`.
+struct SuppliedMacroCallee {
+    std::optional<std::string> file;
+    int64_t line = 0;
+    std::optional<std::string> def_id;
+    std::optional<std::string> routine_id;
+    std::string callee = "";
+    std::string target_file = "";
+    int64_t target_line = 0;
+    std::string target_name = "";
+    int64_t candidates = 0;
+    bool indirect = false;
+    int64_t count = 1;
+    std::vector<BoundaryHit> hits;
+
+    void write_json(std::string& out) const {
+        out += '{';
+        bool first = true;
+        if (!file) required("SuppliedMacroCallee.file");
+        json::field(out, first, "file", *file);
+        json::field(out, first, "line", line);
+        if (!def_id) required("SuppliedMacroCallee.def_id");
+        json::field(out, first, "def_id", *def_id);
+        if (!routine_id) required("SuppliedMacroCallee.routine_id");
+        json::field(out, first, "routine_id", *routine_id);
+        if (callee != "") json::field(out, first, "callee", callee);
+        if (target_file != "") json::field(out, first, "target_file", target_file);
+        if (target_line != 0) json::field(out, first, "target_line", target_line);
+        if (target_name != "") json::field(out, first, "target_name", target_name);
+        if (candidates != 0) json::field(out, first, "candidates", candidates);
+        if (indirect != false) json::field(out, first, "indirect", indirect);
+        if (count != 1) json::field(out, first, "count", count);
+        if (!hits.empty()) json::field(out, first, "hits", hits);
         out += '}';
     }
 };

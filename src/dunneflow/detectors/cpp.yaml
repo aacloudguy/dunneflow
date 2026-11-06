@@ -247,6 +247,11 @@ entrypoints:
     specifiers_of: UFUNCTION
     decorator_method: [Server, Client, NetMulticast, Reliable, Unreliable]
     evidence: "invoked over the network by replication (UFUNCTION)"
+  # Runs before `main`, with nothing calling it. The reader adds the word itself, because no
+  # macro has to be written for it and a macro may have written it.
+  - kind: MAIN
+    decorator_method: [constructor]
+    evidence: "runs before main (__attribute__((constructor)))"
   # An exec function is typed into the console by a person.
   - kind: CLI
     specifiers_of: UFUNCTION

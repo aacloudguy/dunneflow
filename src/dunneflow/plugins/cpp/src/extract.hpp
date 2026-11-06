@@ -556,6 +556,7 @@ public:
         literals();
         macro_sites();
         macro_reaches();
+        one_comment_per_routine();
         if (module_scope_used_) x_.ff.module_scope = module_scope_;
     }
 
@@ -749,8 +750,13 @@ private:
         unsigned at;
         if (!offset_of(C().clang_getCursorLocation(c), at)) return;
         size_t i = x_.tok_at(at);
-        if (i >= x_.toks.size() || x_.toks[i].off != at || x_.toks[i].text != spelling(ref)) return;
-        if (i + 1 < x_.toks.size() && x_.toks[i + 1].text == "(") return;
+        // A name a macro's body writes is used whatever the macro does with it: a call to it is
+        // in `macro_callees`, and `#define REG() add_handler(on_event)` has no other record.
+        bool in_body = x_.in_macro(at) && !(i < x_.toks.size() && x_.toks[i].off == at && x_.toks[i].text == spelling(ref));
+        if (!in_body) {
+            if (i >= x_.toks.size() || x_.toks[i].off != at || x_.toks[i].text != spelling(ref)) return;
+            if (i + 1 < x_.toks.size() && x_.toks[i + 1].text == "(") return;
+        }
         std::string u = usr(ref);
         if (!u.empty()) x_.out->uses.insert(u);
     }
@@ -1121,6 +1127,9 @@ private:
         if (k != CXCursor_Constructor && k != CXCursor_Destructor) {
             std::string ret = clang::str(C().clang_getTypeSpelling(C().clang_getCursorResultType(c)));
             if (!ret.empty()) f.returns = ret;
+        } else {
+            // Blank and not absent: a constructor cannot declare one, so it has not failed to.
+            f.returns = "";
         }
         f.docstring = leading_comment(header);
         f.comments = body_comments(lo, hi);
@@ -1400,12 +1409,25 @@ private:
     // Ways in a rule recognises by a decorator, read off declarations as well as definitions:
     // `UFUNCTION(BlueprintCallable) void Fire(int);` declares a way in from Blueprint, and the
     // body is usually in another file.
+    // **`__attribute__((constructor))` runs before `main`**, so nothing calls it and it is the
+    // place to look first, whoever wrote it. Read from clang's own printing of the declaration:
+    // libclang has no cursor kind for this attribute, and a macro may have written it.
+    bool runs_before_main(CXCursor c) {
+        if (!C().clang_Cursor_hasAttrs(c)) return false;
+        CXPrintingPolicy policy = C().clang_getCursorPrintingPolicy(c);
+        C().clang_PrintingPolicy_setProperty(policy, CXPrintingPolicy_TerseOutput, 1);
+        std::string text = clang::str(C().clang_getCursorPrettyPrinted(c, policy));
+        C().clang_PrintingPolicy_dispose(policy);
+        return text.find("((constructor") != std::string::npos || text.find("gnu::constructor") != std::string::npos;
+    }
+
     void annotations(CXCursor c) {
         unsigned a, b;
         extent(c, a, b);
         if (!annotated_.insert(a).second) return;
         unsigned header;
         auto decs = decorators(a, header);
+        if (runs_before_main(c)) decs.push_back("constructor");
         if (decs.empty()) return;
         bool nested;
         std::string record;
@@ -1559,6 +1581,20 @@ private:
             x_.ff.macro_defs.push_back(std::move(d));
         }
         return id;
+    }
+
+    // A comment above a macro that writes seven routines is about the macro, and is no more one
+    // routine's than another's: `DECLARE_CYCLE_STAT`'s accessors each said it. Where one use
+    // writes one routine it is that routine's.
+    void one_comment_per_routine() {
+        std::map<unsigned, std::vector<size_t>> by_use;
+        for (const auto& r : routines_) {
+            if (!r->macro_written) continue;
+            if (const auto* m = x_.macro_at(r->body_lo)) by_use[m->first].push_back(r->ff_index);
+        }
+        for (const auto& [off, rows] : by_use)
+            if (rows.size() > 1)
+                for (size_t row : rows) x_.ff.routines[row].docstring = std::nullopt;
     }
 
     // The macro that wrote what is at this location, if a macro's span holds it.

@@ -57,6 +57,10 @@
     X(clang_getCursorReferenced)                \
     X(clang_Cursor_isMacroFunctionLike)         \
     X(clang_getPresumedLocation)                \
+    X(clang_getCursorPrintingPolicy)            \
+    X(clang_PrintingPolicy_setProperty)         \
+    X(clang_PrintingPolicy_dispose)             \
+    X(clang_getCursorPrettyPrinted)             \
     X(clang_getCursorDefinition)                \
     X(clang_isCursorDefinition)                 \
     X(clang_isInvalidDeclaration)               \

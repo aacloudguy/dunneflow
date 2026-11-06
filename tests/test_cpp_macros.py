@@ -633,3 +633,150 @@ def test_an_unknown_word_is_refused_and_not_defaulted(tmp_path):
     with pytest.raises(RulesMissing, match="macro_expansion"):
         _macro_expansion("sometimes", "cpp", tmp_path)
     assert _macro_expansion("", "cpp", tmp_path) == ""
+
+
+def _anomalies(root: Path, text: str):
+    from dunneflow.anomalies import detect
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    (root / "m.cpp").write_text(text, encoding="utf-8")
+    store = Store(root / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    return store, {a.kind: a for a in detect(store).items}
+
+
+def test_a_routine_a_macro_wrote_is_not_dead_code_and_the_count_says_so(tmp_path):
+    """`RB_GENERATE` writes every operation on a tree: an unused one is not a decision."""
+    store, found = _anomalies(tmp_path, (
+        "#define MANY(n) void n##_a() {} void n##_b() {}\n"
+        "MANY(tree)\n"
+        "void forgotten() {}\n"
+        "int main() { return 0; }\n"
+    ))
+    try:
+        dead = found["DEAD_CODE"]
+        assert [o.label for o in dead.occurrences] == ["forgotten"]
+        assert "2 routines a macro wrote are left out" in dead.blind_spot
+    finally:
+        store.close()
+
+
+def test_a_routine_only_a_macro_calls_is_neither_dead_nor_stranded(tmp_path):
+    """Several calls means no edge, so without `macro_callees` this was unreachable and dead
+    while running on every start."""
+    store, found = _anomalies(tmp_path, (
+        "void a() {}\nvoid b() {}\n"
+        "#define BOTH() (a(), b())\n"
+        "void stranded() {}\n"
+        "int main() { BOTH(); return 0; }\n"
+    ))
+    try:
+        assert [o.label for o in found["DEAD_CODE"].occurrences] == ["stranded"]
+        assert [o.label for o in found["UNREACHABLE"].occurrences] == ["stranded"]
+    finally:
+        store.close()
+
+
+def test_flows_do_not_follow_a_macro_s_expansion(tmp_path):
+    """Reach through macros is for whether something can run. The ordinary walk stays out."""
+    store, _ = _anomalies(tmp_path, (
+        "void a() {}\nvoid b() {}\n"
+        "#define BOTH() (a(), b())\n"
+        "int main() { BOTH(); return 0; }\n"
+    ))
+    try:
+        main = store.query("SELECT id FROM routines WHERE name = 'main'")[0]["id"]
+        target = {r["id"] for r in store.query("SELECT id FROM routines WHERE name = 'a'")}
+        assert not (store.reachable_from_many([main]) & target)
+        assert store.reachable_through_macros([main]) & target
+    finally:
+        store.close()
+
+
+def test_a_name_only_a_macro_writes_is_out_of_the_naming_standard(tmp_path):
+    from dunneflow.resolve.naming import POPULATIONS
+
+    store, _ = _anomalies(tmp_path, (
+        "#define MAKE(n) void zz_##n() {}\n"
+        "MAKE(a)\n"
+        "void person_chose_this() {}\n"
+    ))
+    try:
+        names = {r["name"] for r in store.query(POPULATIONS["routines"][1])}
+        assert names == {"person_chose_this"}
+    finally:
+        store.close()
+
+
+def test_a_callback_a_macro_s_body_names_is_used(tmp_path):
+    store, found = _anomalies(tmp_path, (
+        "void add(void (*)());\nvoid on_event() {}\n"
+        "#define REG() add(on_event)\n"
+        "int main() { REG(); return 0; }\n"
+    ))
+    try:
+        assert "DEAD_CODE" not in found or "on_event" not in {
+            o.label for o in found["DEAD_CODE"].occurrences}
+    finally:
+        store.close()
+
+
+def test_a_comment_above_a_macro_that_writes_several_routines_is_none_of_theirs(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "#define MANY(n) void n##_a() {} void n##_b() {}\n"
+        "#define ONE(n) void n() {}\n"
+        "// about the stat\n"
+        "MANY(x)\n"
+        "// about this one\n"
+        "ONE(y)\n"
+    ))
+    docs = {r.qualname: r.docstring for r in ff.routines}
+    assert docs["x_a"] is None and docs["x_b"] is None
+    assert "about this one" in docs["y"]
+
+
+@pytest.mark.parametrize("spelling", ["__attribute__((constructor))", "[[gnu::constructor]]"])
+def test_what_runs_before_main_is_a_way_in_however_it_was_written(tmp_path, spelling):
+    ff, _, _ = _read(tmp_path, (
+        f"#define AT_START {spelling}\n"
+        f"#define WHOLE(n) {spelling} static void n() {{}}\n"
+        f"{spelling} static void hand() {{}}\n"
+        "AT_START static void by_macro() {}\n"
+        "WHOLE(whole)\n"
+        "static void my_constructor() {}\n"
+    ))
+    assert sorted(e.name for e in ff.entrypoints if e.kind.value == "MAIN") == [
+        "by_macro", "hand", "whole"]
+
+
+def test_a_constructor_declares_no_return_type_because_it_cannot(tmp_path):
+    """Thousands of constructors and destructors were listed as missing one (rule 43)."""
+    ff, _, _ = _read(tmp_path, (
+        "struct S { S() {} ~S() {} operator int() { return 1; } int m() { return 1; } };\n"
+    ))
+    assert {r.name: r.returns for r in ff.routines}["S"] == ""
+    assert {r.name: r.returns for r in ff.routines}["~S"] == ""
+
+
+def test_what_a_routine_touches_follows_a_macro_s_expansion(tmp_path):
+    """`BOTH()` has no edge, so `main` read as touching nothing while `b` connects."""
+    from dunneflow.resolve.flows import entry_reach
+
+    store, _ = _anomalies(tmp_path, (
+        "extern \"C\" int connect(int, const void *, int);\n"
+        "void a() {}\nvoid b() { connect(1, 0, 0); }\n"
+        "#define BOTH() (a(), b())\n"
+        "int main() { BOTH(); return 0; }\n"
+    ))
+    try:
+        main = store.query("SELECT id FROM routines WHERE name = 'main'")[0]["id"]
+        assert {h.evidence for h in store.boundaries_reached_many([main], through_macros=True)} == {
+            "connect"}
+        assert store.boundaries_reached_many([main]) == []
+        reach, kinds = entry_reach(store, main)
+        assert reach == 3 and [k.value for k in kinds] == ["NETWORK"]
+    finally:
+        store.close()

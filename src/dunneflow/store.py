@@ -2108,6 +2108,32 @@ class Store:
         ).fetchall()
         return [(str(r["reason"]), int(r["n"])) for r in rows]
 
+    def _macro_edges(self) -> dict[str, list[str]]:
+        """Who reaches whom through a macro's expansion, joined by location (`macro_callees`).
+        Not in `_reach_graph`, because flows and impact must not follow it: `FMsg::Logf` under
+        `check` would make every routine in Core a neighbour of every other (rule 55)."""
+        edges: dict[str, list[str]] = {}
+        for caller, callee in self.conn.execute(
+            "SELECT m.routine_id, r.id FROM macro_callees m JOIN routines r"
+            " ON r.file = m.target_file AND r.line_start = m.target_line"
+            " AND r.name = m.target_name WHERE m.target_file <> '' ORDER BY m.rowid"
+        ):
+            edges.setdefault(caller, []).append(callee)
+        return edges
+
+    def reachable_through_macros(self, routine_ids: list[str],
+                                 max_depth: int = 40) -> set[str]:
+        """`reachable_from_many`, following what macros expand to as well. For the questions
+        that are about whether a routine can run at all, and no others."""
+        reached = self.reachable_from_many(routine_ids, max_depth)
+        macros = self._macro_edges()
+        if not macros:
+            return reached
+        graph = dict(self._reach_graph() or {})
+        for caller, callees in macros.items():
+            graph[caller] = [*graph.get(caller, ()), *callees]
+        return self._walk(graph, reached, max_depth) if graph else reached
+
     def reachable_from_many(self, routine_ids: list[str], max_depth: int = 40, *,
                             cross: bool = True) -> set[str]:
         """Everything a *set* of routines can reach, as one traversal.
@@ -2153,17 +2179,20 @@ class Store:
         )
         return {r["id"] for r in rows}
 
-    def boundaries_reached_many(self, routine_ids: list[str],
-                               max_depth: int = 40) -> list[BoundaryHit]:
-        """Every boundary a set of routines reaches, directly or transitively."""
+    def boundaries_reached_many(self, routine_ids: list[str], max_depth: int = 40, *,
+                                through_macros: bool = False) -> list[BoundaryHit]:
+        """Every boundary a set of routines reaches, directly or transitively. Through what
+        macros expand to only where asked: *what does this touch* wants that, and a flow's
+        inventory must not have it (`_macro_edges`)."""
         if not routine_ids:
             return []
         graph = self._reach_graph()
-        if graph is not None:
+        if graph is not None or through_macros:
             # The reach walked in memory, and the boundaries -- a small table on every map
             # measured, 2,424 rows on the largest -- filtered against it, in the order and
             # with the `DISTINCT` the query below gives them (BACKLOG 8).
-            reached = self.reachable_from_many(routine_ids, max_depth)
+            reached = (self.reachable_through_macros(routine_ids, max_depth) if through_macros
+                       else self.reachable_from_many(routine_ids, max_depth))
             every = getattr(self, "_boundary_cache", None)
             if every is None:
                 # Read once: this is asked once per way in, and Unreal's Runtime part has
@@ -2180,6 +2209,7 @@ class Store:
                 routine_id=r["routine_id"], kind=BoundaryKind(r["kind"]),
                 direction=Direction(r["direction"]), target=r["target"], line=r["line"],
                 evidence=r["evidence"], salience=r["salience"],
+                through_macro=r["through_macro"],
             )
             for r in rows
         ]

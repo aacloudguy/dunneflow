@@ -643,6 +643,7 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
     rows = store.query(
         "SELECT id, qualname, file, line_start FROM routines NOT INDEXED"
         " WHERE name != '<module>' AND is_method = 0 AND is_nested = 0"
+        "   AND body_by = ''"
         "   AND name NOT LIKE '\\_\\_%' ESCAPE '\\'"
         "   AND id NOT IN (SELECT callee_id FROM calls WHERE callee_id IS NOT NULL)"
         "   AND id NOT IN (SELECT routine_id FROM entrypoints"
@@ -654,6 +655,13 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         "                   AND u.line = routines.line_start AND u.name = routines.name)"
         " ORDER BY qualname, file, line_start"
     )
+    # **A routine a macro's body wrote is out of this finding, and counted.** `RB_GENERATE`
+    # writes every operation on a tree and tmux uses some: an unused one is what instantiating
+    # that macro means, and nobody decided to leave it there. Rule 98: this detector was
+    # written against routines somebody typed.
+    written = store.query(
+        "SELECT COUNT(*) n FROM routines NOT INDEXED WHERE body_by <> ''"
+        " AND is_method = 0 AND is_nested = 0 AND name != '<module>'")[0]["n"]
     # **A call the reader could not type may be a call to this routine**, and the map has
     # no way to say it is not (Tom, 2026-11-02). A checker that is missing a dependency
     # cannot choose an overload once one argument's type is unknown, so traccar's
@@ -690,7 +698,10 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
                    f"does not, a callback appears here too."
                    + (f" {plural(spared, 'routine')} {are(spared)} left out because a "
                       f"call the reader could not type uses the name, and may be a call "
-                      f"to it." if spared else ""),
+                      f"to it." if spared else "")
+                   + (f" {plural(written, 'routine')} a macro wrote {are(written)} left out: "
+                      f"a macro writes what it writes whether or not all of it is used."
+                      if written else ""),
         # One per program: this is a finding *about the program*, not about any of the
         # routines it lists. `file` and `line` point at the first of them so the row is
         # clickable, and neither may enter the key -- which routine sorts first is not
@@ -707,6 +718,10 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
     ))
 
 
+def _module_scopes(store: Store) -> set[str]:
+    return {str(x["id"]) for x in store.query("SELECT id FROM routines WHERE name = '<module>'")}
+
+
 def _unreachable(store: Store, r: Report) -> None:
     ways_in = [
         row["routine_id"]
@@ -718,11 +733,18 @@ def _unreachable(store: Store, r: Report) -> None:
     ]
     if not ways_in:
         return
-    reached = store.reachable_from_many(ways_in)
+    # Through macros too: whether a routine can run at all is not a question about flows, and
+    # one only a macro calls runs. A routine a macro wrote is out of the count and said to be
+    # (rule 32), for `_dead_code`'s reason.
+    reached = store.reachable_through_macros(ways_in)
     total = store.query(
-        "SELECT COUNT(*) n FROM routines WHERE name != '<module>'"
+        "SELECT COUNT(*) n FROM routines WHERE name != '<module>' AND body_by = ''"
     )[0]["n"]
-    stranded = total - len({r_ for r_ in reached})
+    written_ids = {
+        str(x["id"]) for x in store.query(
+            "SELECT id FROM routines NOT INDEXED WHERE name != '<module>' AND body_by <> ''")
+    }
+    stranded = total - len({str(r_) for r_ in reached} - written_ids - _module_scopes(store))
     if stranded <= 0:
         return
     # **The stranded routines themselves.** The count was a subtraction and nothing named
@@ -737,7 +759,7 @@ def _unreachable(store: Store, r: Report) -> None:
                    file=str(x["file"] or ""), line=int(x["line_start"] or 0))
         for x in store.query(
             "SELECT id, qualname, file, line_start FROM routines NOT INDEXED"
-            " WHERE name != '<module>' ORDER BY file, line_start, qualname")
+            " WHERE name != '<module>' AND body_by = '' ORDER BY file, line_start, qualname")
         if str(x["id"]) not in reached_ids
     ]
     r.add(Anomaly(
@@ -749,7 +771,9 @@ def _unreachable(store: Store, r: Report) -> None:
                # Said where it is true, so a figure that crossed dispatch is never read as
                # one that stopped at it (rule 32; `resolve/dispatch.py`).
                + (" Reach followed every dispatched call into each body that may answer "
-                  "it." if store.dispatch_of_map() else ""),
+                  "it." if store.dispatch_of_map() else "")
+               + (f" {plural(len(written_ids), 'routine')} a macro wrote {are(len(written_ids))}"
+                  f" not counted either way." if written_ids else ""),
         blind_spot="An edge lost to ambiguity strands everything behind it, so "
                    "LOST_EDGE findings inflate this number. Library code meant to be "
                    "imported by other programs is also unreachable by design.",

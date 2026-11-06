@@ -168,7 +168,8 @@ def _touches(session: Session, args: dict[str, Any]) -> dict[str, Any]:
             "file": match["file"], "line": match["line_start"],
             "reaches": reach,
             "boundary_kinds": [k.value for k in kinds],
-            "boundaries": [_hit(h) for h in store.boundaries_reached(match["id"])],
+            "boundaries": [_hit(h) for h in
+                           store.boundaries_reached_many([match["id"]], through_macros=True)],
             # Where the reach stops, and why, as far as the readers said (schema 17).
             "frontier": store.frontier_reached(match["id"]),
             # Where the reach crosses into another process by a command's name, and where

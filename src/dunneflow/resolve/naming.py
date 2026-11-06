@@ -299,12 +299,14 @@ class NamingMeasurement:
 # Always through `files.lang` and never `routines.lang` or `structures.lang`, though both
 # exist: which language a *name* belongs to is a fact about the file it was written in, and
 # two spellings of one question is what rule 51 is about.
+# A name a macro wrote (`name_by`) is out of every routine population: this is the naming
+# standard people keep, and `zzAppendMemberGetPrev` 12,372 times over is nobody's choice.
 POPULATIONS: dict[str, tuple[str, str, str, str]] = {
     "routines": (
         "routines",
         "SELECT name, file || ':' || line_start AS where_ FROM routines"
-        " WHERE is_nested = 0 AND name NOT GLOB '__*__' AND name NOT GLOB '<*>'",
-        "FROM routines WHERE is_nested = 0 AND name NOT GLOB '__*__'"
+        " WHERE is_nested = 0 AND name_by = '' AND name NOT GLOB '__*__' AND name NOT GLOB '<*>'",
+        "FROM routines WHERE is_nested = 0 AND name_by = '' AND name NOT GLOB '__*__'"
         " AND name NOT GLOB '<*>'",
         "file IN (SELECT path FROM files WHERE lang = '{lang}')",
     ),
@@ -849,7 +851,8 @@ def mine_affix_conventions(store: Store) -> list[Convention]:
         str(r["id"]): (str(r["name"]), f"{r['file']}:{r['line_start']}")
         for r in store.query(
             "SELECT id, name, file, line_start FROM routines"
-            " WHERE is_nested = 0 AND name NOT GLOB '__*__' AND name NOT GLOB '<*>'"
+            " WHERE is_nested = 0 AND name_by = '' AND name NOT GLOB '__*__'"
+            " AND name NOT GLOB '<*>'"
         )
     }
     out: list[Convention] = []
@@ -857,7 +860,8 @@ def mine_affix_conventions(store: Store) -> list[Convention]:
         out.extend(_affix_conventions(
             routines, _routine_properties(store), "routine", "routines",
             "SELECT name, file, line_start FROM routines"
-            " WHERE is_nested = 0 AND name NOT GLOB '__*__' AND name NOT GLOB '<*>'"
+            " WHERE is_nested = 0 AND name_by = '' AND name NOT GLOB '__*__'"
+            " AND name NOT GLOB '<*>'"
             " AND name GLOB '{glob}' AND {lacks}",
             _boundary_predicates(store, ROUTINE_PREDICATES, "routine"),
         ))
@@ -925,7 +929,8 @@ def mine_privacy_convention(store: Store, langs: Sequence[str] = ()) -> list[Con
         )
         total = store.query(
             "SELECT COUNT(*) n FROM routines"
-            " WHERE visibility = 'private' AND name NOT GLOB '__*__' AND is_nested = 0" + mine
+            " WHERE visibility = 'private' AND name_by = '' AND name NOT GLOB '__*__'"
+            " AND is_nested = 0" + mine
         )[0]["n"]
         if total < MIN_POPULATION:
             continue

@@ -204,8 +204,9 @@ def boundary_index(store: Store, min_salience: str = "normal") -> dict[str, list
 
 def entry_reach(store: Store, routine_id: str) -> tuple[int, list[BoundaryKind]]:
     """How much of the program one way in commands, and what it ends up touching."""
-    reach = store.reachable_from(routine_id)
-    kinds = sorted({b.kind for b in store.boundaries_reached(routine_id)}, key=lambda k: k.value)
+    reach = store.reachable_through_macros([routine_id])
+    hits = store.boundaries_reached_many([routine_id], through_macros=True)
+    kinds = sorted({b.kind for b in hits}, key=lambda k: k.value)
     return len(reach), kinds
 
 

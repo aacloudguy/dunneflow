@@ -1463,7 +1463,7 @@ def cmd_touches(args: argparse.Namespace) -> int:
         # no search sentence over it, and stdout began with an empty line (BACKLOG 28).
         print(f"{_gap(i, said)}{m['qualname']}  ({m['file']}:{m['line_start']})")
         print(f"  reaches {plural(reach, 'routine')}")
-        bounds = store.boundaries_reached(m["id"])
+        bounds = store.boundaries_reached_many([m["id"]], through_macros=True)
         if not bounds:
             print("  touches nothing outside itself")
         by_kind: dict[str, set[str]] = {}

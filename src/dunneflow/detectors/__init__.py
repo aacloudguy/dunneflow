@@ -281,6 +281,11 @@ class RuleSet:
     # nobody has declared this for is one nobody has answered that question about.
     # Defaulting to either answer would put a guess in the one command a CI job trusts.
     unawaited_async: str = ""
+    # What this language's reader knows of a macro: `read` (the toolchain expands it, and the
+    # calls under it are facts), `named` (a use is seen, and what it does is not), `none` (the
+    # language has none, or this reader does not look). Empty means nobody chose, and the
+    # macro detectors do not fire.
+    macro_expansion: str = ""
     # **What `visibility = 'private'` means in this language**, which the naming lane's
     # LEAKAGE claim depends on and which differs by language (rule 98, the fourth time).
     # *module*: a spelling convention that keeps a name inside its file (Python's `_x`,
@@ -574,6 +579,7 @@ def load_rules(lang: str) -> RuleSet:
         ),
         builtins=_builtins(data.get("builtins", []) or [], lang, path),
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
+        macro_expansion=_macro_expansion(data.get("macro_expansion", ""), lang, path),
         private_means=_private_means(data.get("private_means", ""), lang, path),
         redefinition=_redefinition(data.get("redefinition", ""), lang, path),
         frontier_words=_frontier_words(data.get("frontier_words"), lang, path),
@@ -633,6 +639,18 @@ def _private_means(raw: Any, lang: str, path: Path) -> str:
         )
     return raw
 _REDEFINITION = ("shadows", "overloads")
+
+
+def _macro_expansion(raw: Any, lang: str, path: Path) -> str:
+    """*read*, *named* or *none*, or nothing at all: refused, never defaulted (rule 49)."""
+    if raw in ("", None):
+        return ""
+    if raw not in ("read", "named", "none"):
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `macro_expansion` as {raw!r}; it has to "
+            f"be `read`, `named` or `none`, or be left out."
+        )
+    return str(raw)
 
 
 def _unawaited_async(raw: Any, lang: str, path: Path) -> str:

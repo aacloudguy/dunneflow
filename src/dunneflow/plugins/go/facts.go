@@ -132,6 +132,7 @@ const (
 	MacroOriginOutside     MacroOrigin = "outside"
 	MacroOriginCommandLine MacroOrigin = "command_line"
 	MacroOriginBuiltin     MacroOrigin = "builtin"
+	MacroOriginUnknown     MacroOrigin = "unknown"
 )
 
 // MacroPosition is `schema.MacroPosition`.

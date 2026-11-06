@@ -216,3 +216,6 @@ commands:
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # an unexported name is visible to every file in its package directory.
 private_means: package
+
+# Go has no macros.
+macro_expansion: none

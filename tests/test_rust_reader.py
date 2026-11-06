@@ -267,6 +267,34 @@ pub fn run() {
 }
 
 
+def test_a_macro_use_is_named_and_its_expansion_is_not_read(tmp_path):
+    """`syn` does not expand, so this is a use and nothing more, and where an outside macro is
+    defined is `unknown`: it may be another file's, so `outside` would be a claim."""
+    if PLUGIN is None or shutil.which("cargo") is None:
+        pytest.skip("needs the Rust plugin and `cargo`")
+    f = tmp_path / "m.rs"
+    f.write_text(
+        "macro_rules! mine { () => { 1 } }\n"
+        "thread_local! { static X: u8 = 0; }\n"
+        "const C: u8 = mine!();\n"
+        "fn run() { println!(\"x\"); let _ = mine!(); }\n", encoding="utf-8")
+    PLUGIN.open(tmp_path, [f])
+    try:
+        ff = next(iter(PLUGIN.extract([f], tmp_path)))
+        list(PLUGIN.edges())
+    finally:
+        PLUGIN.close()
+    defs = {d.id: (d.name, d.origin.value, d.file, d.line) for d in ff.macro_defs}
+    run = next(r.id for r in ff.routines if r.name == "run")
+    got = {(defs[s.def_id], s.line, s.position.value, s.routine_id) for s in ff.macro_sites}
+    assert got == {
+        (("thread_local", "unknown", "", 0), 2, "declaration", None),
+        (("mine", "tree", "m.rs", 1), 3, "file_scope", None),
+        (("println", "unknown", "", 0), 4, "statement", run),
+        (("mine", "tree", "m.rs", 1), 4, "statement", run),
+    }
+
+
 @pytest.fixture(scope="module")
 def facts(tmp_path_factory):
     if PLUGIN is None or shutil.which("cargo") is None:

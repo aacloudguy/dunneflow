@@ -747,6 +747,7 @@ class MacroOrigin(StrEnum):
     OUTSIDE = "outside"            # in a header from elsewhere: a library's or the platform's
     COMMAND_LINE = "command_line"  # `-D`: in the build, which is not in the source at all
     BUILTIN = "builtin"            # the compiler's own: `__FILE__`, `__APPLE__`
+    UNKNOWN = "unknown"            # named by a reader that cannot say where it is defined
 
 
 class MacroPosition(StrEnum):

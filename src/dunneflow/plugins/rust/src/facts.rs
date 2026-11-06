@@ -255,6 +255,7 @@ pub enum MacroOrigin {
     Outside,
     CommandLine,
     Builtin,
+    Unknown,
 }
 
 impl MacroOrigin {
@@ -265,6 +266,7 @@ impl MacroOrigin {
             MacroOrigin::Outside => "outside",
             MacroOrigin::CommandLine => "command_line",
             MacroOrigin::Builtin => "builtin",
+            MacroOrigin::Unknown => "unknown",
         }
     }
 }

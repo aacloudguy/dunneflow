@@ -38,7 +38,7 @@ export type EntrypointKind = "CLI" | "MAIN" | "MCP_TOOL" | "HTTP_ROUTE" | "QUEUE
 
 export type LiteralKind = "PLAIN" | "INTERPOLATED";
 
-export type MacroOrigin = "tree" | "outside" | "command_line" | "builtin";
+export type MacroOrigin = "tree" | "outside" | "command_line" | "builtin" | "unknown";
 
 export type MacroPosition = "statement" | "declaration" | "file_scope";
 

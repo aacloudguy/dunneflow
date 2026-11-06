@@ -452,3 +452,6 @@ ipc:
   clients:
     - {module: "@tauri-apps/api/core", name: "invoke"}
     - {module: "@tauri-apps/api/tauri", name: "invoke"}
+
+# TypeScript has no macros.
+macro_expansion: none

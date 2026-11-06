@@ -195,3 +195,6 @@ private_means: surface
 # on this machine -- or an overload it chose with an argument it could not type.
 frontier_words:
   untyped: "javac could not type it: a class or dependency it needs is not here"
+
+# Java has no macros.
+macro_expansion: none

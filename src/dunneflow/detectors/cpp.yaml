@@ -400,3 +400,6 @@ presets:
 # down", which is what every one of tmux's said.
 frontier_words:
   untyped: "clang could not resolve it: a header it needs was not found, or it depends on a template argument"
+
+# clang expands every macro, so the calls under one are facts here.
+macro_expansion: read

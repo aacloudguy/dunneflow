@@ -251,3 +251,6 @@ ipc:
 # receiver whose type is not written down, or a value of a type parameter with no bound.
 frontier_words:
   untyped: "the receiver's type is not written down, or is a type parameter with no bound"
+
+# `syn` does not expand a macro, so a use is seen and what it does is not.
+macro_expansion: named

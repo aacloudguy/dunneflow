@@ -188,7 +188,8 @@ public final class Facts {
         TREE("tree"),
         OUTSIDE("outside"),
         COMMAND_LINE("command_line"),
-        BUILTIN("builtin");
+        BUILTIN("builtin"),
+        UNKNOWN("unknown");
 
         /** The schema's own spelling, which is the wire's. */
         public final String wire;

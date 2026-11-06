@@ -616,3 +616,20 @@ def test_the_store_keeps_a_macro_s_boundaries_with_the_rest_and_replaces_them(tm
             assert store.query("SELECT callee FROM macro_callees")[0]["callee"] == "connect"
     finally:
         store.close()
+
+
+@pytest.mark.parametrize(("lang", "word"), [
+    ("cpp", "read"), ("rust", "named"), ("go", "none"), ("java", "none"), ("kotlin", "none"),
+    ("python", "none"), ("typescript", "none")])
+def test_every_language_declares_what_it_knows_of_a_macro(lang, word):
+    from dunneflow.detectors import load_rules
+
+    assert load_rules(lang).macro_expansion == word
+
+
+def test_an_unknown_word_is_refused_and_not_defaulted(tmp_path):
+    from dunneflow.detectors import RulesMissing, _macro_expansion
+
+    with pytest.raises(RulesMissing, match="macro_expansion"):
+        _macro_expansion("sometimes", "cpp", tmp_path)
+    assert _macro_expansion("", "cpp", tmp_path) == ""

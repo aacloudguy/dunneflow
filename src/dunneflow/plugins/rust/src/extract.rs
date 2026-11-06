@@ -247,6 +247,7 @@ struct Ex<'a> {
     mods: Vec<ModDecl>,
     types: Vec<TypeDef>,
     macros: Vec<String>,
+    macro_lines: std::collections::HashMap<String, i64>,
 }
 
 impl<'a> Ex<'a> {
@@ -295,6 +296,7 @@ impl<'a> Ex<'a> {
             mods: Vec::new(),
             types: Vec::new(),
             macros: Vec::new(),
+            macro_lines: std::collections::HashMap::new(),
         }
     }
 
@@ -317,6 +319,8 @@ impl<'a> Ex<'a> {
         ff.literals = std::mem::take(&mut f.literals);
         ff.network = std::mem::take(&mut f.network);
         ff.ipc_registrations = std::mem::take(&mut f.ipc_registrations);
+        ff.macro_defs = std::mem::take(&mut f.macro_defs);
+        ff.macro_sites = std::mem::take(&mut f.macro_sites);
         ff.literals_dropped = f.literals_dropped;
         ff.tests_dropped = f.tests_dropped;
         // Always sent, claimed or not: a string names its owner before anybody knows
@@ -725,6 +729,8 @@ impl<'a> Ex<'a> {
             Item::Macro(m) => {
                 if let Some(name) = &m.ident {
                     self.macros.push(name.to_string());
+                    let at = self.line(name.span());
+                    self.macro_lines.insert(name.to_string(), at);
                 }
             }
             _ => {}
@@ -1084,9 +1090,10 @@ impl<'a> Ex<'a> {
     /// A macro invocation. Its arguments are read as expressions where they parse as
     /// a comma-separated list — `format!`, `vec!`, `assert!`, and DunneNote's own
     /// `with_unlocked!(…)`, which wraps the dispatch calls — and left as tokens otherwise.
-    fn mac(&mut self, m: &Macro, _in_expr: bool) {
+    fn mac(&mut self, m: &Macro, in_expr: bool) {
         let name = dotted_path(&m.path);
         let expr = format!("{name}!");
+        self.macro_site(&name, m, in_expr);
         // `matches!(x, Pat)` and its assertions take a *pattern* after the first argument,
         // and a pattern like `Frag::Pos(_)` parses as a call: only the scrutinee is code.
         let pattern_taking = matches!(name.rsplit('.').next(), Some("matches" | "assert_matches" | "debug_assert_matches"));
@@ -1126,6 +1133,46 @@ impl<'a> Ex<'a> {
         for a in &args {
             self.walk_expr(a);
         }
+    }
+
+    /// **A use, and only a use.** `syn` does not expand a macro, so what it does is not read:
+    /// `rust.yaml` declares `macro_expansion: named`, and the map says so rather than imply
+    /// the use is clean. Where it is defined is known only for one this file defines first,
+    /// which is the rule `macro_rules!` itself has, so anything else is `unknown`, and never
+    /// `outside`: it may be another file's.
+    fn macro_site(&mut self, name: &str, m: &Macro, in_expr: bool) {
+        let line = self.line(m.span());
+        let (file, def_line, origin) = match self.macro_lines.get(name) {
+            Some(&at) => (self.path.clone(), at, MacroOrigin::Tree),
+            None => (String::new(), 0, MacroOrigin::Unknown),
+        };
+        let def_id = definition_id(&file, name, def_line);
+        if !self.facts.macro_defs.iter().any(|d| d.id == def_id) {
+            self.facts.macro_defs.push(MacroDef {
+                id: def_id.clone(),
+                name: name.to_string(),
+                file,
+                line: def_line,
+                origin,
+                ..Default::default()
+            });
+        }
+        let routine_id = self.enclosing();
+        let position = if routine_id.is_some() {
+            MacroPosition::Statement
+        } else if in_expr {
+            MacroPosition::FileScope
+        } else {
+            MacroPosition::Declaration
+        };
+        self.facts.macro_sites.push(MacroSite {
+            def_id,
+            name: name.to_string(),
+            line,
+            position,
+            routine_id,
+            ..Default::default()
+        });
     }
 
     // --------------------------------------------------------------- strings --- //

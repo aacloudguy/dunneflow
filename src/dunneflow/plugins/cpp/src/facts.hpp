@@ -110,6 +110,7 @@ inline const std::string TREE = "tree";
 inline const std::string OUTSIDE = "outside";
 inline const std::string COMMAND_LINE = "command_line";
 inline const std::string BUILTIN = "builtin";
+inline const std::string UNKNOWN = "unknown";
 }  // namespace MacroOrigin
 
 // `schema.MacroPosition`, by its wire spelling.

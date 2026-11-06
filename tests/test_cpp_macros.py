@@ -8,6 +8,7 @@ half of each.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -102,7 +103,10 @@ def test_a_macro_that_wrote_a_declaration_is_not_the_next_one_s_decorator(tmp_pa
 
 
 _PRELUDE = (
-    "extern \"C\" { int connect(int, const void *, int); int rename(const char *, const char *); }\n"
+    "extern \"C\" {\n"
+    "int connect(int, const void *, int);\n"
+    "int rename(const char *, const char *);\n"
+    "}\n"
     "void helper(const char *);\n"
 )
 
@@ -186,3 +190,114 @@ def test_a_macro_defined_in_a_header_is_read_from_the_header(tmp_path):
     (tmp_path / "z.h").write_text("#define rename(a, b) 0\n", encoding="utf-8")
     ff, _, _ = _read(tmp_path, '#include "z.h"\nvoid t() { rename(1, 2); }\n')
     assert _hits(ff, "t") == set()
+
+
+def test_a_file_scope_initialiser_s_call_belongs_to_the_module_scope(tmp_path):
+    """No routine is on the stack, so these were not read at all, and one runs before `main`."""
+    ff, edges, _ = _read(tmp_path, _PRELUDE + (
+        "int getpid();\n"
+        "#define INIT() connect(0, 0, 0)\n"
+        "int g_macro = INIT();\n"
+        "int g_hand = getpid();\n"
+        "struct S { int m() { return connect(1, 0, 0); } };\n"
+        "S g_s;\n"
+    ))
+    assert ff.module_scope is not None
+    rid = ff.module_scope.id
+    # It has to be a routine as well, or the store holds calls that belong to nothing.
+    assert [r.name for r in ff.routines if r.id == rid] == ["<module>"]
+    calls = {c.callee_expr: c for c in ff.calls if c.caller_id == rid}
+    assert set(calls) == {"connect", "getpid"}
+    assert {(b.kind.value, b.evidence) for b in ff.boundaries if b.routine_id == rid} == {
+        ("NETWORK", "connect")}
+    assert edges[calls["getpid"].site_id].reason == "outside"
+    assert _hits(ff, "S.m") == {("NETWORK", "connect")}
+
+
+def test_no_initialiser_means_no_module_scope_routine(tmp_path):
+    ff, _, _ = _read(tmp_path, "int a = 1;\nint f() { return a; }\n")
+    assert [r.name for r in ff.routines] == ["f"]
+
+
+def test_an_operator_or_a_sizeof_in_an_initialiser_is_not_a_call(tmp_path):
+    """Core's `Inherit = A | B` flags and `UE_ARRAY_COUNT`'s helper, which is only declared."""
+    ff, edges, _ = _read(tmp_path, (
+        "enum E { A, B };\n"
+        "constexpr E operator|(E a, E b) { return a; }\n"
+        "E flags = A | B;\n"
+        "char (&Helper(const int (&)[3]))[3];\n"
+        "#define COUNT(a) sizeof(Helper(a))\n"
+        "int arr[3];\n"
+        "unsigned long n = COUNT(arr);\n"
+        "int f() { return COUNT(arr); }\n"
+    ))
+    assert _calls(ff, "f") == ["COUNT"]
+    assert not [c for c in ff.calls if c.callee_expr in {"operator|", "Helper"}]
+    rid = _routine(ff, "f").id
+    site = next(c for c in ff.calls if c.caller_id == rid)
+    assert (edges[site.site_id].reason, edges[site.site_id].frontier) == ("unfollowed", "COUNT")
+
+
+def test_a_body_half_written_by_a_macro_has_its_written_half_read(tmp_path):
+    """`BEGIN hand(); END`: clang keeps nothing under a statement it cannot type, so with no
+    scan `undeclared()` was lost, and so was every guard somebody wrote there."""
+    ff, edges, _ = _read(tmp_path, _PRELUDE + (
+        "#define BEGIN void half(int n) { helper(\"begin\");\n"
+        "#define END }\n"
+        "#define WHOLE(n) void n() { helper(\"whole\"); if (1) {} }\n"
+        "BEGIN\n"
+        "  if (n) { undeclared(n); }\n"
+        "  helper(\"mine\");\n"
+        "END\n"
+        "WHOLE(all)\n"
+    ))
+    calls = _calls(ff, "half")
+    assert calls.count("undeclared") == 1 and calls.count("helper") == 2, calls
+    rid = _routine(ff, "half").id
+    assert [p.word for p in ff.control if p.routine_id == rid] == ["if"]
+    # All of it the macro's: nothing to scan, and what clang named is what there is.
+    assert _calls(ff, "all") == ["helper"]
+    aid = _routine(ff, "all").id
+    assert [p.word for p in ff.control if p.routine_id == aid] == []
+
+
+def test_what_cannot_be_read_is_counted(tmp_path):
+    ff, _, said = _read(tmp_path, _PRELUDE + (
+        "#define VIA(f) void via(void (*f)()) { f(); }\n"
+        "VIA(p)\n"
+        "void a() { __asm__(\"nop\"); }\n"
+        "int renamed() __asm__(\"other\");\n"
+    ))
+    assert _routine(ff, "via")
+    text = " ".join(said)
+    assert "1 inline assembly statements and 1 assembly labels" in text, said
+    assert "1 calls in macro-written bodies" in text, said
+
+
+def test_a_call_that_leaves_the_tree_meets_the_rules_by_the_name_clang_gave_it(tmp_path):
+    """`Hasher.Update` cannot be matched by reading it, and `FSHA1.Update` can. Inside the tree
+    the same call is the tree's own: a boundary there would cost it its internal edge."""
+    out = tmp_path / "outside"
+    out.mkdir()
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (out / "sha.h").write_text("struct FSHA1 { void Update(); FSHA1(); };\n", encoding="utf-8")
+    (tree / "mine.h").write_text("struct FMD5 { void Update(); };\n", encoding="utf-8")
+    (tree / "compile_commands.json").write_text(
+        json.dumps([{"directory": str(tree), "file": "m.cpp",
+                     "arguments": ["clang++", f"-I{out}", "-c", "m.cpp"]}]),
+        encoding="utf-8")
+    ff, _, _ = _read(tree, (
+        '#include <sha.h>\n#include "mine.h"\n'
+        "void t(FSHA1 &h, FMD5 &mine) { FSHA1(); h.Update(); mine.Update(); }\n"
+    ))
+    assert _hits(ff, "t") == {("CRYPTO", "FSHA1.Update")}, ff.errors
+
+
+def test_a_prefix_does_not_claim_a_path_s_methods_or_a_name_that_shares_its_letters(tmp_path):
+    ff, _, _ = _read(tmp_path, (
+        "#include <filesystem>\n"
+        "void PQueueUp();\n"
+        "void t(std::filesystem::path p) { p.string(); PQueueUp(); std::filesystem::exists(p); }\n"
+    ))
+    assert _hits(ff, "t") == {("FILE", "std.filesystem.exists")}

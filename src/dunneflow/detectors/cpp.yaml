@@ -34,6 +34,11 @@
 version: 1
 
 boundaries:
+  # **A rule meets the name as written and, for a call that leaves the tree, the name clang
+  # resolved it to.** So a prefix claims every member of whatever it names: `std.filesystem.`
+  # called `p.string()` on a path a file operation, and `PQ` called anything starting with
+  # those letters a database. Name the functions instead.
+  #
   # ---------------------------------------------------------------- environment ---
   - kind: ENV
     direction: IN
@@ -92,10 +97,25 @@ boundaries:
     target_arg: 0
   - kind: FILE
     direction: BOTH
-    exact: [std.fstream, fstream, std.filesystem.copy, std.filesystem.create_directory,
+    exact: [std.fstream, fstream,
+            std.filesystem.absolute, std.filesystem.canonical, std.filesystem.weakly_canonical,
+            std.filesystem.relative, std.filesystem.proximate, std.filesystem.copy,
+            std.filesystem.copy_file, std.filesystem.copy_symlink,
+            std.filesystem.create_directory, std.filesystem.create_directories,
+            std.filesystem.create_hard_link, std.filesystem.create_symlink,
+            std.filesystem.create_directory_symlink, std.filesystem.current_path,
+            std.filesystem.directory_iterator, std.filesystem.recursive_directory_iterator,
+            std.filesystem.equivalent, std.filesystem.exists, std.filesystem.file_size,
+            std.filesystem.hard_link_count, std.filesystem.last_write_time,
+            std.filesystem.permissions, std.filesystem.read_symlink, std.filesystem.remove,
+            std.filesystem.remove_all, std.filesystem.rename, std.filesystem.resize_file,
+            std.filesystem.space, std.filesystem.status, std.filesystem.symlink_status,
+            std.filesystem.temp_directory_path, std.filesystem.is_block_file,
+            std.filesystem.is_character_file, std.filesystem.is_directory,
+            std.filesystem.is_empty, std.filesystem.is_fifo, std.filesystem.is_other,
+            std.filesystem.is_regular_file, std.filesystem.is_socket, std.filesystem.is_symlink,
             IFileManager.Get.MakeDirectory, IFileManager.Get.FileExists,
             IFileManager.Get.DirectoryExists]
-    prefix: [std.filesystem.]
     target_arg: 0
 
   # --------------------------------------------------------------------- network ---
@@ -114,8 +134,11 @@ boundaries:
   # -------------------------------------------------------------------- database ---
   - kind: DATABASE
     direction: BOTH
-    prefix: [sqlite3_, mysql_, PQ, redisCommand]
-    exact: [sqlite3_open, sqlite3_exec, sqlite3_prepare_v2]
+    prefix: [sqlite3_, mysql_, redisCommand]
+    exact: [sqlite3_open, sqlite3_exec, sqlite3_prepare_v2,
+            PQconnectdb, PQconnectdbParams, PQconnectStart, PQsetdbLogin, PQexec, PQexecParams,
+            PQexecPrepared, PQprepare, PQsendQuery, PQsendQueryParams, PQsendPrepare,
+            PQgetResult, PQgetCopyData, PQputCopyData, PQfinish]
     target_arg: 1
 
   # --------------------------------------------------------------------- process ---
@@ -183,8 +206,8 @@ boundaries:
   # ---------------------------------------------------------------------- crypto ---
   - kind: CRYPTO
     direction: BOTH
-    prefix: [EVP_, SHA1_, SHA256_, MD5_, RAND_, FSHA1., FMD5., FAES., FSHA256.]
-    exact: [CryptEncrypt, CryptDecrypt]
+    prefix: [EVP_, SHA1_, SHA256_, MD5_, RAND_, FSHA1., FMD5., FSHA256.]
+    exact: [CryptEncrypt, CryptDecrypt, FAES.EncryptData, FAES.DecryptData]
 
 # ------------------------------------------------------------------- ways in ---
 #

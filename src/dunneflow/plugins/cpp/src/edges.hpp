@@ -50,6 +50,7 @@ struct Tree {
     std::vector<std::string> read_beyond;
     std::set<std::string> inputs;  // read, and not among the files: `edges_done.inputs`
     long misread = 0;              // functions clang read as variables: see `misread_function`
+    long asm_statements = 0, asm_labels = 0, unnamed_calls = 0;
     long fatal_files = 0, missing_files = 0, files = 0, skipped_lines = 0;
     std::map<std::string, long> missing;  // first missing include, per file that had one
     std::vector<extract::Mark> marks;
@@ -68,6 +69,9 @@ struct Tree {
         if (!r.first_missing.empty()) missing_files++;
         skipped_lines += r.skipped_lines;
         misread += r.misread;
+        asm_statements += r.asm_statements;
+        asm_labels += r.asm_labels;
+        unnamed_calls += r.unnamed_calls;
         if (!r.first_missing.empty()) missing[r.first_missing]++;
         if (r.fragment) {
             if (!r.through.empty()) fragments_through++;
@@ -485,6 +489,13 @@ inline void emit(Tree& t, const std::function<void(const std::string&)>& edge,
                     " that clang could not resolve, " + std::to_string(bound) + " through a function value, " +
                     std::to_string(ambiguous) + " with two definitions to choose between, " + std::to_string(macros) +
                     " written as a macro that is not one call");
+    if (t.asm_statements || t.asm_labels)
+        notes.push_back("edges: " + std::to_string(t.asm_statements) + " inline assembly statements and " +
+                        std::to_string(t.asm_labels) + " assembly labels, which this map cannot read into");
+    if (t.unnamed_calls)
+        notes.push_back("edges: " + std::to_string(t.unnamed_calls) +
+                        " calls in macro-written bodies and file-scope initialisers that clang could not name, "
+                        "so they are in no routine's calls");
     if (t.misread)
         notes.push_back("edges: " + std::to_string(t.misread) +
                         " functions clang read as variables, so what they call is named as written and "

@@ -135,6 +135,9 @@ struct Result {
     std::string first_missing;   // the first include it could not find
     long skipped_lines = 0;      // lines in inactive #if arms of this file
     long misread = 0;            // functions clang read as variables, recovered from the tokens
+    long asm_statements = 0;     // inline assembly, which nothing here can read
+    long asm_labels = 0;         // functions and variables renamed for the linker
+    long unnamed_calls = 0;      // in a body nobody wrote here, with no name clang could give
     // A fragment (`.inl`, `.ipp`) is read through a file that includes it. `through` is that
     // file, relative, once it was; `not_included` says the includer's parse never reached
     // it (an inactive guard), so the caller tries the next includer or reads it alone.
@@ -511,7 +514,8 @@ struct Routine {
     facts::Routine r;
     unsigned decl_lo = 0;               // where the declaration starts, header and all
     unsigned body_lo = 0, body_hi = 0;  // offsets of `{` and `}`
-    bool macro_written = false;         // no `{` is written here: a macro wrote the whole body
+    bool macro_written = false;         // no `{` is written here: a macro wrote the opening
+    bool half_written = false;          // and somebody wrote the rest: `BEGIN hand(); END`
 };
 
 class Reader {
@@ -522,6 +526,8 @@ public:
         CXCursor root = C().clang_getTranslationUnitCursor(x_.tu);
         collect_macros(root);
         module_scope_ = make_module_scope();
+        scope_.r = module_scope_;
+        scope_.macro_written = true;
         visit(root);
         // Calls and control are read from the tokens once the walk has said what each written
         // call reaches, routine by routine, in the order the routines were defined.
@@ -529,6 +535,12 @@ public:
             scan_calls(r.get());
             emit_calls(r.get());
             scan_control(r.get());
+        }
+        // The module scope is a routine only where something belongs to it, and a call does.
+        if (!pending_[&scope_].empty()) {
+            emit_calls(&scope_);
+            x_.ff.routines.push_back(module_scope_);
+            module_scope_used_ = true;
         }
         literals();
         if (module_scope_used_) x_.ff.module_scope = module_scope_;
@@ -547,6 +559,9 @@ private:
     std::set<unsigned> macros_that_declare_;   // by the expansion's offset
     facts::Routine module_scope_;
     bool module_scope_used_ = false;
+    Routine scope_;                            // the module scope, as the owner of a call
+    bool in_initialiser_ = false;              // under a variable with no routine around it
+    int unevaluated_ = 0;                      // under `sizeof` and its relatives
 
     // ------------------------------------------------------------ walking --- //
 
@@ -630,6 +645,14 @@ private:
                 return;
             }
             constant(c);
+            // **A variable's initialiser runs before `main`**, and nothing about it says so:
+            // `int g = connect(...);` is as much a call as one in a body. The module scope owns
+            // what no function does (rule 18).
+            bool outer = in_initialiser_;
+            in_initialiser_ = true;
+            visit(c);
+            in_initialiser_ = outer;
+            return;
         }
         if (k == CXCursor_EnumConstantDecl) enumerator(c);
         if (k == CXCursor_VarDecl && !stack_.empty()) {
@@ -647,10 +670,23 @@ private:
             return;
         }
 
+        // `sizeof(f(x))` runs nothing, and neither does anything else under this cursor kind, which
+        // is only `sizeof`, `alignof` and their relatives: `UE_ARRAY_COUNT` is not a call to its
+        // helper. A hand-written one is still scanned; this is what clang is asked to attribute.
+        if (k == CXCursor_UnaryExpr) {
+            unevaluated_++;
+            visit(c);
+            unevaluated_--;
+            return;
+        }
+        if (k == CXCursor_AsmStmt || k == CXCursor_MSAsmStmt) x_.out->asm_statements++;
+        if (k == CXCursor_AsmLabelAttr) x_.out->asm_labels++;
         if (k == CXCursor_DeclRefExpr || k == CXCursor_MemberRefExpr) value_use(c);
         if (!stack_.empty()) {
             if (k == CXCursor_CallExpr) note_call(c, parent);
             else if (k == CXCursor_CXXNewExpr) note_new(c);
+        } else if (in_initialiser_ && k == CXCursor_CallExpr) {
+            note_call(c, parent);
         }
         visit(c);
     }
@@ -1029,6 +1065,9 @@ private:
         size_t first = x_.tok_at(lo);
         r->macro_written = !(first < x_.toks.size() && x_.toks[first].off == lo &&
                              (x_.toks[first].text == "{" || x_.toks[first].text == "try"));
+        if (r->macro_written)
+            for (size_t i = first; i < x_.toks.size() && x_.toks[i].off < hi && !r->half_written; i++)
+                r->half_written = !x_.in_macro(x_.toks[i].off) && !x_.in_pp(x_.toks[i].off);
         facts::Routine& f = r->r;
         f.id = ids::definition_id(x_.rel, qualname, n);
         f.name = name;
@@ -1485,13 +1524,20 @@ private:
         unsigned a, b;
         extent(c, a, b);
         CXCursor ref = C().clang_getCursorReferenced(c);
-        // In a body a macro wrote whole there is nothing to scan, so what clang resolved is all
-        // there is, and each call is named by what it reaches. Constructors are left out: from
-        // here an implicit one cannot be told from a written one.
-        if (!stack_.empty() && stack_.back()->macro_written) {
-            if (C().clang_Cursor_isNull(ref) || !is_function_kind(C().clang_getCursorKind(ref)) ||
-                C().clang_getCursorKind(ref) == CXCursor_Constructor)
+        // In a body a macro wrote whole, or a file-scope initialiser, nothing is scanned, so what
+        // clang resolved is all there is, and each call is named by what it reaches. Constructors
+        // are left out: from here an implicit one cannot be told from a written one. A call clang
+        // could not name has nothing to be recorded under, so it is counted. Where somebody wrote
+        // part of the body, a call they wrote is read as any other.
+        Routine* owner = stack_.empty() ? &scope_ : stack_.back();
+        if (owner->macro_written && !(owner->half_written && (!x_.in_macro(a) || written_call_at(a)))) {
+            if (unevaluated_) return;
+            if (C().clang_Cursor_isNull(ref) || !is_function_kind(C().clang_getCursorKind(ref))) {
+                x_.out->unnamed_calls++;
                 return;
+            }
+            // Nor an operator, which is not a call anywhere in this reader.
+            if (C().clang_getCursorKind(ref) == CXCursor_Constructor || spelling(ref).rfind("operator", 0) == 0) return;
             bool nested;
             std::string rec;
             Pending p;
@@ -1502,12 +1548,14 @@ private:
             p.ref = ref;
             p.resolved = true;
             p.macro_written = true;
-            pending_[stack_.back()].push_back(p);
+            pending_[owner].push_back(p);
             return;
         }
         // Every call a macro written here expands to, by the macro's offset: which of them
         // the written call is, is decided at `emit_calls`, and not by which came first.
-        if (x_.macro_names.count(a)) {
+        if (unevaluated_) {
+            // Nothing happens here, so nothing is the macro's or the file scope's.
+        } else if (x_.macro_names.count(a)) {
             macro_calls_[a].push_back({c, ref});
         } else if (const auto* m = x_.macro_at(a)) {
             // Inside the macro's arguments, which is not the same thing as written in them.
@@ -1746,7 +1794,7 @@ private:
     // Every call written in one routine's body, as the syntactic reader found them: by the
     // tokens, so a statement clang could not make sense of still has its calls.
     void scan_calls(Routine* owner) {
-        if (owner->macro_written) return;  // nothing is written to scan: `note_call` has them
+        if (owner->macro_written && !owner->half_written) return;  // nothing is written: `note_call` has them
         auto skip = inner(owner);
         size_t lo = x_.tok_at(owner->body_lo) + 1, hi = x_.tok_at(owner->body_hi);
         std::vector<Pending>& out = pending_[owner];
@@ -1827,7 +1875,7 @@ private:
             auto named = x_.macro_names.find(p.off);
             bool no_call = named != x_.macro_names.end() && named->second == p.expr && !p.construction &&
                            !p.macro_written && !macro_calls_.count(p.off) && writes_no_call(p.off);
-            if (!no_call) boundaries(owner, s);
+            bool touched = !no_call && boundaries(owner, s, *s.callee_expr);
 
             Site e;
             e.site_id = s.site_id;
@@ -1854,6 +1902,14 @@ private:
                 }
             } else if (p.resolved) {
                 resolve(e, p.call, p.ref);
+                // **What it reaches is a name too, where the written one says nothing.**
+                // `Hasher.Update(...)` is `FSHA1.Update`, and no rule can read a variable's name.
+                // Only for what leaves this tree: an internal call that became a boundary would
+                // lose its edge (rule 2), and inside Core `FSHA1.Update` is Core's own. The written
+                // name still comes first, since clang's loses what a rule needs:
+                // `IFileManager::Get().Delete(...)` is only `IFileManager.Delete` to it.
+                if (!touched && !p.macro_written && !e.is_ctor && !e.qualified.empty() && outside_tree(p.ref))
+                    boundaries(owner, s, e.qualified);
             } else {
                 e.untyped = true;  // written, and clang kept nothing to say what it reaches
             }
@@ -1962,9 +2018,19 @@ private:
         }
     }
 
-    void boundaries(Routine* owner, const facts::CallSite& s) {
+    bool outside_tree(CXCursor ref) const {
+        CXFile f = nullptr;
+        C().clang_getExpansionLocation(C().clang_getCursorLocation(ref), &f, nullptr, nullptr, nullptr);
+        if (!f || x_.root.empty()) return false;
+        std::string g = std::filesystem::path(clang::str(C().clang_getFileName(f))).lexically_normal().generic_string();
+        return g.rfind(x_.root, 0) != 0;
+    }
+
+    bool boundaries(Routine* owner, const facts::CallSite& s, const std::string& name) {
+        bool any = false;
         for (const auto& rule : x_.rules->boundaries) {
-            if (!rule.matches(*s.callee_expr)) continue;
+            if (!rule.matches(name)) continue;
+            any = true;
             facts::BoundaryHit h;
             h.routine_id = owner->r.id;
             h.kind = rule.kind;
@@ -1976,10 +2042,11 @@ private:
             }
             h.target = target;
             h.line = s.line;
-            h.evidence = *s.callee_expr;
+            h.evidence = name;
             h.salience = rule.salience;
             x_.ff.boundaries.push_back(h);
         }
+        return any;
     }
 
     // ---------------------------------------------------------------- control --- //
@@ -2057,7 +2124,7 @@ private:
     void scan_control(Routine* owner) {
         // Control is read from what is written, so a macro-written body shows none. Its calls
         // are in the map and its loops and guards are not.
-        if (owner->macro_written) return;
+        if (owner->macro_written && !owner->half_written) return;
         auto skip = inner(owner);
         size_t lo = x_.tok_at(owner->body_lo) + 1, hi = x_.tok_at(owner->body_hi);
         control_range(owner, lo, hi, 1, skip);

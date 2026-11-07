@@ -225,3 +225,32 @@ def test_a_run_that_cannot_start_the_reader_is_refused_when_it_is_read(
     with pytest.raises(PluginRefused) as exc:
         read_manifest(path)
     assert said in str(exc.value)
+
+
+def test_old_builds_of_a_reader_are_pruned_to_the_newest_by_last_use(tmp_path):
+    """BACKLOG 34: 284 builds and 403 MB, and nothing removed them."""
+    import os
+    import time
+
+    from dunneflow.ingest.outofprocess import KEEP_BUILDS, prune_builds
+
+    now = time.time()
+    dirs = []
+    for i in range(6):
+        d = tmp_path / f"go-{i:016x}"
+        d.mkdir()
+        (d / "go").write_text("x")
+        os.utime(d, (now - 1000 * i, now - 1000 * i))
+        dirs.append(d)
+    other = tmp_path / "rust-0000000000000000"
+    other.mkdir()
+    stray = tmp_path / "go-notakey"
+    stray.mkdir()
+    keep = dirs[5]  # the oldest, but the one just built
+    gone = prune_builds("go", keep=keep, root=tmp_path)
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert keep.exists(), "the build just made is never pruned"
+    assert all(d.exists() for d in dirs[:KEEP_BUILDS - 1]), "the newest by use are kept"
+    assert sorted(gone) == sorted(dirs[KEEP_BUILDS - 1:5])
+    assert other.exists() and stray.exists(), "another language, or a name that is no key"
+    assert len([n for n in left if n.startswith("go-") and n != "go-notakey"]) == KEEP_BUILDS

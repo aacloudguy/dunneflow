@@ -18,6 +18,7 @@ describe the wreck would put its guess in the map under the file's own name.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import platform
@@ -139,6 +140,9 @@ def built_reader(manifest: PluginManifest) -> Path:
         name = manifest.lang + (".exe" if sys.platform == "win32" else "")
     target = reader_cache_root() / f"{manifest.lang}-{key}" / name
     if target.is_file():
+        # Used now, so it is among the newest when the next build prunes (`prune_builds`).
+        with contextlib.suppress(OSError):
+            os.utime(target.parent)
         return target
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -189,7 +193,48 @@ def built_reader(manifest: PluginManifest) -> Path:
     if sys.platform != "win32" and not manifest.run:
         tmp.chmod(0o755)
     os.replace(tmp, target)
+    prune_builds(manifest.lang, keep=target.parent)
     return target
+
+
+# How many builds of one language's reader are kept: the newest by last use. One per stamp,
+# platform and toolchain accumulates, and nothing else removes them (BACKLOG 34: 284 builds,
+# 403 MB on the development Mac, 182 of them C and C++). A build pruned too eagerly costs a
+# rebuild, under a second for Go and about a minute for C and C++, and never a wrong answer,
+# because the key it was built under is computed again from the bytes.
+KEEP_BUILDS = 3
+
+
+def prune_builds(lang: str, keep: Path, root: Path | None = None) -> list[Path]:
+    """Remove all but the newest `KEEP_BUILDS` builds of one reader, never `keep`.
+
+    **Newest by last use**, because a cache hit touches its directory: a checkout on another
+    branch keeps its own build for as long as it is being run. A build another process is
+    running cannot be removed on Windows; that is an `OSError`, the directory stays, and the
+    next build tries again. Only this language's `<lang>-<key>` directories are touched, and
+    a half-built one (a `.`-prefixed temporary inside) goes with its directory.
+    """
+    root = root or reader_cache_root()
+    try:
+        builds = [d for d in root.iterdir()
+                  if d.is_dir() and d.name.startswith(lang + "-") and d != keep
+                  and len(d.name) == len(lang) + 17]
+    except OSError:
+        return []
+    def used(d: Path) -> float:
+        try:
+            return d.stat().st_mtime
+        except OSError:
+            return 0.0
+    builds.sort(key=used, reverse=True)
+    gone: list[Path] = []
+    for d in builds[KEEP_BUILDS - 1:]:
+        try:
+            shutil.rmtree(d)
+            gone.append(d)
+        except OSError:
+            continue
+    return gone
 
 
 def _placeholder(arg: str, output: str, workdir: Path | None) -> str:

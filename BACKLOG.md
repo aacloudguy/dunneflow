@@ -43,12 +43,6 @@ tree is flat. Not done because it is a second fact kind for a reader one day old
 `AddCommand` read as a mount and resolved like Python's, and `cli: … (n in a tree)` above
 zero on rain.
 
-**34. Built readers are never pruned.** `runtime.reader_cache_root()` gains a directory per
-stamp, platform and toolchain, and nothing removes the old ones: ten during the session that
-built the Go reader, 3.4 to 3.6 MB each. Not done because nothing yet decides when a build is no
-longer wanted. *Settled by* keeping the newest few per language, or the ones whose stamp a map
-on this machine still holds.
-
 **35. A table created twice in one file shows both sets of columns under each definition.**
 `db_columns` is keyed on `(tbl, file)` and holds no line, so DunneNote's migrations — which
 `CREATE TABLE` one table twice in one file as the schema moves — list the union of both

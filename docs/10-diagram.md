@@ -9,7 +9,7 @@ a different question: **what is this part shaped like, and what flows through it
 
 ## What a box is
 
-A class, a file's loose functions, or a kind of boundary. The dropdown lists every
+A class, a file's loose functions, what one macro wrote, or a kind of boundary. The dropdown lists every
 compartment with how many boxes it holds; pick one.
 
 The line under it is the whole of what you are looking at, and every number in it earns
@@ -25,6 +25,11 @@ its place:
 - **drawn in 4 ms.**
 
 **fit** frames the whole drawing.
+
+**A dashed box is what a macro wrote**, one per macro per file, counted. `DECLARE_CYCLE_STAT` writes
+a class of seven accessors for every stat, and a drawing of those is a drawing of nothing. Select it
+and the inspector lists them all; open it and they are drawn. A way in is never folded into one:
+`main` written by a macro is drawn as itself.
 
 ## Where your selection went
 

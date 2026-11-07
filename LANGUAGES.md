@@ -497,3 +497,21 @@ and skipped the body, with no error on the file, and a body wholly inside a macr
 one was looked for. Neither was visible in a count. Both came out only by reading each "leads
 nowhere" against the source and asking why, and "no definition by a text search" had been recorded
 as an answer on the way. Ask the source before the map.
+
+**A fifth declaration: `macro_expansion`.** `read` where the toolchain expands macros and the calls
+under one are facts (C and C++), `named` where a use can be seen and what it does cannot (Rust's
+`syn`), `none` where the language has none or the reader does not look. Empty means nobody chose and
+the macro detectors do not fire; any other word is refused. A reader that says `read` fills
+`macro_defs`, `macro_sites`, `Routine.name_by` and `body_by`, and declares `supplies_macro_callees`
+with a `macro_callee` frame per callee per line, whose `hits` the host records as boundaries. A
+reader that says `named` fills the first two and the map says what it could not see. Where a macro
+is defined is `unknown` unless the reader knows: `outside` would be a claim that it is not this
+tree's, and a Rust macro may be another file's.
+
+**A macro's whole expansion maps to one offset**, which is what makes every join between clang and
+the tokens fragile here. A call starting inside a macro's span may be written in its arguments or
+made by its body, and the test is whether the token scan would name a call at that offset. A
+member call starts at its receiver and not its name, so testing the name's token called
+`checkf(Key.IsValid())` hidden. And `clang_getSpellingLocation` returns the file location for a
+macro's token, so it cannot detect what a macro wrote; rule 110 has the rest.
+

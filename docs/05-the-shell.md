@@ -87,7 +87,7 @@ Twelve groups, each counting the program rather than reciting a fixed list.
 | **Boundaries** | Everything that leaves the program: DATABASE, FILE, STDIO, NETWORK, PROCESS, CRYPTO, ENV… |
 | **Database** | Every table the code names, and who reads and writes it. |
 | **Structures** | Classes, dataclasses, enums, type aliases. |
-| **Vocabulary** | The glossary, the derived naming standard, the stated naming rules, and which of those rules could be checked. |
+| **Vocabulary** | *Macros*, what the program's macros do and what could not be seen of them; the glossary, the derived naming standard, the stated naming rules, and which of those rules could be checked. |
 | **Algorithms** | Loops and decisions, in five lanes. See [Shape](11-shape.md). |
 | **Anomalies** | The worklist: Broken, Suspect, Informational. |
 

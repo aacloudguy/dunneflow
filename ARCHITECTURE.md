@@ -26,7 +26,7 @@ question of it (`web.serve.where`), binds one base at a time, and switches with 
 and `open`.
 
 **Three modules and the seam is the point.** `mcp/jsonrpc.py` is the frame and knows
-nothing above it; `mcp/tools.py` holds the twelve bodies, returns plain dictionaries and
+nothing above it; `mcp/tools.py` holds the thirteen bodies, returns plain dictionaries and
 knows nothing about the wire; `mcp/server.py` is the only place that knows both. Every body
 calls what the dashboard calls — nothing under `mcp/` reimplements an answer, and the three
 that were reachable from one surface only (`lookup.py`, `flows.ways_in_affected` and
@@ -727,6 +727,17 @@ queries know a language exists.
   command says how many and where to read them, and the dashboard draws them in a band where
   each says *a word* — one click, persisted per program beside `triage`, with *hold back* on
   the way out. The judgement is offered, not taken.
+- `resolve/macros.py` — **what macros do, asked once.** `macro_report` is every definition with
+  what its uses do, leading with what leaves the program, and what could not be seen; `macro_places`
+  is one definition's rows, so each number opens (rule 13). `render/macros.py`
+  (`15-macros.md`), the `macros` MCP tool and `/api/macros` read it, and none of them queries the
+  tables itself. **Reach through a macro is a separate walk**, `Store.reachable_through_macros`:
+  `UNREACHABLE` and `touches` ask it because whether something can run is not a question about
+  flows, and `_reach_graph` stays out of it, so `FMsg::Logf` under `check` does not make every
+  routine in Core a neighbour of every other (rule 55). `macro_callees` and the boundaries a macro
+  makes come from the edge pass and are replaced whole per language, because only that pass knows
+  whether a callee is the tree's own (rule 2); `Store.replace_macro_callees` takes back its own
+  boundaries by `expanded`, and nothing that reads `boundaries` has to know where one came from.
 - `resolve/naming.py` — **the derived lane, and the one place a spelling is judged.**
   `styles_of` returns **every** style a name satisfies rather than the first one tested,
   because for a one-token name several are true at once: `widget` is snake_case, camelCase

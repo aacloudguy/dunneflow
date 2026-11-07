@@ -20,7 +20,7 @@ what it is doing:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | what the tool is for, the commands, the verification gates, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 108 engineering rules **in full**, with the false result each came from — numbered to 109, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 109 engineering rules **in full**, with the false result each came from — numbered to 110, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 31 dashboard design rules in full | before building or changing a view |
 | `ARCHITECTURE.md` | what each module owns, and what each surface answers — `serve`, `mcp`, `query`, and everything under them | before working in a module, or adding a route |
 | `PACKAGING.md` | the spec, the three release scripts, signing, notarisation, and what a frozen build reads as a file | before touching `packaging/` or `runtime.py` |
@@ -108,7 +108,7 @@ which is how `serve` runs it. See **The surfaces** in `ARCHITECTURE.md`.
 
 ### What each command actually does — `ARCHITECTURE.md`
 
-`serve`'s three ways of being started and the start page, `mcp`'s twelve tools and its three
+`serve`'s three ways of being started and the start page, `mcp`'s thirteen tools and its three
 modules, `query`'s two gates and the residue they leave, the analyse dialog and its stop
 button, `migrate`, `render`, the diagram's two levels and the two ALGORITHMS surfaces: all
 of it is in `ARCHITECTURE.md`, under **The surfaces**, with the module list underneath it.
@@ -318,6 +318,8 @@ it was written from.
 108. A walk up the tree does not know when it has left it, and it answers anyway.
 109. A folder of pages is an artefact too, and it is finished only once it has been renamed
      into place.
+110. What clang did not record under a macro says nothing about the macro, and what a macro is
+     named says nothing about what it does.
 ```
 
 ## Anomalies: the discipline

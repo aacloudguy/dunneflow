@@ -301,7 +301,7 @@ It takes the same argument `serve` does, and asks the same question of it: a pro
 directory or an output root, decided by whether the directory holds a map rather than by
 what it is called.
 
-**Twelve tools.** `overview` is the cover and is where to start. `touches`, `impact` and
+**Thirteen tools.** `macros` says what the program's macros do and what could not be seen of them. `overview` is the cover and is where to start. `touches`, `impact` and
 `routine` are one routine's three questions. `find` searches names and the text of the
 source together. `glossary` is what the program's words mean and who says so. `query` runs
 SQL against the graph — reads only, and the schema is offered as a resource so an agent can

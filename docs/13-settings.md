@@ -90,6 +90,7 @@ Twenty-four rows, and this is all of them.
 | **Show the trail** | The strip recording where you have been. |
 | **Steps the trail shows** — 6 / 12 / 25 | How many fit on the bar, not how many are kept: the history holds fifty either way and Back reaches all of them. |
 | **A leading underscore in a name** — Counted as a violation / Allowed | Whether `_Handler` is a PascalCase class. See below. |
+| **Routines a macro wrote** — Folded / Listed | One navigator row per macro, or every routine. See below. |
 | **Cursor over the diagram** — Arrow / Crosshair / Hand | A diagram is a drawing you aim at, not a page of links. |
 | **Flow arrow thickness** — 1× / 2× / 3× / 4× | How heavily an arrow between two boxes is drawn. It took Graphviz's default of 1. |
 | **Menu order** — Ways in first / Explore first | First position in a menu is a real advantage, so it is yours to give. |
@@ -110,6 +111,15 @@ Twenty-four rows, and this is all of them.
 | **Keep the panes inside the window** | The panes yield, or run off with the toolbar. |
 | **Fold a pane the window cannot fit** | Three panes need about 50rem side by side; below that, one folds. |
 | **Hide inferred edges** | Show only what is pinned by import, module or class. |
+
+### Routines a macro wrote
+
+One macro can write thousands of routines. **Folded**, the default, gives the navigator one row per
+macro per package, with a count, and a row that opens that macro on the Macros page. **Listed** gives
+every routine. Under an open package, *list them* changes this too.
+
+A search always finds them, a selected routine always has its row, and a way in is never folded.
+The diagram keeps its one dashed box per macro either way, and opening the box lists what it holds.
 
 ### A leading underscore in a name
 

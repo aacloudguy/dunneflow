@@ -2458,3 +2458,37 @@ rule of that number — a blank canvas must say why it is blank — which does e
      nothing else. Anything a run produces in more than one write — a folder, a set of
      files, an export — is a second artefact with the same failure, and it needs either its
      own marker or an atomic step into the name readers look for.
+
+110. **What clang did not record under a macro says nothing about the macro, and what a macro is
+     named says nothing about what it does.**
+
+     Boundary rules met only the name as written, so the reader was wrong in both directions at
+     once. `SEND(x)` expanding to `connect` recorded nothing, and `#define rename(a, b) 0`
+     recorded FILE OUT at a line that touches no file. The fix for the second looks obvious:
+     no call under the macro, no boundary. That is the defect again from the other side, because
+     clang **drops a statement it cannot type**, and at Unreal's scale, with a generated header
+     missing from most files, that is an ordinary Tuesday. `open(undeclared)` under a macro has
+     no call beneath it and plainly has one. Silence is a fact about the parse.
+
+     So the question goes to the **definition**, which is there whether or not the use could be
+     typed. Every word in the body a parameter or a keyword (`#define N_(s) (s)`) can call
+     nothing, and only then is the rule told it has not met what it names. Any other word may be
+     a function or another macro, and the answer is no. The sentence the map printed had the same
+     fault: "a macro that expands to no call" was printed over `CALL(connect, fd)`, whose call
+     starts at the name in its arguments rather than at the macro, and over `RETRY(connect(fd))`,
+     which calls `connect` in a statement the reader had already recorded. They now read "no call
+     of its own" and "clang recorded no call", which is what was known.
+
+     **And the name was not the macro's.** Going the other way, `#define unlink(x) helper(x)` is
+     not a file operation, and a check that a macro reaching the tree's own function under
+     another name "shadows" the rule found that. It would also have erased every `UE_LOG` on a read
+     of Core, where the expansion reaches `FMsg::Logf`, which that tree defines. Nothing in the
+     shape tells those two apart: `UE_LOG` is a rule about a macro, `unlink` a rule about a function
+     that a macro has taken the name of. Only the rule knows which it meant, so it says
+     (`names_macro`), a key this rule's first draft had decided it could do without, and that the
+     test written for the opposite case brought back within two chunks.
+
+     **A shadow is not a boundary with a flag on it.** Every reader of `boundaries` would have to
+     learn to ask, and the one that forgot would report the false thing. It is recorded on the use
+     (`macro_sites.shadows`), and the table of boundaries holds no row for it.
+

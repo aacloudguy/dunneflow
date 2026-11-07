@@ -886,7 +886,8 @@ private:
     // defaults, `class`/`struct`/`enum`/`typename` and a leading annotation macro
     // (`UPARAM(ref)`) are what the two may differ by and still be one function. Empty when the
     // name is not written here, which a macro-written function or an operator may not be: then
-    // nothing is compared. `const T` unnamed loses its `T` as a name would, and so does not
+    // nothing is compared. A top-level `const` and `(void)` are dropped, since neither changes
+    // the function. `unsigned int` unnamed loses its `int` as a name would, and so does not
     // match: a miss leaves a way in visibly unbound, and never binds the wrong overload.
     std::string written_types(const std::string& name, unsigned from, unsigned to) const {
         size_t i = x_.tok_at(from);
@@ -906,11 +907,34 @@ private:
                     }
                 }
             }
+            size_t end = from_;
+            while (end < param.size() && param[end]->text != "=") end++;
+            // **A top-level `const` is not part of the function's type**, so a header's
+            // `FVector Location` and its definition's `const FVector Location` are one
+            // function, as `GameplayStatics.h` writes 2 Blueprint ways in. Top level is after
+            // the last `*` outside brackets, or anywhere outside them where there is no `*` or
+            // `&` there at all: `const UType*` keeps its `const`, which is another overload.
+            size_t top = from_;
+            bool ref = false;
+            int nest = 0;
+            for (size_t k = from_; k < end; k++) {
+                const std::string& t = param[k]->text;
+                if (t == "(" || t == "[" || t == "<") nest++;
+                else if (t == ")" || t == "]" || t == ">") nest--;
+                else if (t == ">>") nest -= 2;
+                else if (nest == 0 && t == "*") top = k + 1;
+                else if (nest == 0 && (t == "&" || t == "&&")) ref = true;
+            }
             std::vector<std::string> kept;
             bool named = false;
-            for (size_t k = from_; k < param.size() && param[k]->text != "="; k++) {
+            nest = 0;
+            for (size_t k = from_; k < end; k++) {
                 const std::string& t = param[k]->text;
+                if (t == "(" || t == "[" || t == "<") nest++;
+                else if (t == ")" || t == "]" || t == ">") nest--;
+                else if (t == ">>") nest -= 2;
                 named = param[k]->kind == IDENT;
+                if (!ref && nest == 0 && k >= top && (t == "const" || t == "volatile")) continue;
                 if (t != "class" && t != "struct" && t != "enum" && t != "typename") kept.push_back(t);
             }
             if (kept.size() > 1 && named) kept.pop_back();
@@ -925,7 +949,8 @@ private:
             if (t.text == "(" || t.text == "[" || t.text == "{") depth++;
             else if (t.text == ")" && depth == 0) {
                 if (!param.empty()) flush();
-                return out + ")";
+                // `(void)` is `()` in C++: `IsARSupported(void)` defines `IsARSupported()`.
+                return out == "(void ," ? "()" : out + ")";
             } else if (t.text == ")" || t.text == "]" || t.text == "}") depth--;
             else if (t.text == "<") angle++;
             else if (t.text == ">") angle--;

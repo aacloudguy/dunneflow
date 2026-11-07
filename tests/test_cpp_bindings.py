@@ -330,6 +330,10 @@ public:
     UFUNCTION(NetMulticast)
     void Everyone();
     void Everyone_Implementation();
+    UFUNCTION(BlueprintPure)
+    static int Still(const UType* t, int n);
+    UFUNCTION(BlueprintPure)
+    static int Point(UType* t);
 };
 """
 HELPER_CPP = """\
@@ -344,6 +348,8 @@ void AHelper::ServerFire_Implementation(int x) {}
 void AHelper::ClientHit_Implementation(const UType* t) {}
 void AHelper::Everyone_Implementation() {}
 int AHelper::Lone(const UType* t) { return 5; }
+int AHelper::Still(const UType* const t, const int n) { return 6; }
+int AHelper::Point(const UType* t) { return 7; }
 """
 
 
@@ -389,6 +395,63 @@ def test_one_definition_goes_to_the_declaration_that_writes_its_types(tmp_path: 
     store = _helper(tmp_path)
     try:
         assert sorted(q or "" for q, _ in _bound(store)["Lone"]) == ["", "AHelper.Lone"]
+    finally:
+        store.close()
+
+
+def test_a_top_level_const_is_the_same_function(tmp_path: Path) -> None:
+    """`GameplayStatics.h` declares `FVector Location` and its `.cpp` defines `const FVector
+    Location`: one function, which was 2 of Runtime's last 3 ways in leading nowhere."""
+    store = _helper(tmp_path)
+    try:
+        assert _bound(store)["Still"] == [("AHelper.Still", 12)]
+    finally:
+        store.close()
+
+
+def test_a_const_pointee_is_another_function(tmp_path: Path) -> None:
+    store = _helper(tmp_path)
+    try:
+        assert _bound(store)["Point"] == [(None, None)]
+    finally:
+        store.close()
+
+
+# `ARBlueprintLibrary.h`'s shape. On Runtime the `.cpp`'s parse did not tie its out-of-line
+# `IsARSupported(void)` to the static declaration, so the body's USR had no `#S` and the
+# mark's did, and only the types written could join them. Here the `.cpp` sees a class
+# without the declaration, which gives the same two USRs.
+LIBRARY_H = """\
+#pragma once
+#define UFUNCTION(...)
+class ULibrary {
+public:
+    UFUNCTION(BlueprintCallable)
+    static bool IsOn();
+};
+"""
+LIBRARY_CPP = """\
+class ULibrary {};
+bool ULibrary::IsOn(void) { return true; }
+"""
+
+
+def test_void_written_as_the_parameters_is_no_parameters(tmp_path: Path) -> None:
+    if _WHY:
+        pytest.skip(_WHY)
+    top = tmp_path / "Runtime"
+    (top / "Core" / "Public" / "HAL").mkdir(parents=True)
+    (top / "Core" / "Public" / "HAL" / "Platform.h").write_text("", encoding="utf-8")
+    game = top / "Game"
+    game.mkdir(parents=True)
+    (game / "Library.h").write_text(LIBRARY_H, encoding="utf-8")
+    (game / "Library.cpp").write_text(LIBRARY_CPP, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    try:
+        analyze_tree(game, store)
+        resolve_calls(store)
+        resolve_cli(store)
+        assert _bound(store)["IsOn"] == [("ULibrary.IsOn", 2)]
     finally:
         store.close()
 

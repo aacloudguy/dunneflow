@@ -49,6 +49,15 @@ import (
 	"strings"
 )
 
+// targetNames is the targets as a reader reads them: `linux/amd64, darwin/arm64, windows/amd64`.
+func targetNames() string {
+	out := make([]string, len(targets))
+	for i, t := range targets {
+		out[i] = t.goos + "/" + t.goarch
+	}
+	return strings.Join(out, ", ")
+}
+
 // targets is the fixed set every package is checked under. Fixed rather than the host's,
 // so the map does not depend on the machine (rule 66); three because they are the three
 // this tool itself ships for.
@@ -336,6 +345,10 @@ type answer struct {
 	// `SuppliedEdge.answers` with reason `dynamic`, as Java's reader sends them, so the
 	// host links them and every walk follows them as *may run* (`resolve/dispatch.py`).
 	answers []answer
+	// **Where a call stops, and why**, for a call that reaches nothing of this program
+	// (BACKLOG 36): `outside` with the far end the checker named, or `untyped` and
+	// `unfollowed` with a sentence. Rust's words, so the host says one thing of both.
+	frontier, reason, why string
 }
 
 // implementers is how many named types of this tree implement an interface: the number a
@@ -412,24 +425,44 @@ func (c *checker) resolve(call *ast.CallExpr) answer {
 		if sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
 			if x, ok := sel.X.(*ast.Ident); ok {
 				if pn, ok := c.info.Uses[x].(*types.PkgName); ok && pn.Imported() != nil {
-					return answer{outside: true}
+					return answer{outside: true, reason: "outside",
+						frontier: pn.Imported().Path() + "." + sel.Sel.Name,
+						why:      "a package outside this tree, which is not read"}
 				}
 			}
 		}
-		return answer{}
+		return answer{reason: "untyped",
+			why: "the checker could not say what this is: a method of a type from a package outside this tree, or a name it could not resolve"}
 	}
 	switch o := obj.(type) {
-	case *types.Builtin, *types.TypeName:
-		// A builtin, or a conversion that is written as a call: nothing of this program.
-		return answer{outside: true}
+	case *types.Builtin:
+		return answer{outside: true, reason: "outside", frontier: o.Name(), why: "a builtin"}
+	case *types.TypeName:
+		// A conversion written as a call: nothing of this program runs.
+		return answer{outside: true, reason: "outside", frontier: o.Name(), why: "a conversion"}
 	case *types.Func:
 		o = o.Origin()
 		if sig, ok := o.Type().(*types.Signature); ok && sig.Recv() != nil {
 			if iface, ok := sig.Recv().Type().Underlying().(*types.Interface); ok {
-				return answer{candidates: c.implementers(iface), answers: c.bodies(iface, o)}
+				n := c.implementers(iface)
+				if n == 0 {
+					// Nothing in this tree implements it: the body that runs is another
+					// package's (`ctx.Done()`, `info.IsDir()`), or nothing here can supply one.
+					if a := c.at(o.Pos(), o.Name()); a.outside {
+						return answer{outside: true, reason: "outside", frontier: o.FullName(),
+							why: "an interface of a package outside this tree, which nothing here implements"}
+					}
+					return answer{reason: "unfollowed",
+						why: "an interface this tree declares and nothing in it implements"}
+				}
+				return answer{candidates: n, answers: c.bodies(iface, o)}
 			}
 		}
-		return c.at(o.Pos(), o.Name())
+		a := c.at(o.Pos(), o.Name())
+		if a.outside {
+			a.reason, a.frontier, a.why = "outside", o.FullName(), "by the checker"
+		}
+		return a
 	case *types.Var:
 		// A function held in a variable is followed only to a routine this reader minted
 		// there (`h := func() {...}`); a parameter or a field is `unknown`.
@@ -437,9 +470,10 @@ func (c *checker) resolve(call *ast.CallExpr) answer {
 		if a.file != "" && c.s.routines[a.file+"\x00"+itoa(a.line)+"\x00"+a.name] {
 			return a
 		}
-		return answer{}
+		return answer{reason: "unfollowed",
+			why: "a function held in a parameter, a field or a variable, which is not followed"}
 	}
-	return answer{}
+	return answer{reason: "unfollowed", why: "a call the checker answered with nothing callable"}
 }
 
 // typedResidue says whether a call the per-file pass offered as an edge is, on the whole
@@ -616,6 +650,7 @@ func collectEdges(root string, files []string, rules *Rules) harvest {
 
 	// Files no target compiles (`//go:build ignore`, a generator) have facts and no edges.
 	never := 0
+	var unread []SuppliedEdge
 	for _, pf := range s.byAbs {
 		if pf.ex == nil {
 			continue
@@ -623,9 +658,18 @@ func collectEdges(root string, files []string, rules *Rules) harvest {
 		for _, site := range pf.ex.sites {
 			if _, ok := answers[site.SiteId]; !ok && !site.AtBoundary {
 				never++
+				// Said per call as well as counted (BACKLOG 36): the file is read, and no
+				// target this reader checks compiles it, so nothing could answer.
+				unread = append(unread, SuppliedEdge{SiteId: site.SiteId,
+					CallerId: site.CallerId, Reason: "unfollowed",
+					How: "go/types; in a file none of " + targetNames() + " compiles"})
 			}
 		}
 	}
+	// Two maps were walked, so the order is the hash seed's until it is put in one (rule 105).
+	sort.Slice(unread, func(i, j int) bool { return unread[i].SiteId < unread[j].SiteId })
+	h.edges = append(h.edges, unread...)
+	h.unknown += len(unread)
 	if never > 0 {
 		s.note(itoa(never) + " call(s) are in files no target compiles, and have no edge")
 	}
@@ -654,8 +698,14 @@ func collectEdges(root string, files []string, rules *Rules) harvest {
 			h.unknown++
 		case "outside":
 			h.outside++
+			e.SiteId, e.CallerId = id, site.CallerId
+			h.edges = append(h.edges, e)
 		default:
 			h.unknown++
+			if e.Reason != "" {
+				e.SiteId, e.CallerId = id, site.CallerId
+				h.edges = append(h.edges, e)
+			}
 		}
 	}
 	if residue > 0 {
@@ -687,6 +737,17 @@ func (s *session) importPath(dir, name string) string {
 	}
 	// A directory under no `go.mod`: named for itself, which nothing imports.
 	return "dunneflow.local/" + filepath.ToSlash(dir) + "#" + name
+}
+
+// stopped is where a call reaching nothing of this program stops, as the reference target
+// said, or the first target that said anything (`targets`' order, rule 100).
+func stopped(as []answer, want string) SuppliedEdge {
+	for _, a := range as {
+		if a.reason != "" && (want == "" || a.reason == want) {
+			return SuppliedEdge{Frontier: a.frontier, Reason: a.reason, How: "go/types; " + a.why}
+		}
+	}
+	return SuppliedEdge{}
 }
 
 // join is the targets' answers about one site, as one. The same location from every
@@ -753,7 +814,7 @@ func join(as []answer) (SuppliedEdge, string) {
 	case iface > 0:
 		return dispatched(SuppliedEdge{Candidates: iface}), "ambiguous"
 	case outside:
-		return SuppliedEdge{}, "outside"
+		return stopped(as, "outside"), "outside"
 	}
-	return SuppliedEdge{}, "unknown"
+	return stopped(as, ""), "unknown"
 }

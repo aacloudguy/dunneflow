@@ -46,7 +46,9 @@ not say* of DunneNote's TypeScript, and every Python, Go and C++ map says nothin
 because each reader knows different things: TypeScript's checker names a far end's
 declaration file, Go's names its package, Python's resolver knows the import it stopped at.
 *Settled by* each reader sending `frontier`/`reason` on its unresolved calls (Python's
-through `NoEdge`, which already carries both), with the unsaid count retaken per corpus.
+through `NoEdge`, which already carries both), with the unsaid count retaken per corpus. **Go's half done 2026-11-07:** every unresolved Go call is sent with
+`outside` and the checker's far end, or `untyped`/`unfollowed` and a sentence; on beads the
+Go calls whose reader does not say fell from 25,392 to 2. Python and TypeScript remain.
 
 **37. `--include-tests` does not bring back Rust's inline tests.** The walk leaves test
 *files* out unless asked; the Rust reader leaves `#[cfg(test)]` items out always, because

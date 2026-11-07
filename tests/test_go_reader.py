@@ -559,7 +559,10 @@ def test_a_function_defined_per_platform_is_drawn_to_the_reference_target(go_edg
 def test_the_standard_library_a_dependency_and_a_builtin_are_outside(go_edges):
     (_, _, outside, _), _ = go_edges
     by = _by_callee(go_edges)
-    assert not {"len", "thing.Do"} & set(by)
+    # BACKLOG 36: each is sent, with no target, saying where it stops and why.
+    assert by["len"].file == "" and (by["len"].reason, by["len"].frontier) == ("outside", "len")
+    assert by["thing.Do"].file == "" and by["thing.Do"].reason == "outside"
+    assert by["thing.Do"].frontier.endswith(".Do")
     assert outside >= 2
     # `fmt.Println` is a STDIO boundary, so it never reaches the edge pass (rule 2).
     assert "fmt.Println" not in by

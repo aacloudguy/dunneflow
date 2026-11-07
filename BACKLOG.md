@@ -90,12 +90,6 @@ still untimed.
 
 ---
 
-**43. Only the Java reader sends the bodies a dispatched call may reach.** `SuppliedEdge.answers`
-is filled by `Edges.java`, and `dispatch_links` holds Java's alone. Go knows its
-`implementers` and Rust its `Dispatch::Many`, and both still send only the count, so their
-interface and trait calls stop every walk as Java's did before 2026-11-02. *Settled by* each
-reader sending its locations, and a corpus (beads, pdfcraft) retaken before and after.
-
 **45. Java registers by supertype, and the grammar cannot say so.** Spring Data writes a
 repository at run time from an interface that extends `JpaRepository`, so petclinic's every
 `owners.save(…)` is `outside`/`unimplemented` and petclinic reads **0** boundary touches;

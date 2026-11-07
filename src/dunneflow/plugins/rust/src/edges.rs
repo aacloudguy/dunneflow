@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cfg::Tri;
 use crate::extract::{self, Def, Extracted, SiteKind};
-use crate::facts::SuppliedEdge;
+use crate::facts::{Answer, SuppliedEdge};
 use crate::rules::Rules;
 use crate::types::Hint;
 use crate::deps;
@@ -828,9 +828,10 @@ impl Program {
                             Some(TyRes::Trait(tc, t)) => match self.implementors(tc, &t, &m) {
                                 Dispatch::None => Res::Outside(format!("crate::{t}::{m}")),
                                 Dispatch::One(r) => Res::Fns(vec![r]),
-                                Dispatch::Many(n) => {
+                                Dispatch::Many(defs) => {
                                     found.unknown += 1;
-                                    edges.push(ambiguous(s, n, &format!("a type parameter bound by {t}")));
+                                    edges.push(ambiguous(s, defs.len() as i64, &format!("a type parameter bound by {t}"),
+                                                         self.answers_of(&defs)));
                                     continue;
                                 }
                             },
@@ -859,9 +860,11 @@ impl Program {
                             match self.implementors(*c, t, &s.path[0]) {
                                 Dispatch::One(r) => Res::Fns(vec![r]),
                                 d => {
-                                    let n = if let Dispatch::Many(n) = d { n } else { 0 };
+                                    let defs = if let Dispatch::Many(v) = d { v } else { Vec::new() };
                                     found.unknown += 1;
-                                    edges.push(ambiguous(s, n.max(2), &format!("self in trait {t}'s default body")));
+                                    edges.push(ambiguous(s, (defs.len() as i64).max(2),
+                                                         &format!("self in trait {t}'s default body"),
+                                                         self.answers_of(&defs)));
                                     continue;
                                 }
                             }
@@ -878,9 +881,10 @@ impl Program {
                                 // or another crate's method, so not this program's.
                                 Dispatch::None => Res::Outside(format!("crate::{t}::{}", s.path[0])),
                                 Dispatch::One(r) => Res::Fns(vec![r]),
-                                Dispatch::Many(n) => {
+                                Dispatch::Many(defs) => {
                                     found.unknown += 1;
-                                    edges.push(ambiguous(s, n, &format!("a dyn {t}")));
+                                    edges.push(ambiguous(s, defs.len() as i64, &format!("a dyn {t}"),
+                                                         self.answers_of(&defs)));
                                     continue;
                                 }
                             },
@@ -958,7 +962,7 @@ impl Program {
                             }
                             n => {
                                 found.unknown += 1;
-                                edges.push(ambiguous(s, n as i64, "several definitions on the reference target"));
+                                edges.push(ambiguous(s, n as i64, "several definitions on the reference target", Vec::new()));
                             }
                         }
                     }
@@ -1188,8 +1192,23 @@ impl Program {
         match found.as_slice() {
             [] => Dispatch::None,
             [one] if want.iter().all(|w| self.sealed.contains(&(c, w.clone()))) => Dispatch::One(*one),
-            _ => Dispatch::Many(found.len() as i64),
+            _ => Dispatch::Many(found),
         }
+    }
+
+    /// The bodies a dispatched call may run, named by location as a target is (BACKLOG 43):
+    /// sent as `SuppliedEdge.answers`, so every walk follows them as *may run* rather than
+    /// stopping at the call (`resolve/dispatch.py`). Once each, in a fixed order (rule 66).
+    fn answers_of(&self, defs: &[DefRef]) -> Vec<Answer> {
+        let mut out: Vec<Answer> = defs.iter().filter(|r| self.def(**r).reference != Tri::False)
+            .map(|r| {
+                let d = self.def(*r);
+                Answer { file: self.files[r.0].rel.clone(), line: d.line, name: d.name.clone() }
+            })
+            .collect();
+        out.sort_by(|a, b| (&a.file, a.line, &a.name).cmp(&(&b.file, b.line, &b.name)));
+        out.dedup_by(|a, b| a.file == b.file && a.line == b.line);
+        out
     }
 }
 
@@ -1199,17 +1218,19 @@ enum Dispatch {
     None,
     /// Exactly one definition, and the trait is sealed, so nothing else can be written.
     One(DefRef),
-    /// Several, or one where another crate could add a second.
-    Many(i64),
+    /// Several, or one where another crate could add a second: each, so the call can name
+    /// the bodies it may run and not only how many there are.
+    Many(Vec<DefRef>),
 }
 
-fn ambiguous(s: &extract::Site, n: i64, why: &str) -> SuppliedEdge {
+fn ambiguous(s: &extract::Site, n: i64, why: &str, answers: Vec<Answer>) -> SuppliedEdge {
     SuppliedEdge {
         site_id: s.site_id.clone(),
         caller_id: s.caller_id.clone(),
         how: format!("{HOW}; {why}"),
         candidates: n,
         reason: "dynamic".into(),
+        answers,
         ..Default::default()
     }
 }

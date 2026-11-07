@@ -728,6 +728,14 @@ def edges(tmp_path_factory):
            for r in rows}
     for r in store.query("SELECT callee_expr, constructs FROM calls WHERE constructs != ''"):
         got[("constructs", r["callee_expr"])] = (r["constructs"], 0)
+    # The bodies each dispatched call may run (BACKLOG 43), keyed as the calls are.
+    for r in store.query(
+            "SELECT r.qualname AS caller, c.callee_expr AS expr, t.qualname AS body"
+            "  FROM dispatch_links d JOIN calls c ON c.site_id = d.site_id"
+            "  JOIN routines r ON r.id = c.caller_id JOIN routines t ON t.id = d.routine_id"
+            " ORDER BY t.qualname"):
+        key = ("may_run", r["caller"].rsplit(".", 1)[-1], r["expr"])
+        got.setdefault(key, []).append(r["body"])  # type: ignore[arg-type, union-attr]
     store.close()
     return got
 
@@ -824,6 +832,8 @@ def test_what_the_declared_type_cannot_say_is_still_not_guessed(edges):
     assert edges[("typed", "tx.exec")][0] is None
     callee, ambiguous = edges[("typed", "t.t")]
     assert callee is None and ambiguous
+    # BACKLOG 43: and it names both bodies, so every walk follows them as *may run*.
+    assert len(edges[("may_run", "typed", "t.t")]) == 2
     assert edges[("typed", "row.exec")][0] is None
 
 

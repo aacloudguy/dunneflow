@@ -1154,7 +1154,6 @@ impl<'a> Ex<'a> {
                 file,
                 line: def_line,
                 origin,
-                ..Default::default()
             });
         }
         let routine_id = self.enclosing();

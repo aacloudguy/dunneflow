@@ -62,7 +62,7 @@ uv run dunneflow analyze <path> --name <program>
 | `--any-size` | read a tree larger than the guard allows, however long it takes |
 | `--allow-unfinished` | on `check`, `touches`, `impact`, `glossary`, `naming`, `mirror`, `serve` and `mcp`: read a map whose analysis never finished, with a warning — see [when it refuses](15-when-it-refuses.md#was-never-finished) |
 | `--jobs <n>` | parallel workers |
-| `--timings` | print what each phase of the run cost |
+| `--timings` | print what each phase of the run cost, in time and CPU, with peak memory and the machine's load and swap at the start and the end |
 | `--no-render` | build the graph, write no Markdown |
 | `--flow-inventory full\|omitted\|count` | how the flows page lists what each way in reaches: every routine (the default), only what its diagram leaves out, or how many. The page says which was written and what the other two would have taken. Left unchosen and over 256 MB, a terminal is asked. `render` takes it too |
 | `--no-source` / `--no-doc-source` | do not keep the bodies of the code / the documents |

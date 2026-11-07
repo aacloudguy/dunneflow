@@ -451,6 +451,10 @@ queries know a language exists.
 - `runstate.py` — **what a run is doing, where a second process can read it.** `analysis.json`
   beside the graph: the pid, the argv, the last progress object and a heartbeat. It is how the
   dashboard shows and stops a run started in a terminal, and what the next estimate is priced from.
+- `usage.py` — **what a run cost the machine.** CPU seconds per phase for this process and its
+  readers, peak memory, and load and swap at the start and the end, for `--timings` and the
+  sidecar's `resources`, so a slow phase can be told from a starved one. A reader's CPU is
+  counted in the phase it exits in, and what a platform cannot say is said to be unmeasured.
 - `estimate.py` — **how long a run will take, as a range and a reason.** From this program's last
   run, or else from `RATES`, each a measurement sourced in a comment. The low end needs a graph
   this version can read (`store.facts_held`, a read-only open): the extraction cache is the

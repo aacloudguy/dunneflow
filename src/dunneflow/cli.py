@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import ingest, revisions, runstate
+from . import ingest, revisions, runstate, usage
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
 from .estimate import WARN_AFTER_DEFAULT, WARN_AFTER_MAX, WARN_AFTER_MIN
@@ -306,6 +306,11 @@ class _Progress:
         # standards refusals, the source store and the graph.
         self._t0 = time.perf_counter()
         self._at = self._t0
+        # **And what each phase cost the machine**, so a slow phase can be told from a
+        # starved one (`usage`). Banked beside `spent`, one entry per phase, in seconds.
+        self._cpu_at = usage.cpu()
+        self.cpu_spent: list[float | None] = []
+        self.machine_at_start = usage.machine()
         # **Milliseconds, as `web.serve._Clock` records them.** Two instruments and one
         # unit: they are separate classes because they time separate things on separate
         # surfaces, and the one way that costs a session is for the number to mean
@@ -338,6 +343,9 @@ class _Progress:
         now = time.perf_counter()
         self.spent.append((label, round((now - self._at) * 1000)))
         self._at = now
+        c = usage.cpu()
+        self.cpu_spent.append(_cpu_between(self._cpu_at, c))
+        self._cpu_at = c
 
     def step(self, label: str) -> None:
         """Advance to a named step. A step this run is not taking is not an error here."""
@@ -451,11 +459,60 @@ class _Progress:
         # Rule 32: a count must say what it counts, and a row that is simply absent says
         # nothing at all.
         rows = self.phases()
+        cpus = self.cpu_phases()
         width = max(len(n) for n, _ in rows)
+
+        def busy(took_s: float, c: float | None) -> str:
+            if c is None:
+                return ""
+            return f"  {c:9.1f}s cpu  {c / took_s if took_s > 0 else 0:4.1f} CPUs"
+
         lines = [f"  {name:<{width}}  {took / 1000:7.1f}s  {took / 10 / total:5.1f}%"
-                 for name, took in rows]
-        lines.append(f"  {'the whole run':<{width}}  {total:7.1f}s")
+                 + busy(took / 1000, c)
+                 for (name, took), c in zip(rows, cpus, strict=True)]
+        all_cpu = None if any(c is None for c in cpus) else sum(c for c in cpus if c is not None)
+        lines.append(f"  {'the whole run':<{width}}  {total:7.1f}s         "
+                     + busy(total, all_cpu))
+        lines.extend(self.resource_lines())
         return lines
+
+    def cpu_phases(self) -> list[float | None]:
+        """CPU seconds per phase, aligned with `phases()`, the one still running included."""
+        return [*self.cpu_spent, _cpu_between(self._cpu_at, usage.cpu())]
+
+    def resources(self) -> dict[str, object]:
+        """What the sidecar keeps beside `timings`: CPU per phase, peaks, the machine."""
+        own, child = usage.peaks()
+        return {"cpu_s": [None if c is None else round(c, 1) for c in self.cpu_phases()],
+                "peak_bytes": own, "peak_child_bytes": child,
+                "machine_start": self.machine_at_start, "machine_end": usage.machine()}
+
+    def resource_lines(self) -> list[str]:
+        r = self.resources()
+        own, child = r["peak_bytes"], r["peak_child_bytes"]
+        lines = []
+        if self.cpu_phases()[-1] is None:
+            lines.append("  cpu: not measured for the readers on this platform")
+        else:
+            lines.append("  cpu: this process and its readers, each reader counted in the "
+                         "phase it ended in")
+        if isinstance(own, int):
+            lines.append(f"  peak memory: {usage.mb(own)} this process"
+                         + (f", {usage.mb(child)} its largest reader"
+                            if isinstance(child, int) else ""))
+        else:
+            lines.append("  peak memory: not measured on this platform")
+        for when, key in (("at the start", "machine_start"), ("at the end", "machine_end")):
+            m = r[key]
+            assert isinstance(m, dict)
+            lines.append(f"  the machine {when}: {usage.describe_machine(m)}")
+        return lines
+
+
+def _cpu_between(a: usage.Cpu, b: usage.Cpu) -> float | None:
+    """CPU seconds between two readings, or `None` where the children cannot be counted."""
+    ta, tb = a.total(), b.total()
+    return None if ta is None or tb is None else tb - ta
 
 
 # How many parts a refusal prints before it stops and says how many are left. A tree splits
@@ -918,8 +975,10 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
             prog.detail(i, total)
         if args.quiet:
             return
+        # **With the time since the run began**, so a long log says where its hours went:
+        # Runtime's 30,660 s read was 367 lines of counts and not one of them said when.
         if i % 50 == 0 or i == total:
-            _emit(f"  extracting {i}/{total}")
+            _emit(f"  extracting {i}/{total}  {prog.ms() / 1000:,.0f}s")
 
     prog.step(STEP_EXTRACT)
     stats = analyze_tree(
@@ -1336,7 +1395,9 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
                   parsed=stats.parsed, cached=stats.cached,
                   # What each flows inventory took, for the dialog to say before the next
                   # run of this program (`analysis.inventory_for`).
-                  inventory_bytes=inventory_bytes)
+                  inventory_bytes=inventory_bytes,
+                  # What it cost the machine, so a slow run can be told from a starved one.
+                  resources=prog.resources())
     # **Said either way**: `done` reaches the sidecar whether or not stdout is the machine
     # channel, because a run started from a terminal is the one whose ending the dashboard
     # can only learn from the sidecar. `_say` prints only when `--progress-json` is on.

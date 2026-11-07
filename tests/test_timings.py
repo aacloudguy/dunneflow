@@ -18,8 +18,11 @@ add up is a defect.
 
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 
+from dunneflow import usage
 from dunneflow.cli import (
     STEP_ANOMALIES,
     STEP_BEFORE,
@@ -47,6 +50,13 @@ def _analyse(tmp_path: Path, *extra: str) -> _Progress:
     return _Progress(analysis_steps(args), on=False)
 
 
+def _table(prog: _Progress) -> list[str]:
+    """The phase rows and the total, without the lines about the machine under them."""
+    lines = prog.timings()
+    end = next(i for i, ln in enumerate(lines) if ln.strip().startswith("the whole run"))
+    return lines[:end + 1]
+
+
 def test_every_phase_of_a_run_is_named_in_the_table(tmp_path: Path) -> None:
     """Including the ones that cost nothing, and including the one with no step.
 
@@ -62,7 +72,7 @@ def test_every_phase_of_a_run_is_named_in_the_table(tmp_path: Path) -> None:
     prog.step(STEP_EXTRACT)
     prog.step(STEP_ANOMALIES)
 
-    named = [line.strip().split("  ")[0] for line in prog.timings()]
+    named = [line.strip().split("  ")[0] for line in _table(prog)]
     assert STEP_BEFORE in named, "the region before the first step is a phase and was untimed"
     assert STEP_EXTRACT in named and STEP_ANOMALIES in named
     assert named[-1] == "the whole run"
@@ -104,7 +114,7 @@ def test_the_phases_add_up_to_the_run(tmp_path: Path) -> None:
     prog = _Progress((STEP_EXTRACT, STEP_ANOMALIES), on=False)
     prog.step(STEP_EXTRACT)
     prog.step(STEP_ANOMALIES)
-    lines = prog.timings()
+    lines = _table(prog)
     assert len(lines) == 4, lines                       # before + two steps + the total
     # Against the numbers, not the printed line: the line rounds to a tenth of a second
     # and every phase of this run is far inside that.
@@ -139,6 +149,88 @@ def test_the_flag_is_what_prints_it(tmp_path: Path, capsys) -> None:
     said = capsys.readouterr().err
     assert "where the time went" in said
     assert STEP_BEFORE in said and STEP_EXTRACT in said
+
+
+# ------------------------------------------- what a run cost the machine --- #
+
+def test_every_phase_has_its_cpu_beside_its_time() -> None:
+    """Runtime read in 10,363 s once and 30,660 s another time, and the log could not say
+    whether the reader worked or waited. CPU beside wall clock is that difference."""
+    prog = _Progress((STEP_EXTRACT, STEP_ANOMALIES), on=False)
+    prog.step(STEP_EXTRACT)
+    sum(i * i for i in range(200_000))                      # some CPU, in this phase
+    prog.step(STEP_ANOMALIES)
+    cpus = prog.cpu_phases()
+    assert len(cpus) == len(prog.phases())
+    if sys.platform != "win32":
+        assert all(c is not None and c >= 0 for c in cpus), cpus
+        assert cpus[1] is not None and cpus[1] > 0
+        assert all("CPUs" in ln for ln in _table(prog)), _table(prog)
+
+
+def test_a_platform_that_cannot_count_the_readers_says_so(monkeypatch) -> None:
+    """Windows has no `RUSAGE_CHILDREN`, and a figure for this process alone would read as
+    the run's: so no CPU column at all, and a line saying why (rule 49)."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    prog = _Progress((STEP_EXTRACT,), on=False)
+    prog.step(STEP_EXTRACT)
+    said = prog.timings()
+    assert not any("CPUs" in ln for ln in said), said
+    assert any("not measured for the readers" in ln for ln in said), said
+    assert any("peak memory: not measured" in ln for ln in said), said
+    r = prog.resources()
+    assert r["cpu_s"] == [None, None] and r["peak_bytes"] is None
+
+
+def test_the_table_says_what_the_machine_was_doing() -> None:
+    prog = _Progress((STEP_EXTRACT,), on=False)
+    prog.step(STEP_EXTRACT)
+    said = " ".join(prog.timings())
+    assert "the machine at the start:" in said and "the machine at the end:" in said
+    if sys.platform != "win32":
+        assert "peak memory:" in said and "MB this process" in said
+
+
+def test_the_sidecar_keeps_what_the_run_cost_the_machine(tmp_path: Path) -> None:
+    _analyse(tmp_path, "--no-docs", "--no-render")
+    side = json.loads(next((tmp_path / "out").rglob("analysis.json")).read_text())
+    r = side["resources"]
+    assert len(r["cpu_s"]) == len(side["timings"])
+    assert set(r) >= {"machine_start", "machine_end", "peak_bytes", "peak_child_bytes"}
+
+
+def test_swap_is_read_off_what_macos_prints(monkeypatch) -> None:
+    import subprocess
+
+    class Done:
+        stdout = "total = 3072.00M  used = 1840.69M  free = 1231.31M  (encrypted)\n"
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Done())
+    assert usage._swap() == (round(1840.69 * (1 << 20)), 3072 * (1 << 20))
+
+
+def test_swap_is_read_off_proc_meminfo(monkeypatch, tmp_path: Path) -> None:
+    import builtins
+    info = tmp_path / "meminfo"
+    info.write_text("MemTotal: 8000 kB\nSwapTotal:  2048 kB\nSwapFree:  512 kB\n",
+                    encoding="ascii")
+    real = builtins.open
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(builtins, "open",
+                        lambda p, *a, **k: real(info if p == "/proc/meminfo" else p, *a, **k))
+    assert usage._swap() == (1536 * 1024, 2048 * 1024)
+
+
+def test_swap_that_cannot_be_read_is_absent_not_zero(monkeypatch) -> None:
+    import subprocess
+
+    def fails(*a, **k):
+        raise subprocess.CalledProcessError(1, "sysctl")
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(subprocess, "run", fails)
+    assert "swap_used" not in usage.machine()
 
 
 # --------------------------------------------------- the dashboard's six steps --- #

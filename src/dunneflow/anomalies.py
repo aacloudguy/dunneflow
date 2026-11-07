@@ -1425,6 +1425,64 @@ def _macro_hidden_boundaries(store: Store, r: Report) -> None:
         ))
 
 
+def _unsent_commands(store: Store, r: Report) -> None:
+    """A command no client in this tree sends: dead code by another route.
+
+    **Tom, 2026-11-07 (BACKLOG 40):** *"Unused code and paths that are never taken is a
+    common problem, so finding it and pointing it out is a very strong feature."* An
+    `IPC_COMMAND` is a way in, so `DEAD_CODE` never lists it, and DunneNote held eight that
+    nothing sends, each read against the source (`GROUND-TRUTH.md`). **`DEAD_CODE`'s
+    severity, confidence and shape**, by his choice: one finding for the program, every
+    command an occurrence, because the finding is about the program and not about any one
+    command.
+
+    Asked only where this map holds a sender at all, as `UNKNOWN_COMMAND` asks only where it
+    holds a registrar: a back end read without its front end would otherwise report every
+    command it has (rule 98). An unregistered command is `UNREGISTERED_COMMAND`'s and is not
+    counted twice (rule 40).
+    """
+    if not store.query("SELECT 1 FROM ipc_links LIMIT 1"):
+        return
+    rows = store.query(
+        "SELECT e.id, e.name, e.file, e.routine_id, r.qualname, r.line_start"
+        "  FROM entrypoints e LEFT JOIN routines r ON r.id = e.routine_id"
+        " WHERE e.kind = 'IPC_COMMAND'"
+        "   AND e.name IN (SELECT name FROM ipc_registrations)"
+        "   AND e.id NOT IN (SELECT entrypoint_id FROM ipc_links"
+        "                     WHERE entrypoint_id IS NOT NULL)"
+        # A send that two applications answer equally near names this command too, and
+        # may be the one that reaches it: not unsent, only undecided.
+        "   AND e.name NOT IN (SELECT command FROM ipc_links WHERE status = 'ambiguous')"
+        " ORDER BY e.name, e.file, e.id"
+    )
+    if not rows:
+        return
+    dynamic = int(store.query(
+        "SELECT COUNT(*) n FROM ipc_links WHERE status = 'dynamic'")[0]["n"])
+    n = len(rows)
+    r.add(Anomaly(
+        kind="UNSENT_COMMAND", severity=INFO, confidence=POSSIBLE,
+        title=f"{plural(n, 'command')} {are(n)} registered and no client in this tree "
+              f"sends {'it' if n == 1 else 'them'}",
+        detail="; ".join(str(x["name"]) for x in rows),
+        blind_spot="Matched by name against every send this map read. A client in a "
+                   "language this build does not read, a test, a script, or a second front "
+                   "end outside this tree sends one unseen, and a command kept for a "
+                   "client that is gone is the dead code this reports."
+                   + (f" {plural(dynamic, 'send')} {are(dynamic)} not written as a name, "
+                      f"and {'it' if dynamic == 1 else 'any of them'} may be one of these."
+                      if dynamic else ""),
+        ident_parts=(),
+        subject="", file=str(rows[0]["file"]), line=int(rows[0]["line_start"] or 0), count=n,
+        occurrences=[
+            Occurrence(nav="routine", id=str(x["routine_id"] or ""),
+                       label=str(x["name"]), file=str(x["file"]),
+                       line=int(x["line_start"] or 0))
+            for x in rows
+        ],
+    ))
+
+
 DETECTORS = (
     _parse_failures,
     _name_collisions,
@@ -1441,6 +1499,7 @@ DETECTORS = (
     _entrypoint_problems,
     _type_gaps,
     _ipc_commands,
+    _unsent_commands,
 )
 
 
@@ -1450,7 +1509,7 @@ def detect(store: Store, include_tests: bool = False,
 
     `tick(done, total, what)` is called before each detector and once at the end, so a run
     that spends forty minutes here -- Unreal's `Runtime`, 223,614 routines -- says which of
-    fifteen it is on rather than nothing at all.
+    them it is on rather than nothing at all.
     """
     report = Report()
     total = len(DETECTORS) + 1

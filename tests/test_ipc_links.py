@@ -275,3 +275,41 @@ def test_a_process_zone_does_not_cross(store):
     cmd = _id(store, "apps.app.src-tauri.src.lib.list_notes")
     assert cmd in store.reachable_from_many([load])
     assert cmd not in store.reachable_from_many([load], cross=False)
+
+
+def test_a_registered_command_no_client_sends_is_reported_as_dead_code_is(store):
+    """BACKLOG 40, Tom 2026-11-07: dead code by another route, at DEAD_CODE's severity.
+    `shared` is answered twice and one send is ambiguous between them, so neither is unsent;
+    `forgotten` is unregistered, and that is its own finding (rule 40). Every other command
+    in the fixture is sent."""
+    found = [a for a in detect(store).items if a.kind == "UNSENT_COMMAND"]
+    assert found == [], [a.detail for a in found]
+
+
+def test_an_unsent_command_is_one_finding_for_the_program(tmp_path):
+    from dunneflow.anomalies import INFO, POSSIBLE
+
+    tree = tmp_path / "apps" / "app"
+    (tree / "src").mkdir(parents=True)
+    (tree / "src-tauri" / "src").mkdir(parents=True)
+    (tree / "src" / "main.ts").write_text(
+        "import { invoke } from '@tauri-apps/api/core';\n"
+        "export const a = () => invoke('ping');\n", encoding="utf-8")
+    (tree / "src-tauri" / "src" / "lib.rs").write_text(
+        "#[tauri::command]\npub fn ping() {}\n\n#[tauri::command]\npub fn unused() {}\n\n"
+        "#[tauri::command]\npub fn also_unused() {}\n\n"
+        "pub fn run() {\n    tauri::Builder::default()\n"
+        "        .invoke_handler(tauri::generate_handler![ping, unused, also_unused]);\n}\n",
+        encoding="utf-8")
+    (tree / "src-tauri" / "Cargo.toml").write_text(
+        '[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+    s = Store(tmp_path / "g.db")
+    analyze_tree(tmp_path, s)
+    s.stats = resolve_calls(s)
+    found = [a for a in detect(s).items if a.kind == "UNSENT_COMMAND"]
+    s.close()
+    assert len(found) == 1
+    a = found[0]
+    assert (a.severity, a.confidence, a.count) == (INFO, POSSIBLE, 2)
+    assert a.detail == "also_unused; unused"
+    assert [o.label for o in a.occurrences] == ["also_unused", "unused"]

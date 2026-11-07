@@ -86,17 +86,6 @@ not measured, with the reason from the rules file, and the three surfaces (CLI, 
 
 ---
 
-**40. A command no client sends is not reported.** DunneNote has 8, and each was read
-against the source (`GROUND-TRUTH.md`). That is dead code by another route, but it is not a
-`DEAD_CODE` finding, because an `IPC_COMMAND` is a way in. Not built, because its blind spot is
-large: a client in a language this build does not read, a test, or a second front end outside
-the tree. *Settled by* Tom deciding whether an INFO finding with that blind spot is wanted.
-**Tom's decision, 2026-11-07: build it, and highlight it.** *"Unused code and paths that are
-never taken is a common problem, so finding it and pointing it out is a very strong
-feature."* A command no client in the tree sends is a finding at **DEAD_CODE's severity and
-place in the worklist**, with its blind spot stated: a client in a language this build does
-not read, a test, or a second front end outside the tree.
-
 **42. The second recursive arm's cost on a large map is unmeasured.** Every reach query now
 also joins `ipc_links`. That table is empty on every map but DunneNote's, and a read-only
 store walks in memory, so the cost is expected to be small. Nobody has timed it (rule 24).

@@ -1092,7 +1092,9 @@ queries know a language exists.
   - a dashed `IPC` edge in the graph;
   - *About this map*'s "Between languages" row;
   - `08-network.md`'s "Commands called by name";
-  - the anomalies UNREGISTERED_COMMAND and UNKNOWN_COMMAND, both SUSPECT.
+  - the anomalies UNREGISTERED_COMMAND and UNKNOWN_COMMAND, both SUSPECT, and
+    UNSENT_COMMAND, at DEAD_CODE's INFO: a registered command no client in the tree sends
+    (Tom, 2026-11-07).
 - `resolve/dispatch.py` — **the bodies a dispatched call may reach** (Tom, 2026-11-02). A
   call a reader marked `dynamic` is resolved to a slot several bodies fill; the reader sends
   each body's location (`SuppliedEdge.answers`, stored as JSON in `supplied_edges.answers`)

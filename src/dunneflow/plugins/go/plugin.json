@@ -3,7 +3,8 @@
   "display": "Go",
   "version": "0.1.0",
   "protocol": 1,
-  "schema_version": 19,
+  "schema_version": 20,
+  "rule_keys": ["when_arg", "undecided", "note", "target_field"],
   "rules": "go.yaml",
   "in_process": false,
   "workers": 1,
@@ -37,6 +38,7 @@
     "facts.go",
     "rules.go",
     "extract.go",
-    "edges.go"
+    "edges.go",
+    "typed.go"
   ]
 }

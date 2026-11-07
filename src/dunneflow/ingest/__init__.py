@@ -275,6 +275,7 @@ def read_manifest(path: Path) -> PluginManifest:
         in_process=in_process,
         reader=reader,
         receiver_words=tuple(str(x) for x in data.get("receiver_words", [])),
+        rule_keys=tuple(str(x) for x in data.get("rule_keys", [])),
         supplies_edges=bool(data.get("supplies_edges", False)),
         supplies_bindings=bool(data.get("supplies_bindings", False)),
         supplies_uses=bool(data.get("supplies_uses", False)),

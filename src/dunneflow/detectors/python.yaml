@@ -69,6 +69,42 @@ boundaries:
     exact: [os.system, os.popen, os.execv, os.spawnv]
     target_arg: 0
 
+  # -- local IPC -------------------------------------------------------------- #
+  # **A Unix-domain socket is another process on this machine, never the network**, and
+  # it is told apart by the address family the socket is made with -- so these come
+  # before the `socket.` prefix below, which is first-match-wins. The act is the `bind`
+  # or the `connect` on the name the socket was bound to (`on_receiver`), which carries
+  # the path; a socket made and never bound or connected in its routine is the one row.
+  # A family the source does not write as a constant -- `socket.socket(fam)`,
+  # `socket.socket(fileno=0)`, which takes it from the descriptor -- cannot be decided,
+  # stays NETWORK, and says so in its evidence (`undecided`).
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [socket.socket]
+    when_arg:
+      index: 0
+      keyword: family
+      in: [socket.AF_UNIX, AF_UNIX]
+      not_in: [socket.AF_INET, socket.AF_INET6, AF_INET, AF_INET6, socket.AF_PACKET,
+               AF_PACKET, socket.AF_NETLINK, AF_NETLINK, socket.AF_BLUETOOTH,
+               socket.AF_CAN, socket.AF_VSOCK, socket.AF_TIPC]
+      undecided_if_keyword: [fileno]
+    undecided: "the address family is not a constant, so a Unix-domain socket here reads as NETWORK"
+    on_receiver:
+      bind:       {direction: IN,  target_arg: 0}
+      connect:    {direction: OUT, target_arg: 0}
+      connect_ex: {direction: OUT, target_arg: 0}
+  # `getsockopt(SOL_SOCKET, SO_PEERCRED, …)` reads who is on the other end, which only a
+  # Unix-domain socket can answer. The constant is what makes the bare method name safe
+  # (rule 5): `getsockopt` alone is every socket option there is.
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    method: [getsockopt]
+    when_arg: {index: 1, in: [socket.SO_PEERCRED, SO_PEERCRED]}
+    note: peer credentials
+
   # -- network ---------------------------------------------------------------- #
   - kind: NETWORK
     direction: BOTH

@@ -460,6 +460,14 @@ queries know a language exists.
   this version can read (`store.facts_held`, a read-only open): the extraction cache is the
   graph's `files` table, and `source.db` skips no reading. `--warn-after` and the dialog ask
   before a long run; with no terminal the run is refused, naming `--any-size`.
+
+  **A boundary a signature names lives in `declared_boundaries`, never in `boundaries`**
+  (schema 20). Go's reader reads `go.yaml`'s `signatures:` -- a parameter or result typed
+  `*net.UnixListener` -- for a routine whose body shows nothing of that kind, which is what
+  a stub that only panics looks like. Same columns, its own table, because 45 queries count
+  or detect `boundaries` and a filter each of them has to remember is rule 51 at 45 call
+  sites. `counts()` and the analysis summary say them separately; the dashboard does not
+  show them yet (BACKLOG 48).
 - `walk.py` — discovery, and **the size guard**. `parts_under` cuts a tree into parts no
   larger than `TOO_BIG`, descending only into what is oversized, and `Breakdown.uncovered`
   states the one thing a cut of directories cannot cover: a directory that had to be split
@@ -547,6 +555,11 @@ queries know a language exists.
   nothing is ever fetched; `facts.go` is generated from `schema.py` by
   `tools/gen_facts_go.py` and compared by a test that needs no Go, and its hand-written
   BLAKE2b and Python-compatible decoding are pinned by `tests/fixtures/ids/vectors.json`.
+  **`typed.go` types a method's receiver one file at a time**, against declarations
+  `go.yaml` carries (`typed_packages`) rather than GOROOT, so `r.ReadFile` on an `*os.Root`
+  is `os.Root.ReadFile` and a file's facts still depend on that file and the rules alone
+  (rules 81 and 95). The edge pass counts the calls whose receiver is typed in another file
+  and says so in `edges_done.notes`.
 
   **`plugins/rust/` is the same shape with its dependencies vendored**: `syn`, `proc-macro2`,
   `quote` and `unicode-ident` under `vendor/`, built `--offline --locked`, every file in the

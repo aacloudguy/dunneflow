@@ -282,6 +282,9 @@ class PluginManifest:
     # cannot say which files those are cannot enforce it later either.
     reader: str = ""
     receiver_words: tuple[str, ...] = ()
+    # The optional boundary-rule keys this reader implements (`detectors.OPTIONAL_RULE_KEYS`).
+    # A rules file using one its reader does not list is refused at load.
+    rule_keys: tuple[str, ...] = ()
     supplies_edges: bool = False
     # **The reader binds the ways in it marks** (`SuppliedBinding`), in the edge pass. Only
     # meaningful with `supplies_edges`; a reader that declares it is never bound by name.

@@ -3,7 +3,7 @@
   "display": "TypeScript",
   "version": "1.3.0",
   "protocol": 1,
-  "schema_version": 19,
+  "schema_version": 20,
   "rules": "typescript.yaml",
   "in_process": false,
   "entry": "main.bundle.cjs",

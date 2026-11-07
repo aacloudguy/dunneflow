@@ -29,11 +29,12 @@ import tokenize
 from collections.abc import Sequence
 from pathlib import Path
 
-from ...detectors import RuleSet, load_rules, mine_annotations
+from ...detectors import EVIDENCE_NOTE, BoundaryRule, RuleSet, load_rules, mine_annotations
 from ...ingest.literals import in_bounds
 from ...schema import (
     ArmKind,
     BoundaryHit,
+    BoundaryKind,
     CallArg,
     CallSite,
     ClassDef_,
@@ -199,6 +200,13 @@ class _Extractor(ast.NodeVisitor):
         self.routines: list[Routine] = []
         self.calls: list[CallSite] = []
         self.boundaries: list[BoundaryHit] = []
+        # `on_receiver`: the name a matched call was bound to, per routine, with the
+        # creation's own hit and whether a method on the name has since been read.
+        self._bound_to: dict[int, str] = {}
+        self._receivers: dict[tuple[str, str], tuple[BoundaryRule, BoundaryHit, list[bool]]] = {}
+        # Every binding ever made, because a name rebound to a second socket must not take
+        # the first one's record with it: `c = socket(...)`, `c.connect()`, `c = socket(...)`.
+        self._all_receivers: list[tuple[BoundaryRule, BoundaryHit, list[bool]]] = []
         self.structures: list[DataStructure] = []
         self.entrypoints: list[Entrypoint] = []
         self.imports: list[ImportRec] = []
@@ -751,6 +759,10 @@ class _Extractor(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """Catch `app = typer.Typer(...)`: the object a CLI is actually built on."""
+        if isinstance(node.value, ast.Call) and len(node.targets) == 1:
+            bound = dotted_name(node.targets[0])
+            if bound:
+                self._bound_to[id(node.value)] = bound
         if isinstance(node.value, ast.Call):
             callee = dotted_name(node.value.func)
             if (
@@ -1287,21 +1299,70 @@ class _Extractor(ast.NodeVisitor):
                     name=_kwarg_str(node, "name") or "",
                 ))
         if expr:
-            rule = self.rules.match_call(expr)
+            if self._on_receiver(node, expr, owner.id):
+                self.generic_visit(node)
+                return
+            rule, blind = self.rules.match_call_args(expr, *_arg_values(node))
             self._record_call(owner.id, expr, node.lineno,
                               at_boundary=rule is not None, args=self._call_args(node))
-            self._maybe_network(node, expr)
+            # A Unix-domain socket is not a remote call: no protocol, no timeout to miss.
+            if rule is None or rule.kind is not BoundaryKind.LOCAL_IPC:
+                self._maybe_network(node, expr)
             if rule is not None:
-                self.boundaries.append(BoundaryHit(
+                evidence = expr
+                if rule.note:
+                    evidence += EVIDENCE_NOTE + rule.note
+                if blind:
+                    evidence += EVIDENCE_NOTE + "blind spot: " + blind
+                hit = BoundaryHit(
                     routine_id=owner.id,
                     kind=rule.kind,
                     direction=rule.direction,
                     target=self._target(node, rule.target_arg),
                     line=node.lineno,
-                    evidence=expr,
+                    evidence=evidence,
                     salience=rule.salience,
-                ))
+                )
+                self.boundaries.append(hit)
+                bound = self._bound_to.get(id(node))
+                if rule.on_receiver and bound:
+                    held = (rule, hit, [False])
+                    self._receivers[(owner.id, bound)] = held
+                    self._all_receivers.append(held)
         self.generic_visit(node)
+
+    def _on_receiver(self, node: ast.Call, expr: str, owner_id: str) -> bool:
+        """`s.bind(path)` where `s = socket.socket(socket.AF_UNIX)` in this routine.
+
+        Not a bare method name (rule 5): the method counts only on a name a matched call
+        was bound to, and it is the act -- so the creation's own hit is dropped once one is
+        seen (`settle_receivers`), rather than counting one socket twice (rule 40).
+        """
+        recv, _, method = expr.rpartition(".")
+        held = self._receivers.get((owner_id, recv)) if recv else None
+        if held is None or method not in held[0].on_receiver:
+            return False
+        rule, _, used = held
+        spec = rule.on_receiver[method]
+        used[0] = True
+        self._record_call(owner_id, expr, node.lineno, at_boundary=True,
+                          args=self._call_args(node))
+        self.boundaries.append(BoundaryHit(
+            routine_id=owner_id,
+            kind=rule.kind,
+            direction=spec.direction,
+            target=self._target(node, spec.target_arg),
+            line=node.lineno,
+            evidence=expr,
+            salience=rule.salience,
+        ))
+        return True
+
+    def settle_receivers(self) -> None:
+        """Drop each creation whose bound name was then used: the use is the act."""
+        spent = {id(hit) for _, hit, used in self._all_receivers if used[0]}
+        if spent:
+            self.boundaries = [b for b in self.boundaries if id(b) not in spent]
 
     def _maybe_set_defaults(self, node: ast.Call) -> None:
         """Catch `p_serve.set_defaults(func=_cmd_serve)`.
@@ -1360,6 +1421,18 @@ class _Extractor(ast.NodeVisitor):
             target_expr=target,
         ))
 
+    def visit_With(self, node: ast.With) -> None:
+        """`with socket.socket(socket.AF_UNIX) as s:` binds `s` as `=` does."""
+        self._bind_with(node.items)
+        self.generic_visit(node)
+
+    def _bind_with(self, items: list[ast.withitem]) -> None:
+        for item in items:
+            if isinstance(item.context_expr, ast.Call) and item.optional_vars is not None:
+                bound = dotted_name(item.optional_vars)
+                if bound:
+                    self._bound_to[id(item.context_expr)] = bound
+
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
         """`async with httpx.AsyncClient(...) as c:` manages the client correctly.
 
@@ -1370,6 +1443,7 @@ class _Extractor(ast.NodeVisitor):
         for item in node.items:
             if isinstance(item.context_expr, ast.Call):
                 self._awaited.add(id(item.context_expr))
+        self._bind_with(node.items)
         self.generic_visit(node)
 
     def visit_Await(self, node: ast.Await) -> None:
@@ -1688,6 +1762,23 @@ def module_name(path: Path, root: Path) -> str:
     return ".".join(parts) if parts else rel.stem
 
 
+def _arg_values(node: ast.Call) -> tuple[list[tuple[str, bool]], dict[str, tuple[str, bool]]]:
+    """Each argument as `(value, is_literal)`, for a rule's `when_arg`: a constant's value,
+    and otherwise its source text -- `socket.AF_UNIX` is named, not evaluated."""
+    def one(a: ast.expr) -> tuple[str, bool]:
+        if isinstance(a, ast.Constant):
+            return (a.value if isinstance(a.value, str) else repr(a.value)), True
+        return (dotted_name(a) or ast.unparse(a)), False
+
+    positional: list[tuple[str, bool]] = []
+    for a in node.args:
+        if isinstance(a, ast.Starred):
+            break                       # nothing after a splat has a known position
+        positional.append(one(a))
+    keywords = {k.arg: one(k.value) for k in node.keywords if k.arg}
+    return positional, keywords
+
+
 def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     """Extract every fact from one Python file.
 
@@ -1744,6 +1835,7 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
         facts.errors.append("extraction aborted: expression nesting too deep")
 
     ex.collect_module_names(tree.body)
+    ex.settle_receivers()
     # After the walk, so "claimed" means claimed by any routine at all.
     ex.claim_orphan_comments()
 

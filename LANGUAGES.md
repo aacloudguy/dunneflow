@@ -515,3 +515,59 @@ member call starts at its receiver and not its name, so testing the name's token
 `checkf(Key.IsValid())` hidden. And `clang_getSpellingLocation` returns the file location for a
 macro's token, so it cannot detect what a macro wrote; rule 110 has the rest.
 
+## LOCAL_IPC, and four rule keys a reader must say it reads
+
+*Written 2026-11-02, for Society2.* A Unix-domain socket was NETWORK/TCP in every reader,
+because the dotted name cannot see what tells it apart: `net.Dial("unix", p)` and
+`net.Dial("tcp", a)` are one spelling. The kind is `LOCAL_IPC` (`schema.py`), and the
+rules file says when it applies with four new keys on a boundary rule:
+
+- **`when_arg`** decides on one argument's value -- a literal's contents, otherwise its
+  source text, so `socket.AF_UNIX` is named rather than evaluated. Yes, no, or
+  *undecided*: a variable never matches, and the rule's **`undecided`** sentence becomes
+  the blind spot in the evidence of whatever rule does (`… — blind spot: …`).
+- **`note`** is a fixed phrase after the evidence: `unix.GetsockoptUcred — peer
+  credentials`. The call's spelling always comes first, because `acts.one_act` folds chains
+  by it (`detectors.EVIDENCE_NOTE`).
+- **`target_field`** (Go) reads the target out of a composite literal:
+  `&net.UnixAddr{Name: p}` is `p`.
+- **`on_receiver`** (Python) makes `s.bind(path)` the act where `s = socket.socket(AF_UNIX)`
+  in the same routine, and drops the creation's own row once it is used (rule 40).
+
+**A reader ignores a key it does not know, so a conditioned rule handed to the wrong reader
+matches unconditionally.** Each `plugin.json` therefore lists the keys it implements in
+`rule_keys`, and `load_rules` and `rules_document` refuse a rules file that uses one its
+reader does not list (rule 49). A new reader that wants these implements them and says so.
+
+**A conditioned rule also stops a remote call being recorded**: a LOCAL_IPC hit makes no
+`net_calls` row, so a socket file has no protocol and no NO_TIMEOUT.
+
+## A method by its receiver's type, and why the types are declared
+
+*Written 2026-11-07, for Society2.* Every file operation Society2 makes through an `os.Root`
+was missing, because a Go boundary was matched on the spelling a file writes and `r.ReadFile`
+names no package. `os.Root` is how Go code that must not follow a symlink out of a folder
+reads and writes, so the gap hid the file boundaries that mattered most. The same gap hid
+`net.Dialer.DialContext(ctx, "unix", p)`, Society2's own IPC client.
+
+**The facts pass now asks `go/types` what a receiver is** (`plugins/go/typed.go`). A method
+of a declared type is spelled with its type, `os.Root.ReadFile`, matched against `exact`
+entries only, and recorded with that spelling as its evidence; a type of the program's own
+with a `ReadFile` method is nothing, whatever its variable is called (rule 30). A boundary
+function **taken as a value** (`var lchown = (*os.Root).Lchown`, beads' `openFileFn =
+os.OpenFile`) is a touch where it is taken, `— taken as a value` in its evidence, because the
+call that follows is through a variable and names nothing.
+
+**The types are declared in the rules file, never read from GOROOT, and that is the whole
+design.** A file's facts are cached under its hash and the reader's stamp, and the stamp does
+not carry the toolchain. Facts read against the installed standard library would change with
+an upgrade and nothing would notice (rule 81); putting the toolchain in the stamp would make
+every Go row stale on a machine with no Go, which a writable open discards. So `go.yaml`'s
+`typed_packages` holds the API the typed rules need, as Go source with no bodies, and the
+answer depends on the file and the rules. **One file is checked, never its package** (rule
+95): a receiver whose type is declared in another file is not typed, the edge pass counts
+those calls on the whole module, and the count reaches the map in `edges_done.notes`.
+
+**Ask the next reader which of its boundaries are methods.** A reader with a checker can do
+this; one without (Rust's path resolver) can do it only where the source writes the type
+down. Either way the type must come from something its cache key covers.

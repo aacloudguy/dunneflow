@@ -1403,7 +1403,9 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # can only learn from the sidecar. `_say` prints only when `--progress-json` is on.
     prog.done(program=program, revision=revision, graph=str(db_path),
               routines=c["routines"], calls=c["resolved_calls"],
-              boundaries=c["boundaries"], structures=c["structures"],
+              boundaries=c["boundaries"],
+              declared_boundaries=c.get("declared_boundaries", 0),
+              structures=c["structures"],
               entrypoints=c["entrypoints"],
               files=stats.found, documents=doc_stats.found if doc_stats else 0,
               # The machine channel says the same things the sentence does, per
@@ -1421,6 +1423,11 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
             f"calls · {c['boundaries']:,} boundary touches · {c['structures']:,} "
             f"structures · {c['entrypoints']:,} way{'' if c['entrypoints'] == 1 else 's'} in"
         )
+        # Said beside the touches and never added to them: a boundary a signature names
+        # is a claim about what a body will do, not a count of what one does (rule 32).
+        if c.get("declared_boundaries"):
+            print(f"  and {c['declared_boundaries']:,} boundaries declared by signature, "
+                  f"which no body was seen to touch")
         print(f"graph: {db_path}")
         if doc_stats is not None:
             print(f"docs:  {revisions.db_path(out_dir, revisions.DOCS, revision)}")

@@ -3,7 +3,7 @@
   "display": "Java",
   "version": "0.1.0",
   "protocol": 1,
-  "schema_version": 19,
+  "schema_version": 20,
   "rules": "java.yaml",
   "in_process": false,
   "workers": 1,

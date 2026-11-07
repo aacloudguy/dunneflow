@@ -96,6 +96,12 @@ type extractor struct {
 	// Comments that are a declaration's own documentation, recorded there as its
 	// docstring and so never again as a comment (rule 40: one sentence, one fact).
 	docs map[*ast.CommentGroup]bool
+	// What the checker says of this file against the declared packages (`typed.go`); nil
+	// where it imports none of them.
+	typing *typing
+	// The selector each call is made through, so the same selector is not read again as
+	// a function taken as a value when the walk reaches it.
+	callee map[*ast.SelectorExpr]bool
 }
 
 // extractFile reads one file. A file that will not parse comes back as facts carrying
@@ -153,6 +159,10 @@ func newExtractor(rel, source string, fset *token.FileSet, file *ast.File,
 		ctrlOrdinal: map[string]int{}, docs: map[*ast.CommentGroup]bool{},
 		handlerOrdinal: map[string]int{}, fieldHandlers: map[string]string{},
 		sites: map[*ast.CallExpr]*CallSite{},
+		// Here, so the edge pass and the facts pass type a file identically and mint the
+		// same sites, with the same boundaries kept out of the edges (rule 2).
+		typing: typeFile(fset, file, rules),
+		callee: map[*ast.SelectorExpr]bool{},
 	}
 }
 
@@ -659,7 +669,56 @@ func (e *extractor) routine(name string, ft *ast.FuncType, body *ast.BlockStmt,
 	}
 	e.depth = saved
 	e.scope = e.scope[:len(e.scope)-1]
+	e.declared(r, ft)
 	return r
+}
+
+// declared records what a routine's signature says it touches, where its body was not
+// seen to touch anything of that kind: Society2's Stage 0 stubs return a
+// `*net.UnixListener` from a body that only panics. **Declared, never observed** -- the
+// host keeps these out of every count of touches (`declared_boundaries`, rule 32) -- and
+// only where the body says nothing of that kind, so product code is not counted twice.
+func (e *extractor) declared(r *Routine, ft *ast.FuncType) {
+	if len(e.rules.Signatures) == 0 || ft == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, b := range e.boundaries {
+		if b.RoutineId == r.Id && !b.Declared {
+			seen[string(b.Kind)] = true
+		}
+	}
+	add := func(f *ast.Field, target string) {
+		written := e.text(f.Type)
+		for _, s := range e.rules.Signatures {
+			if s.Type != written || seen[s.Kind] {
+				continue
+			}
+			evidence := written + evidenceNote + "declared by signature"
+			if s.Note != "" {
+				evidence += "; " + s.Note
+			}
+			e.boundaries = append(e.boundaries, BoundaryHit{
+				RoutineId: r.Id, Kind: BoundaryKind(s.Kind), Direction: Direction(s.Direction),
+				Target: target, Line: r.LineStart, Evidence: evidence, Salience: "high",
+				Declared: true,
+			})
+		}
+	}
+	if ft.Params != nil {
+		for _, f := range ft.Params.List {
+			name := "_"
+			if len(f.Names) > 0 {
+				name = f.Names[0].Name
+			}
+			add(f, name)
+		}
+	}
+	if ft.Results != nil {
+		for _, f := range ft.Results.List {
+			add(f, "")
+		}
+	}
 }
 
 func (e *extractor) params(ft *ast.FuncType) List[Param] {
@@ -736,6 +795,10 @@ func (e *extractor) walk(n ast.Node) {
 				e.literal(v)
 			}
 			return false
+		case *ast.SelectorExpr:
+			if !e.callee[v] {
+				e.valueRef(v)
+			}
 		}
 		return true
 	})
@@ -852,23 +915,51 @@ func dotted(x ast.Expr) string {
 
 func (e *extractor) call(c *ast.CallExpr) {
 	expr := dotted(c.Fun)
-	if expr != "" {
+	sel, _ := ast.Unparen(c.Fun).(*ast.SelectorExpr)
+	if sel != nil {
+		e.callee[sel] = true
+	}
+	// **A method of a declared type is matched by its type first** (`typed.go`), and only
+	// a typed spelling that no rule names falls back to the one the file writes. A method
+	// expression's receiver is its first argument, so the rule's indices start after it.
+	typed, isExpr := e.typing.method(sel)
+	args := c.Args
+	if isExpr && len(args) > 0 {
+		args = args[1:]
+	}
+	var rule *BoundaryRule
+	var blind string
+	spelling := expr
+	if typed != "" {
+		rule, blind = e.rules.matchTyped(typed, e.argValues(args), false)
+		if rule != nil {
+			spelling = typed
+		}
+	}
+	if rule == nil && expr != "" {
+		rule, blind = e.rules.matchCall(expr, e.argValues(c.Args))
+		args = c.Args
+	}
+	if expr != "" || rule != nil {
 		owner := e.owner()
 		line := e.line(c.Pos())
-		rule := e.rules.matchCall(expr)
-		e.recordCall(owner.Id, expr, line, rule != nil, e.callArgs(c))
-		site := e.calls[len(e.calls)-1]
-		e.sites[c] = &site
-		if rule != nil {
-			hit := BoundaryHit{RoutineId: owner.Id, Kind: BoundaryKind(rule.Kind),
-				Direction: Direction(rule.Direction), Target: e.target(c, expr, rule),
-				Line: line, Evidence: expr}
-			if rule.Salience != "normal" {
-				hit.Salience = rule.Salience
-			}
-			e.boundaries = append(e.boundaries, hit)
+		// A method expression called in place has no name at its root (clause 3), so it is
+		// no call site: the boundary is recorded and nothing is offered to the edge pass.
+		if expr != "" {
+			e.recordCall(owner.Id, expr, line, rule != nil, e.callArgs(c))
+			site := e.calls[len(e.calls)-1]
+			e.sites[c] = &site
 		}
-		e.maybeNetwork(c, expr, line)
+		if rule != nil {
+			e.boundary(owner.Id, rule, spelling, blind, e.target(args, spelling, rule), line, "")
+		}
+		// A Unix-domain socket is not a remote call: no protocol, no timeout to miss. A
+		// typed hit is not offered either: `network.libraries` is keyed by spellings a
+		// file writes, and `net.Dial` is a prefix of `net.Dialer.DialContext`, whose
+		// first argument is a context and not a destination.
+		if expr != "" && spelling == expr && (rule == nil || rule.Kind != "LOCAL_IPC") {
+			e.maybeNetwork(c, expr, line)
+		}
 	}
 	claimed := e.registration(c, expr)
 	// The callee is walked too: `a.b(x).c()` holds the call `a.b`, and `func(){...}()`
@@ -879,6 +970,54 @@ func (e *extractor) call(c *ast.CallExpr) {
 			e.walk(a)
 		}
 	}
+}
+
+// boundary records one touch: the spelling first, always, then the rule's note, then what
+// was taken as a value rather than called, then a blind spot (`detectors.EVIDENCE_NOTE`).
+func (e *extractor) boundary(owner string, rule *BoundaryRule, spelling, blind, target string,
+	line int, how string) {
+	evidence := spelling
+	if rule.Note != "" {
+		evidence += evidenceNote + rule.Note
+	}
+	if how != "" {
+		evidence += evidenceNote + how
+	}
+	if blind != "" {
+		evidence += evidenceNote + "blind spot: " + blind
+	}
+	hit := BoundaryHit{RoutineId: owner, Kind: BoundaryKind(rule.Kind),
+		Direction: Direction(rule.Direction), Target: target, Line: line, Evidence: evidence}
+	if rule.Salience != "normal" {
+		hit.Salience = rule.Salience
+	}
+	e.boundaries = append(e.boundaries, hit)
+}
+
+// takenAsValue is what a boundary's evidence says when the function was not called where
+// it was named: `var lchown = (*os.Root).Lchown`, `f := r.Chmod`, `walk(os.ReadFile)`.
+const takenAsValue = "taken as a value, not called here"
+
+// valueRef records a boundary function **taken as a value**, at the place it is taken.
+// The call that follows is through a variable and names nothing (`lchown(r, name, -1, g)`),
+// so this is the only place the touch can be seen. Only what the checker confirms is a
+// function counts: a method of a declared type, or a function of a declared package
+// spelled as the rules spell it, so a type written in a declaration (`embed.FS`) is never
+// read as a touch.
+func (e *extractor) valueRef(sel *ast.SelectorExpr) {
+	var rule *BoundaryRule
+	var blind, spelling string
+	if typed, _ := e.typing.method(sel); typed != "" {
+		rule, blind = e.rules.matchTyped(typed, nil, true)
+		spelling = typed
+	} else if e.typing.isDeclaredFunc(sel) {
+		spelling = dotted(sel)
+		rule, blind = e.rules.matchTyped(spelling, nil, true)
+	}
+	if rule == nil {
+		return
+	}
+	e.boundary(e.owner().Id, rule, spelling, blind, "", e.line(sel.Pos()), takenAsValue)
 }
 
 func (e *extractor) recordCall(callerID, expr string, line int, atBoundary bool,
@@ -906,6 +1045,24 @@ func (e *extractor) callArgs(c *ast.CallExpr) List[CallArg] {
 	return out
 }
 
+// evidenceNote is `detectors.EVIDENCE_NOTE`: the call's spelling comes first, always.
+const evidenceNote = " — "
+
+// argValues is each argument as `when_arg` reads it.
+func (e *extractor) argValues(args []ast.Expr) []argValue {
+	out := make([]argValue, 0, len(args))
+	for _, a := range args {
+		if s, ok := stringValue(a); ok {
+			out = append(out, argValue{text: s, literal: true})
+		} else if _, ok := a.(*ast.BasicLit); ok {
+			out = append(out, argValue{text: e.text(a), literal: true})
+		} else {
+			out = append(out, argValue{text: e.text(a), literal: false})
+		}
+	}
+	return out
+}
+
 func stringValue(x ast.Expr) (string, bool) {
 	lit, ok := x.(*ast.BasicLit)
 	if !ok || lit.Kind != token.STRING {
@@ -919,7 +1076,8 @@ func stringValue(x ast.Expr) (string, bool) {
 }
 
 // target is what a boundary touch touched, by the rule's own strategy.
-func (e *extractor) target(c *ast.CallExpr, expr string, rule *BoundaryRule) string {
+// The arguments are the method's own: a method expression's receiver is already taken off.
+func (e *extractor) target(args []ast.Expr, expr string, rule *BoundaryRule) string {
 	if rule.Target == "receiver_tail" {
 		parts := strings.Split(expr, ".")
 		if len(parts) >= 3 {
@@ -931,13 +1089,38 @@ func (e *extractor) target(c *ast.CallExpr, expr string, rule *BoundaryRule) str
 		return ""
 	}
 	idx := *rule.TargetArg
-	if idx < 0 || idx >= len(c.Args) {
+	if idx < 0 || idx >= len(args) {
 		return ""
 	}
-	if s, ok := stringValue(c.Args[idx]); ok {
+	arg := args[idx]
+	if rule.TargetField != "" {
+		if f := compositeField(arg, rule.TargetField); f != nil {
+			arg = f
+		}
+	}
+	if s, ok := stringValue(arg); ok {
 		return s
 	}
-	return e.text(c.Args[idx])
+	return e.text(arg)
+}
+
+// compositeField is the value of field `name` in `T{name: v}` or `&T{name: v}`, or nil.
+func compositeField(x ast.Expr, name string) ast.Expr {
+	if u, ok := x.(*ast.UnaryExpr); ok && u.Op == token.AND {
+		x = u.X
+	}
+	lit, ok := x.(*ast.CompositeLit)
+	if !ok {
+		return nil
+	}
+	for _, el := range lit.Elts {
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			if id, ok := kv.Key.(*ast.Ident); ok && id.Name == name {
+				return kv.Value
+			}
+		}
+	}
+	return nil
 }
 
 func (e *extractor) maybeNetwork(c *ast.CallExpr, expr string, line int) {

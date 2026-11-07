@@ -13,7 +13,7 @@ import os
 import re
 import sys
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -51,6 +51,62 @@ class RulesMissing(RuntimeError):
     """
 
 
+# **The evidence separator.** A boundary's evidence is the call's dotted spelling, which
+# `ingest/acts.py` folds chains by; a rule's `note` and an undecided rule's blind spot
+# follow it after this, so the spelling is always the part before it.
+EVIDENCE_NOTE = " — "
+
+
+@dataclass(slots=True, frozen=True)
+class ArgCondition:
+    """`when_arg`: a rule that applies only for some values of one argument.
+
+    `net.Dial("unix", p)` is a Unix socket and `net.Dial("tcp", a)` is the network, and the
+    dotted name cannot tell them apart. The argument's *value* is a string literal's
+    contents, and otherwise its source text, which is how a dotted constant such as
+    `socket.AF_UNIX` is named. **Three answers, never two** (rule 49): a value in `in_`
+    decides yes; any other literal, a `not_in` entry or an absent argument decides no; and
+    anything else -- a variable, a call -- is *undecided*, which never matches and is said
+    as the blind spot of whatever rule does.
+    """
+
+    index: int | None = None
+    keyword: str = ""
+    in_: frozenset[str] = frozenset()
+    not_in: frozenset[str] = frozenset()
+    # A keyword whose presence means the value comes from somewhere the source does not
+    # say: `socket.socket(fileno=0)` takes its family from the descriptor.
+    undecided_if_keyword: frozenset[str] = frozenset()
+
+    def decide(self, positional: Sequence[tuple[str, bool]],
+               keywords: dict[str, tuple[str, bool]]) -> bool | None:
+        """`positional` and `keywords` hold `(value, is_literal)` for each argument."""
+        value: tuple[str, bool] | None = None
+        if self.keyword and self.keyword in keywords:
+            value = keywords[self.keyword]
+        elif self.index is not None and self.index < len(positional):
+            value = positional[self.index]
+        if value is None:
+            if any(k in keywords for k in self.undecided_if_keyword):
+                return None
+            return False
+        text, literal = value
+        if text in self.in_:
+            return True
+        if literal or text in self.not_in:
+            return False
+        return None
+
+
+@dataclass(slots=True, frozen=True)
+class ReceiverMethod:
+    """One `on_receiver` entry: a method called later on the name a matched call is bound
+    to, and what touching it means."""
+
+    direction: Direction
+    target_arg: int | None = None
+
+
 @dataclass(slots=True)
 class BoundaryRule:
     kind: BoundaryKind
@@ -62,6 +118,12 @@ class BoundaryRule:
     subscript: frozenset[str] = field(default_factory=frozenset)
     contains: tuple[str, ...] = ()
     target_arg: int | None = None
+    when_arg: ArgCondition | None = None
+    # Said on whatever rule matches instead, when `when_arg` could not decide.
+    undecided: str = ""
+    # A fixed phrase appended to the evidence: `unix.GetsockoptUcred — peer credentials`.
+    note: str = ""
+    on_receiver: dict[str, ReceiverMethod] = field(default_factory=dict)
 
     def matches_call(self, dotted: str) -> bool:
         if not dotted:
@@ -390,11 +452,37 @@ class RuleSet:
 
         High-salience rules are declared before low-salience ones for the same
         kind, which is why `.exists()` does not shadow `.write_text()`.
+
+        A rule conditioned on an argument never matches here: there are no arguments to
+        decide it by, and matching it unconditionally is the defect `when_arg` exists to
+        remove. A reader with arguments asks `match_call_args`.
         """
         for rule in self.boundaries:
-            if rule.matches_call(dotted):
+            if rule.when_arg is None and rule.matches_call(dotted):
                 return rule
         return None
+
+    def match_call_args(self, dotted: str, positional: Sequence[tuple[str, bool]],
+                        keywords: dict[str, tuple[str, bool]]
+                        ) -> tuple[BoundaryRule | None, str]:
+        """`match_call`, deciding `when_arg` rules on the call's arguments.
+
+        Returns the rule and the blind spot of every conditioned rule passed over because
+        its argument could not be read: `net.Dial(network, a)` stays NETWORK, and says
+        that a Unix socket there would read as NETWORK.
+        """
+        blind: list[str] = []
+        for rule in self.boundaries:
+            if not rule.matches_call(dotted):
+                continue
+            if rule.when_arg is not None:
+                decided = rule.when_arg.decide(positional, keywords)
+                if decided is None and rule.undecided:
+                    blind.append(rule.undecided)
+                if not decided:
+                    continue
+            return rule, "; ".join(blind)
+        return None, "; ".join(blind)
 
     def is_type_expression(self, base: str) -> bool:
         """Does a subscript on this name produce a type?
@@ -479,7 +567,47 @@ def rules_document(lang: str) -> dict[str, Any]:
             f"indistinguishable from a program that has none."
         )
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    _refuse_unread_keys(lang, data, path)
     return dict(data)
+
+
+# Boundary-rule keys a reader must say it implements before its rules file may use them.
+# Every reader ignores a key it does not know -- by design, the document is the host's --
+# so a `when_arg` rule handed to a reader that never reads `when_arg` would match
+# **unconditionally**, and `net.Dial("tcp", a)` would be LOCAL_IPC with no symptom
+# (rule 49). The manifest's `rule_keys` is that reader's word that it reads them.
+OPTIONAL_RULE_KEYS = (
+    "when_arg", "undecided", "note", "target_field", "on_receiver", "names_macro",
+)
+
+
+def _refuse_unread_keys(lang: str, data: dict[str, Any], path: Path) -> None:
+    from ..ingest import PLUGINS
+
+    plugin = PLUGINS.get(lang)
+    reads = set(plugin.manifest.rule_keys) if plugin is not None else set()
+    for i, raw in enumerate(data.get("boundaries", []) or []):
+        unread = sorted(k for k in OPTIONAL_RULE_KEYS if k in raw and k not in reads)
+        if unread:
+            raise RulesMissing(
+                f"{path.name} rule {i + 1} ({raw.get('kind')}) uses {', '.join(unread)}, "
+                f"and the {lang} reader does not say it reads "
+                f"{'it' if len(unread) == 1 else 'them'} (`rule_keys` in its plugin.json). "
+                f"A reader ignores a key it does not know, so the rule would match "
+                f"unconditionally."
+            )
+
+
+def _arg_condition(raw: Any) -> ArgCondition | None:
+    if not raw:
+        return None
+    return ArgCondition(
+        index=raw.get("index"),
+        keyword=str(raw.get("keyword", "")),
+        in_=frozenset(str(x) for x in raw.get("in", [])),
+        not_in=frozenset(str(x) for x in raw.get("not_in", [])),
+        undecided_if_keyword=frozenset(str(x) for x in raw.get("undecided_if_keyword", [])),
+    )
 
 
 @lru_cache(maxsize=8)
@@ -513,6 +641,7 @@ def load_rules(lang: str) -> RuleSet:
             f"indistinguishable from a program that has none."
         )
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    _refuse_unread_keys(lang, data, path)
 
     bounds: list[BoundaryRule] = []
     subs: dict[str, BoundaryRule] = {}
@@ -527,6 +656,15 @@ def load_rules(lang: str) -> RuleSet:
             subscript=frozenset(raw.get("subscript", [])),
             contains=tuple(raw.get("contains", [])),
             target_arg=raw.get("target_arg"),
+            when_arg=_arg_condition(raw.get("when_arg")),
+            undecided=str(raw.get("undecided", "")),
+            note=str(raw.get("note", "")),
+            on_receiver={
+                str(m): ReceiverMethod(
+                    direction=Direction(spec.get("direction", raw.get("direction", "BOTH"))),
+                    target_arg=spec.get("target_arg"))
+                for m, spec in (raw.get("on_receiver") or {}).items()
+            },
         )
         bounds.append(rule)
         for s in rule.subscript:

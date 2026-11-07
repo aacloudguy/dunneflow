@@ -26,7 +26,7 @@
 namespace facts {
 
 // `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-constexpr int64_t SCHEMA_VERSION = 19;
+constexpr int64_t SCHEMA_VERSION = 20;
 
 inline void required(const char* what) {
     throw std::logic_error(std::string(what) + " is required and was never set");
@@ -61,6 +61,7 @@ inline const std::string STDIO = "STDIO";
 inline const std::string CLOUD_SDK = "CLOUD_SDK";
 inline const std::string LLM_API = "LLM_API";
 inline const std::string CRYPTO = "CRYPTO";
+inline const std::string LOCAL_IPC = "LOCAL_IPC";
 }  // namespace BoundaryKind
 
 // `schema.Confidence`, by its wire spelling.
@@ -319,6 +320,7 @@ struct BoundaryHit {
     std::string evidence = "";
     std::string salience = "normal";
     std::string through_macro = "";
+    bool declared = false;
 
     void write_json(std::string& out) const {
         out += '{';
@@ -335,6 +337,7 @@ struct BoundaryHit {
         if (evidence != "") json::field(out, first, "evidence", evidence);
         if (salience != "normal") json::field(out, first, "salience", salience);
         if (through_macro != "") json::field(out, first, "through_macro", through_macro);
+        if (declared != false) json::field(out, first, "declared", declared);
         out += '}';
     }
 };

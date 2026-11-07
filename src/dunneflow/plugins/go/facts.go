@@ -16,7 +16,7 @@ package main
 import "encoding/json"
 
 // SchemaVersion is `schema.SCHEMA_VERSION`. A plugin declaring another is refused by name.
-const SchemaVersion = 19
+const SchemaVersion = 20
 
 // List is a slice that encodes as `[]` when it is nil, because the codec refuses `null`
 // where it expects a list.
@@ -65,6 +65,7 @@ const (
 	BoundaryKindCloudSdk BoundaryKind = "CLOUD_SDK"
 	BoundaryKindLlmApi   BoundaryKind = "LLM_API"
 	BoundaryKindCrypto   BoundaryKind = "CRYPTO"
+	BoundaryKindLocalIpc BoundaryKind = "LOCAL_IPC"
 )
 
 // Confidence is `schema.Confidence`.
@@ -253,6 +254,7 @@ type BoundaryHit struct {
 	Evidence     string       `json:"evidence,omitempty"`
 	Salience     string       `json:"salience,omitempty"`
 	ThroughMacro string       `json:"through_macro,omitempty"`
+	Declared     bool         `json:"declared,omitempty"`
 }
 
 // DataStructure is `schema.DataStructure`.

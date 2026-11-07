@@ -53,7 +53,13 @@ from typing import Literal
 #     application calls by name, and the link that names it.
 # 18: `FileFacts.read_through`, and `files.read_through`: the file a fragment was parsed
 #     through, because a fragment's facts mean what its includer put in front of it.
-SCHEMA_VERSION = 19
+# 19: macros as their own fact: `macro_defs`, `macro_sites`, `macro_callees`, and what a
+#     macro wrote (`Routine.name_by`, `body_by`, `BoundaryHit.through_macro`).
+# 20: `BoundaryKind.LOCAL_IPC` and `BoundaryHit.declared` -- a Unix-domain socket is not a
+#     network connection, and a boundary a signature names is not one a body was seen to
+#     touch (Society2's Stage 0 stubs, whose bodies only panic). Built on a branch as 18,
+#     which `read_through` also was; it is 20 because it merged second.
+SCHEMA_VERSION = 20
 
 
 # --------------------------------------------------------------------------- #
@@ -74,6 +80,14 @@ class BoundaryKind(StrEnum):
     CLOUD_SDK = "CLOUD_SDK"
     LLM_API = "LLM_API"
     CRYPTO = "CRYPTO"
+    # **Another process on this machine, through the kernel and never through the
+    # network**: a Unix-domain socket (Go's `net.Dial("unix", p)`, Python's `AF_UNIX`), and
+    # the peer-credential reads that only such a socket answers. Distinct from NETWORK
+    # because it is a different promise -- nothing leaves the host, the far end is a path
+    # with an owner and a mode, and a timeout means something else -- and because a map
+    # that called it TCP said the program talks to the network when it does not. The
+    # target is the socket's path where the source writes one.
+    LOCAL_IPC = "LOCAL_IPC"
 
 
 class Direction(StrEnum):
@@ -719,6 +733,12 @@ class BoundaryHit:
     # The `MacroDef.id` whose expansion made this call, where nobody wrote it here. Blank for
     # a call somebody wrote, which is every boundary in every other language.
     through_macro: str = ""
+    # **Named by a signature, not seen in a body** (schema 20). A routine whose parameter
+    # or result is a `*net.UnixListener` says what it will touch before any body does --
+    # Society2's Stage 0 stubs only panic -- and that is worth a row, but it is a claim
+    # about intent and never a count of touches (rule 32). Every surface that counts or
+    # lists boundaries keeps the two apart.
+    declared: bool = False
 
 
 @dataclass(slots=True)

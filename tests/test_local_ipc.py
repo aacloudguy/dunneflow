@@ -431,3 +431,30 @@ def test_node_decides_a_connection_by_its_first_argument_s_shape(tmp_path_factor
                         "Unix-domain socket here reads as NETWORK")]
     assert rows[8] == [("LOCAL_IPC", "/run/s.sock", "net.connect")]
     assert ff.network == [], "a Unix socket is not a remote call, and net.connect is no library"
+
+
+def test_the_inspector_shows_a_declared_boundary_apart_from_every_touch(tmp_path):
+    """BACKLOG 48: in the graph and on no pane. The routine's specimen carries it beside
+    `touches`, never in it, and the inspector draws it in its own section."""
+    from pathlib import Path
+
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+    from dunneflow.web.detail import describe
+
+    if GO is None or shutil.which("go") is None:
+        pytest.skip("needs the Go plugin and `go`")
+    root = tmp_path / "t"
+    root.mkdir()
+    (root / "go.mod").write_text("module example.com/p\n\ngo 1.22\n", encoding="utf-8")
+    (root / "p.go").write_text(GO_SOURCE, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    rid = store.query("SELECT id FROM routines WHERE name = 'Listen'")[0]["id"]
+    d = describe(store, rid)
+    store.close()
+    assert [(b["kind"], b["direction"]) for b in d["declared"]] == [("LOCAL_IPC", "IN")]
+    assert d["touches"]["boundaries"] == [], "a stub that only panics touches nothing"
+    shell = (Path(__file__).resolve().parents[1] / "src/dunneflow/web/static/shell.js"
+             ).read_text(encoding="utf-8")
+    assert "declaredSec(s.declared)" in shell, "the inspector reads the key the server sends"

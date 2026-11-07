@@ -213,6 +213,10 @@ const rgbToHex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join
  * through `setOptions`. The split is the whole point of this file: the reader's choices
  * survive a reload and travel between views, and none of that is a renderer's business. */
 const g = {
+  /* **One dispatched body, picked in the inspector** (BACKLOG 44): `{from, to}` node
+   * indices, drawn as a single dashed line and nothing else. Cleared whenever the
+   * selection changes, because the line belongs to the call being inspected. */
+  dispatchPick: null,
   container: null,
   data: null, prepared: null, deckgl: null,
   // A fit was asked for while the container had no size; owed until it has one.
@@ -1125,6 +1129,7 @@ function captureWhere() {
 }
 
 function afterSelectionChange(d) {
+  g.dispatchPick = null;
   recomputeMembers(d);
   /* Strictly after `recomputeMembers`, and it was not, which is the whole of why a
    * selection made in the list armed nothing: `selectionOnScreen()` measures the bounds of
@@ -1454,6 +1459,21 @@ function buildLayers(d) {
     layers.push(new LineLayer({
       id: 'inter-edges', coordinateSystem: CARTESIAN, data: sg.inter,
       widthUnits: 'pixels', pickable: false,
+    }));
+  }
+  /* The body a dispatched call may run, once the reader has picked it from the list.
+   * Dashed, as every link that is not a drawn call is (design rule 5), and only ever one:
+   * traccar's `decode` may run 271 bodies, and the list is where they are counted. */
+  if (g.dispatchPick) {
+    const { from: a, to: b } = g.dispatchPick;
+    const P = (i) => [d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]];
+    layers.push(new PathLayer({
+      id: 'dispatch-pick', coordinateSystem: CARTESIAN,
+      data: [{ path: [P(a), P(b)] }],
+      getPath: (x) => x.path, getWidth: 2, getColor: PALETTE.edge,
+      widthUnits: 'pixels', capRounded: false, pickable: false,
+      getDashArray: [5, 4], dashJustified: true,
+      extensions: [new PathStyleExtension({ dash: true })],
     }));
   }
   if (sg && g.selGeom.byName.length) {
@@ -2792,6 +2812,19 @@ window.DunneFlowGraph = {
     buildSelectionGeometry(g.prepared);   // crossings carry plate colour along their length
     draw();
   },
+
+  /* Draw one dashed line from a caller to a body its dispatched call may run, or clear it
+   * with `null`. Answers whether both ends are drawn: a body on a folded plate has no
+   * index, and the inspector says so rather than drawing nothing silently. */
+  setDispatchPick(fromId, toId) {
+    if (!g.prepared) return false;
+    if (fromId === null || toId === null) { g.dispatchPick = null; draw(); return true; }
+    const a = this.indexOfId(fromId), b = this.indexOfId(toId);
+    g.dispatchPick = a >= 0 && b >= 0 ? { from: a, to: b } : null;
+    draw();
+    return g.dispatchPick !== null;
+  },
+  dispatchPick: () => g.dispatchPick ? { ...g.dispatchPick } : null,
 
   setSelection(picks) {
     if (!g.prepared) return;

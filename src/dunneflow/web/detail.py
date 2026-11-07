@@ -51,6 +51,20 @@ def _worded(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return calls
 
 
+def _may_run(store: Store, calls: list[dict[str, Any]],
+             args: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each call with the bodies it may run, where it is dispatched (BACKLOG 44, Tom's
+    choice of 2026-11-07: an inspector list, collapsed behind a count). Empty for every
+    other call, so the key is always there and a client never reads an absent field."""
+    by_site: dict[str, list[dict[str, Any]]] = {}
+    for row in _rows(store, queries.ROUTINE_MAY_RUN, args):
+        site = str(row.pop("site_id"))
+        by_site.setdefault(site, []).append(row)
+    for c in calls:
+        c["may_run"] = by_site.get(str(c.get("site_id") or ""), [])
+    return calls
+
+
 def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
     rows = _rows(store, sql, args)
     return rows[0] if rows else None
@@ -138,7 +152,8 @@ def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
             # Senders in another process that name this command (`resolve/ipc.py`).
             "by_name": _rows(store, queries.ROUTINE_SENT_TO, args),
         },
-        "out": {"calls": _worded(_rows(store, queries.ROUTINE_CALLEES, args)),
+        "out": {"calls": _may_run(store, _worded(_rows(store, queries.ROUTINE_CALLEES, args)),
+                                  args),
                 # Commands this routine sends by name, and what answered each, if anything.
                 "by_name": _rows(store, queries.ROUTINE_SENDS, args)},
         "touches": {
@@ -147,6 +162,9 @@ def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
             "net": _rows(store, queries.ROUTINE_NET_CALLS, args),
             "artefacts": _rows(store, queries.ROUTINE_ARTEFACTS, args),
         },
+        # **Named by the signature, never a touch** (BACKLOG 48): beside `touches` rather
+        # than inside it, so nothing that counts what is under `touches` can count these.
+        "declared": _rows(store, queries.ROUTINE_DECLARED, args),
         "governance": {
             "annotations": _rows(store, queries.ROUTINE_ANNOTATIONS, args),
             "comments": _rows(store, queries.ROUTINE_COMMENTS, args),

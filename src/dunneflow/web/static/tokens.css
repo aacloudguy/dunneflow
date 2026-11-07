@@ -4453,3 +4453,14 @@ body.detached-code #trailMount { display: none !important; }
 .analyze-pick { display: flex; gap: .4rem; align-items: stretch; }
 .analyze-pick input[type=text] { flex: 1 1 auto; min-width: 0; }
 .analyze-pick .linkbtn { flex: none; }
+
+/* A boundary its signature names and no body was seen to touch (BACKLOG 48): told apart by
+   shape -- a dashed edge and an open glyph -- and never by a new colour (design rule 5). */
+.touchrow.declared { border: 1px dashed var(--border-strong); border-radius: .2rem;
+  padding: .12rem .2rem; margin: .1rem 0; }
+
+/* The bodies a dispatched call may run (BACKLOG 44): a list behind its count. */
+.mayrun { margin: .1rem 0 .3rem 1.4rem; font-size: .72rem; }
+.mayrun > summary { cursor: pointer; color: var(--text-muted); }
+.mayrunrow { display: flex; gap: .4rem; align-items: baseline; padding: .08rem 0; }
+.mayrunpick[aria-pressed="true"] { font-weight: 700; color: var(--accent-text); }

@@ -673,7 +673,7 @@ const DEFAULTS = {
      stylesheet does not collapse and the toggle cannot change on its first click. */
   insp: { in: true, out: true, touches: true, gov: true, sig: false,
           value: true, reads: false, loops: true, shape: true, cols: true,
-          holds: true, stands: true, calls: true },
+          holds: true, stands: true, calls: true, declared: true },
   sortKey: 'fan',
   sortAsc: false,
 

@@ -96,15 +96,6 @@ is filled by `Edges.java`, and `dispatch_links` holds Java's alone. Go knows its
 interface and trait calls stop every walk as Java's did before 2026-11-02. *Settled by* each
 reader sending its locations, and a corpus (beads, pdfcraft) retaken before and after.
 
-**44. A dispatch link is followed by every walk and shown nowhere on the graph.** The
-inspector and the canvas draw calls and IPC crossings; a body reached by dispatch is in the
-reach and in `touches`/`impact` and MCP, and has no row or line of its own on screen. Not
-drawn because a 271-way fan-out (traccar's `decode`) is noise by default (design rule 19).
-*Settled by* Tom choosing how a dispatched call should look when it is asked for.
-**Tom's decision, 2026-11-07: an inspector list.** The inspector lists the bodies a selected
-call may run, collapsed behind a count; the canvas draws nothing until one is picked, and then
-one dashed line to it.
-
 **45. Java registers by supertype, and the grammar cannot say so.** Spring Data writes a
 repository at run time from an interface that extends `JpaRepository`, so petclinic's every
 `owners.save(…)` is `outside`/`unimplemented` and petclinic reads **0** boundary touches;
@@ -129,13 +120,6 @@ mixed tree to measure, then deciding whether the Kotlin reader's declarations ar
 javac as a classpath stub.
 **Tom's decision, 2026-11-07: find a public mixed Java and Kotlin tree first**, measure it, and
 decide the stubs from what it shows.
-
-**48. A declared boundary is in the graph and nowhere on the dashboard.** Go's reader
-records what a stub's signature names (`*net.UnixListener`) in `declared_boundaries`, and
-the CLI summary and `dunneflow query` show them; no pane does. Kept out of `boundaries` on
-purpose (`ARCHITECTURE.md`, `store.py`). *Settled by* an inspector section for a routine's
-declared boundaries, drawn by shape rather than colour (design rule 5), and never in a
-count of touches. From Society2's Stage 0 stubs, 2026-11-02.
 
 ## Stated residues — known, bounded, and not defects
 

@@ -12316,6 +12316,49 @@ function touchRows(t) {
   ];
 }
 
+/* **The bodies a dispatched call may run** (BACKLOG 44, Tom's choice of 2026-11-07: an
+ * inspector list). Every walk already follows them -- reach, `touches`, `impact`, MCP -- and
+ * nothing on screen showed one. Collapsed behind its count, because traccar's `decode` may
+ * run 271; the canvas draws **nothing** until one is picked, and then one dashed line to it
+ * (`Graph.setDispatchPick`). Picking is not opening: the inspector stays on the call, and
+ * each body has the ordinary button that goes there. */
+function mayRunList(c, from) {
+  const bodies = c.may_run || [];
+  if (!bodies.length) return "";
+  return `<details class="mayrun">
+      <summary>may run one of <b class="num">${bodies.length.toLocaleString()}</b></summary>
+      ${bodies.map(b => `<div class="mayrunrow">
+        <button class="linkbtn mayrunpick" data-from="${esc(from || "")}"
+          data-to="${esc(b.id)}" aria-pressed="false"
+          title="Draw one dashed line to this body">show</button>
+        <button class="gotonode" data-node="${esc(b.id)}" title="${esc(b.qualname || "")}"
+          ><code>${esc(b.qualname || b.name || b.id)}</code></button>
+        <span class="dim" style="color:var(--text-faint)">${esc(b.file || "")}:${b.line}</span>
+      </div>`).join("")}
+    </details>`;
+}
+
+/* **What a routine's signature names and no body was seen to touch** (BACKLOG 48,
+ * `declared_boundaries`). Society2's Stage 0 stubs return a `*net.UnixListener` from a body
+ * that only panics: worth knowing, and a claim about intent rather than a touch (rule 32). So
+ * its own section, its own count, and **drawn by shape rather than colour** (design rule 5):
+ * an open glyph and a dashed edge, beside the solid rows of what the body does. Absent where
+ * there is nothing to say, as every section that only some routines have (design rule 29's
+ * hidden, not dimmed: there is no control here to dim). */
+function declaredSec(declared) {
+  const rows = declared || [];
+  if (!rows.length) return "";
+  const body = rows.map(b => `
+      <div class="touchrow declared">
+        <span class="gl" aria-hidden="true">◌</span>
+        <span class="k">${esc(b.kind)}</span>
+        <span class="t">${esc(b.target || "")} <span class="dim">${esc(b.direction || "")}</span>
+          <span class="dim" style="color:var(--text-faint)">:${b.line}</span></span>
+      </div>`).join("")
+    + `<div class="hint">Named by its signature, not seen in its body. Not counted as a touch.</div>`;
+  return sec("declared", "Declared", rows.length, body);
+}
+
 /* ── a fold, described as the thing it stands for ──────────────────────────────────
  *
  * A diagram box is a class and its methods, or a file and its loose functions. It is not a
@@ -13248,6 +13291,7 @@ function viewInspector() {
                   esc(frontierWords(c))}</span>` : ""}</code>`}
         ${callBadge(c)}
       </div>
+      ${mayRunList(c, s.id)}
       ${why(c.line)}`).join("")
       : (sends.length ? "" : `<div class="hint">It calls nothing this map can see.</div>`))
     + sends.map(c => byNameRow(c, "⇢")).join("")
@@ -13337,6 +13381,7 @@ function viewInspector() {
     ${sec("out", "Out", calls.length + sends.length, outBody,
           calls.length === 1 ? "call site" : "call sites")}
     ${sec("touches", "Touches", touches.length, touchBody)}
+    ${declaredSec(s.declared)}
     ${/* **A boundary's links back, and only a boundary's** — this is the shared routine
          path, and `loops` is on a BOUNDARY specimen and no other. Drawn from the presence
          of the block rather than from `s.kind === "BOUNDARY"`, because the server decides
@@ -13876,6 +13921,18 @@ function wire() {
      off, and an external whose plate is folded away has no index. The inspector still
      shows it. Refusing to *show* something because it cannot be *drawn* would make the
      picture the limit of the map. */
+  /* One body at a time: picking another moves the line, picking the same one again takes
+     it away, and a body the canvas does not draw says so on the button rather than
+     drawing nothing (design rule 21's family). */
+  $$(".mayrunpick").forEach(b => b.addEventListener("click", () => {
+    const on = b.getAttribute("aria-pressed") === "true";
+    $$(".mayrunpick").forEach(o => { o.setAttribute("aria-pressed", "false"); o.textContent = "show"; });
+    if (!Graph.mounted()) { b.textContent = "no picture to draw on"; return; }
+    if (on) { Graph.setDispatchPick(null, null); return; }
+    const drawn = Graph.setDispatchPick(b.dataset.from, b.dataset.to);
+    b.setAttribute("aria-pressed", drawn ? "true" : "false");
+    b.textContent = drawn ? "shown" : "not on the picture";
+  }));
   $$(".gotonode").forEach(b => b.addEventListener("click", () => {
     /* **Two id spaces, routed by which attribute is there.** A row in a routine's pane
        names a node; a row in a fold's pane names a *box*, which is the drawing's own id and
@@ -14931,6 +14988,8 @@ document.addEventListener("keydown", (e) => {
  * from the source, generated markup included, which is the direction the existing guard
  * could not see: it reads `index.html`, and all four of these are written by JavaScript. */
 const WIRED_ATTRS = new Set([
+  // A body a dispatched call may run, picked in the inspector (`.mayrunpick`, BACKLOG 44).
+  "from", "to",
   "macro", "macro-goto", "macrofold",
   "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "crumb", "curi",
   "cursor", "den", "dgmcursor", "dgmedge", "disk", "drop", "edgesmotion", "egress", "ep",

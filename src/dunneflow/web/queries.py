@@ -331,7 +331,7 @@ ORDER BY kind, name
 # answer includes leaving the program. `external` and `at_boundary` say which.
 ROUTINE_CALLEES = """
 SELECT c.callee_id AS id, c.callee_expr, c.line, c.confidence, c.external,
-       c.at_boundary, c.ambiguous, c.constructs, c.frontier, c.reason,
+       c.at_boundary, c.ambiguous, c.constructs, c.frontier, c.reason, c.site_id,
        r.name, r.qualname, r.module, r.file, cf.lang AS lang
 FROM calls c
 LEFT JOIN routines r ON r.id = c.callee_id
@@ -342,6 +342,17 @@ WHERE c.caller_id = :id
 -- in `resolve/naming.py` has two on line 546 and two on 547. The probe found it as a
 -- pair of calls swapping places in the inspector between two readings of one map.
 ORDER BY c.line, c.callee_expr, c.site_id
+"""
+
+# **The bodies each of a routine's dispatched calls may run** (`dispatch_links`,
+# `resolve/dispatch.py`), for the inspector's list (BACKLOG 44). Never an edge: the
+# inspector shows them behind a count and the canvas draws one only when it is picked.
+ROUTINE_MAY_RUN = """
+SELECT d.site_id, r.id, r.name, r.qualname, r.file, r.line_start AS line
+FROM dispatch_links d
+JOIN routines r ON r.id = d.routine_id
+WHERE d.caller_id = :id
+ORDER BY d.site_id, r.qualname, r.file, r.line_start, r.id
 """
 
 # TOUCHES, in four kinds. Each keeps the evidence that admitted it: a claim
@@ -370,6 +381,15 @@ SELECT kind, direction, target, line, evidence, salience
 FROM boundaries
 WHERE routine_id = :id
 ORDER BY salience DESC, line, kind, target, direction, evidence
+"""
+
+# **What its signature names and no body was seen to touch** (`declared_boundaries`, schema
+# 20): its own query and its own key, so nothing that counts touches can count one (rule 51).
+ROUTINE_DECLARED = """
+SELECT kind, direction, target, line, evidence, salience
+FROM declared_boundaries
+WHERE routine_id = :id
+ORDER BY line, kind, target, direction, evidence
 """
 
 ROUTINE_SQL_OPS = """

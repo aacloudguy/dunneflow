@@ -173,3 +173,24 @@ def test_the_resolve_says_what_it_linked(tmp_path):
     assert stats.dispatch is not None
     assert stats.dispatch.sentence().startswith("java dispatch: ")
     assert stats.dispatch.missed.get("java", 0) == 0, "every body named lands on its routine"
+
+
+def test_the_inspector_lists_the_bodies_a_dispatched_call_may_run(store):
+    """BACKLOG 44, Tom 2026-11-07: an inspector list, collapsed behind a count, and the
+    canvas draws one dashed line only when a body is picked."""
+    from pathlib import Path
+
+    from dunneflow.web.detail import describe
+
+    (run,) = _ids(store, "org.app.Main.run")
+    d = describe(store, run)
+    call = next(c for c in d["out"]["calls"] if c["callee_expr"] == "s.area")
+    assert sorted(b["qualname"] for b in call["may_run"]) == [
+        "org.lib.Circle.area", "org.lib.Square.area"]
+    for c in d["out"]["calls"]:
+        want = sorted(r["routine_id"] for r in store.query(
+            "SELECT routine_id FROM dispatch_links WHERE site_id = ?", (c["site_id"],)))
+        assert sorted(b["id"] for b in c["may_run"]) == want, c["callee_expr"]
+    shell = (Path(__file__).resolve().parents[1] / "src/dunneflow/web/static/shell.js"
+             ).read_text(encoding="utf-8")
+    assert "mayRunList(c, s.id)" in shell and "Graph.setDispatchPick" in shell

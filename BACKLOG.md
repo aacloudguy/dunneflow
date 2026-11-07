@@ -77,15 +77,6 @@ blind trades a false row for a missing one. *Settled by* diffing boundaries befo
 after on Society, DunneNote and a Kotlin tree, and reading every lost row, as the 4d commit
 did.
 
-**39. A language whose `private` is not measured is not said to be.** `private_means:
-surface` (Rust, Kotlin, C++) leaves the naming lane's LEAKAGE claim out for that language,
-correctly, and nothing on the page says it was left out (design rule 1). pdfcraft's naming
-report simply has no privacy line. *Settled by* `NamingMeasurement` carrying the languages
-not measured, with the reason from the rules file, and the three surfaces (CLI, the
-`naming.md` page, the Vocabulary lane) saying it.
-
----
-
 **42. The second recursive arm's cost on a large map is unmeasured.** Every reach query now
 also joins `ipc_links`. That table is empty on every map but DunneNote's, and a read-only
 store walks in memory, so the cost is expected to be small. Nobody has timed it (rule 24).

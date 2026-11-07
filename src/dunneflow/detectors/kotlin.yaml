@@ -168,6 +168,7 @@ builtins: [
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # `internal` and `protected` are recorded as private, and both are visible beyond the file.
 private_means: surface
+private_reason: "`internal` and `protected` are recorded as private, and both are visible beyond the file"
 
 # Kotlin has no macros.
 macro_expansion: none

@@ -392,6 +392,12 @@ def _scanned_section(m: NamingMeasurement, docs: DocStore | None,
     else:
         lines.append("No documentation was read, so nothing here is stated — only "
                      "measured.\n")
+    if m.not_measured:
+        # Design rule 1: a page with no privacy line for a language looks exactly like one
+        # whose privacy held (BACKLOG 39).
+        lines.append("**Not measured.** " + " ".join(
+            f"{languages.display(n.lang)}'s {n.what}: {n.reason}." for n in m.not_measured)
+            + " No claim about it is made here.\n")
     lines.append("A measured convention is reported only above these thresholds. They "
                  "are printed so they can be disagreed with:\n")
     lines.append("| Threshold | Value |")

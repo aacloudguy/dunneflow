@@ -358,6 +358,9 @@ class RuleSet:
     # not measured. pdfcraft reported 624 "leaks" under Python's reading, 440 of them
     # `pub(crate)` doing what it says. Empty means not measured; an unknown word is refused.
     private_means: str = ""
+    # Why a language's `private` is not measured, in the rules file's words, for every
+    # surface that leaves the LEAKAGE claim out to say so (design rule 1, BACKLOG 39).
+    private_reason: str = ""
     # **What a second definition of one name means**, declared for the same reason and
     # found the same way — by running a correct new reader at an unchanged judgement
     # (rule 98, the third time).
@@ -719,6 +722,7 @@ def load_rules(lang: str) -> RuleSet:
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
         macro_expansion=_macro_expansion(data.get("macro_expansion", ""), lang, path),
         private_means=_private_means(data.get("private_means", ""), lang, path),
+        private_reason=str(data.get("private_reason", "") or ""),
         redefinition=_redefinition(data.get("redefinition", ""), lang, path),
         frontier_words=_frontier_words(data.get("frontier_words"), lang, path),
         file_entry=_file_entry(data.get("file_entry", ""), lang, path),

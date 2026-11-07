@@ -279,6 +279,17 @@ class NamingMeasurement:
     conventions: list[Convention] = field(default_factory=list)
     gaps: list[Gap] = field(default_factory=list)
     thresholds: dict[str, float] = field(default_factory=dict)
+    # **What was not measured, and why** (design rule 1, BACKLOG 39): a language whose
+    # `private` this tool cannot read as a boundary has no LEAKAGE claim, and a page that
+    # simply has no privacy line looks exactly like one whose privacy held.
+    not_measured: list[NotMeasured] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class NotMeasured:
+    lang: str
+    what: str
+    reason: str
 
 
 # --------------------------------------------------------------------------- #
@@ -1038,6 +1049,12 @@ def measure(store: Store, private_prefix: bool = False) -> NamingMeasurement:
     conventions.extend(mine_house_prefix(store, split))
     conventions.extend(mine_affix_conventions(store))
     conventions.extend(mine_privacy_convention(store, split))
+    not_measured = [
+        NotMeasured(lang=lang, what="privacy",
+                    reason=load_rules(lang).private_reason
+                    or f"the {languages.display(lang)} rules do not say what `private` means")
+        for lang in langs if _PRIVATE_SCOPE.get(load_rules(lang).private_means) is None
+    ]
     conventions.sort(key=lambda c: (-c.total, c.claim))
     return NamingMeasurement(
         conventions=conventions,
@@ -1048,4 +1065,5 @@ def measure(store: Store, private_prefix: bool = False) -> NamingMeasurement:
             "minimum affix count": MIN_AFFIX_COUNT,
             "minimum affix precision": MIN_AFFIX_PRECISION,
         },
+        not_measured=not_measured,
     )

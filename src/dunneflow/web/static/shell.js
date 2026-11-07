@@ -10299,6 +10299,7 @@ async function loadNaming() {
     CONVENTIONS = d.conventions || [];
     VOCAB.gaps = d.gaps || [];
     VOCAB.thresholds = d.thresholds || {};
+    VOCAB.notMeasured = d.notMeasured || [];
     VOCAB.naming = "ready";
   } catch (err) {
     VOCAB.naming = "failed";
@@ -11385,6 +11386,9 @@ function viewNaming() {
         : `<p class="hint">Every population large enough to measure produced a dominant
            convention. This section exists so that a program where none did says so, rather
            than showing a shorter list that looks the same as a tidier program.</p>`}
+        ${(VOCAB.notMeasured || []).map(n => `<p class="hint"><b>Not measured:</b>
+          ${esc(n.langName)}'s ${esc(n.what)} \u2014 ${esc(n.reason)}. No claim about it is made
+          here.</p>`).join("")}
         <div class="provfoot">Reported only when
           ${esc(Object.entries(th).map(([k, v]) => `${k} = ${v}`).join(" · ") || "no thresholds were sent")}.
           An affix must also beat a correction for the number of affixes tried — with thousands

@@ -363,6 +363,7 @@ redefinition: overloads
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # a class's private member is private to the class, whose members are routinely defined in another file.
 private_means: surface
+private_reason: "a class's private member is private to the class, whose members are routinely defined in another file"
 
 # A framework's build configuration, for a tree with no compile_commands.json (Tom,
 # 2026-11-02). The C and C++ reader parses with the machine's own target and headers; what a

@@ -113,6 +113,9 @@ def measure_naming(store: Store, private_prefix: bool = False) -> dict[str, Any]
                   "total": g.total,
                   "spread": [[k, n] for k, n in g.spread]} for g in m.gaps],
         "thresholds": m.thresholds,
+        # Said, never left out (design rule 1): a language whose privacy is not measured.
+        "notMeasured": [{"lang": n.lang, "langName": languages.display(n.lang),
+                         "what": n.what, "reason": n.reason} for n in m.not_measured],
     }
 
 

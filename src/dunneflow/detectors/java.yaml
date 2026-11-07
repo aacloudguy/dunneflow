@@ -225,6 +225,7 @@ builtins: []
 # `protected` and package-private are recorded as private beside `private` itself, and
 # both are visible beyond the file, so a call from another file is often correct code.
 private_means: surface
+private_reason: "`protected` and package-private are recorded as private beside `private` itself, and both are visible beyond the file"
 
 # **Why a call has no edge, in Java's terms** (`detectors.frontier_words`). `untyped` is a
 # receiver javac could not type -- a missing class, generated code, a dependency that is not

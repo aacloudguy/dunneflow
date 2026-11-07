@@ -1759,6 +1759,8 @@ def cmd_naming(args: argparse.Namespace) -> int:
     for g in m.gaps:
         spread = ", ".join(f"{k} {v}" for k, v in g.spread)
         print(f"  GAP  {g.population}: {g.total:,} counted — {spread}")
+    for n in m.not_measured:
+        print(f"  NOT MEASURED  {languages.display(n.lang)} {n.what}: {n.reason}")
     if docs is not None:
         docs.close()
     store.close()

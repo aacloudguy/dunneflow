@@ -255,6 +255,7 @@ builtins: [
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # `pub(crate)` and `pub(super)` are recorded as private beside true module privacy, so a call from another module is often correct code.
 private_means: surface
+private_reason: "`pub(crate)` and `pub(super)` are recorded as private beside true module privacy, so a call from another module is often correct code"
 
 # **A command a client in the same application calls by name** (`EntrypointKind.IPC_COMMAND`).
 # Tauri's front end reaches a Rust function with `invoke("name")`; the function says so with

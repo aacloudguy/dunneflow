@@ -517,3 +517,32 @@ def test_the_underscore_allowance_is_stated_only_where_it_moved_a_count(tmp_path
         assert not any("environment" in p for p in tagged), tagged
     finally:
         store.close()
+
+
+def test_a_language_whose_privacy_is_not_measured_says_so(tmp_path):
+    """BACKLOG 39: `private_means: surface` leaves LEAKAGE out for that language, and
+    every surface used to say nothing -- which reads as a privacy that held."""
+    from dunneflow.render.naming import render_naming
+    from dunneflow.render.page import Stamp
+    from dunneflow.resolve.naming import measure
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+    from dunneflow.web.vocabulary import measure_naming
+
+    tree = tmp_path / "src"
+    tree.mkdir()
+    (tree / "a.kt").write_text(
+        "internal fun helper() {}\nfun main() { helper() }\n", encoding="utf-8")
+    (tree / "b.py").write_text("def _quiet():\n    pass\n", encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(tree, store)
+    m = measure(store)
+    assert [(n.lang, n.what) for n in m.not_measured] == [("kotlin", "privacy")]
+    assert "`internal`" in m.not_measured[0].reason, "the rules file's own reason"
+    api = measure_naming(store)
+    assert [n["langName"] for n in api["notMeasured"]] == ["Kotlin"]
+    (tmp_path / "out").mkdir()
+    page = render_naming(store, None, tmp_path / "out", "t",
+                         Stamp(generated="x", revision="", analysed=""))
+    assert "**Not measured.** Kotlin's privacy:" in page.read_text(encoding="utf-8")
+    store.close()

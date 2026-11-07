@@ -776,8 +776,12 @@ def test_a_call_through_an_any_is_left_alone_and_a_library_call_is_named_outside
     exactly like a reader that had stopped resolving.
     """
     facts, supplied, outside, unknown = edges
-    assert _edge_for(facts, supplied, "viaAny", "bag.whatever") is None
-    assert _edge_for(facts, supplied, "viaLibrary", "Math.max") is None
+    # BACKLOG 36: neither is an edge, and each is sent saying which kind of *no* it is.
+    any_ = _edge_for(facts, supplied, "viaAny", "bag.whatever")
+    lib = _edge_for(facts, supplied, "viaLibrary", "Math.max")
+    assert any_ is not None and not any_.file and any_.reason == "untyped"
+    assert lib is not None and not lib.file and lib.reason == "outside"
+    assert lib.frontier == "lib.es5.d.ts.max"
     assert outside >= 1, "Math.max resolves into lib.es5.d.ts"
     assert unknown >= 1, "a call on an `any` resolves to nothing at all"
 

@@ -261,12 +261,23 @@ export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
   for (const group of pending) {
     for (const call of group.calls) {
       const answer = resolveOne(group.checker, call.node, anchors);
+      /* **Where it stops, and why** (BACKLOG 36): sent with no target, in the words every
+       * reader uses, so *About this map* can say it rather than counting a silence. */
       if (answer === "unknown") {
         unknown += 1;
+        edges.push({
+          site_id: call.site_id, caller_id: call.caller_id, reason: "untyped",
+          how: "symbol; the checker could not say: a call through `any`, a computed name, "
+            + "or a name the compilation does not hold",
+        });
         continue;
       }
-      if (answer === "outside") {
+      if (typeof answer === "object" && "outside" in answer) {
         outside += 1;
+        edges.push({
+          site_id: call.site_id, caller_id: call.caller_id, reason: "outside",
+          frontier: answer.outside, how: "symbol; declared outside this map",
+        });
         continue;
       }
       if (typeof answer === "number") {
@@ -284,6 +295,10 @@ export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
       const target = where.get(answer.routine);
       if (target === undefined) {
         unknown += 1;
+        edges.push({
+          site_id: call.site_id, caller_id: call.caller_id, reason: "unfollowed",
+          how: "symbol; a routine this reader found and could not place",
+        });
         continue;
       }
       edges.push({
@@ -313,13 +328,15 @@ function resolveOne(
   checker: ts.TypeChecker,
   node: CallNode,
   anchors: Map<ts.Node, Routine>,
-): { routine: Routine; how: string } | number | "outside" | "unknown" {
+): { routine: Routine; how: string } | number | { outside: string } | "unknown" {
   let answered = false;
+  let far: ts.Declaration | undefined;
 
   const signature = checker.getResolvedSignature(node);
   const declared = signature?.declaration;
   if (declared !== undefined) {
     answered = true;
+    far = declared;
     const hit = climb(declared, anchors);
     if (hit !== null) return { routine: hit, how: "signature" };
     // The checker resolved it and the far end is not a routine this reader records. Fall
@@ -336,11 +353,13 @@ function resolveOne(
     try {
       symbol = checker.getAliasedSymbol(symbol);
     } catch {
-      return answered ? "outside" : "unknown";
+      return answered ? { outside: farEnd(far, callee(node)) } : "unknown";
     }
   }
   const decls = symbol?.declarations;
-  if (decls === undefined || decls.length === 0) return answered ? "outside" : "unknown";
+  if (decls === undefined || decls.length === 0) {
+    return answered ? { outside: farEnd(far, callee(node)) } : "unknown";
+  }
 
   const found = anchorsOf(decls, anchors);
   if (found.length === 1) {
@@ -349,5 +368,28 @@ function resolveOne(
   }
   if (found.length > 1) return found.length;
   // A symbol with declarations, none of which is a routine in this map.
-  return "outside";
+  return { outside: farEnd(far ?? decls[0], callee(node)) };
+}
+
+/**
+ * The far end, as a reader can look it up: the package a declaration ships in
+ * (`react.useState`, `@tauri-apps/api.invoke`), the library file the language declares it in
+ * (`lib.es5.d.ts.map` for `xs.map(f)`), or the declaration file in this tree, then the name
+ * called.
+ */
+function farEnd(decl: ts.Declaration | undefined, name: ts.Node): string {
+  const called = ts.isPropertyAccessExpression(name) ? name.name.text
+    : ts.isIdentifier(name) ? name.text : name.getText();
+  if (decl === undefined) return called;
+  const file = decl.getSourceFile().fileName.replace(/\\/g, "/");
+  const nm = file.lastIndexOf("/node_modules/");
+  let home: string;
+  if (nm >= 0) {
+    const rest = file.slice(nm + "/node_modules/".length).split("/");
+    home = rest[0]?.startsWith("@") ? `${rest[0]}/${rest[1] ?? ""}` : (rest[0] ?? "");
+    if (home === "@types/node" || home.startsWith("@types/")) home = home.slice("@types/".length);
+  } else {
+    home = file.slice(file.lastIndexOf("/") + 1);
+  }
+  return `${home}.${called}`;
 }

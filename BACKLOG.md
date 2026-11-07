@@ -40,18 +40,6 @@ local module cache (`go env GOMODCACHE`, pinned by `go.sum`), read only where it
 present, never fetched (design rule 14). *Settled by* a reader that consults the module cache
 when it exists, with the unknown count retaken on rain and beads.
 
-**36. Only the Rust reader says where its calls stop.** `calls.frontier` and `calls.reason`
-(schema 17) are filled by Rust alone, so *About this map* says *3,608 more whose reader does
-not say* of DunneNote's TypeScript, and every Python, Go and C++ map says nothing. Not done
-because each reader knows different things: TypeScript's checker names a far end's
-declaration file, Go's names its package, Python's resolver knows the import it stopped at.
-*Settled by* each reader sending `frontier`/`reason` on its unresolved calls (Python's
-through `NoEdge`, which already carries both), with the unsaid count retaken per corpus. **Go's half done 2026-11-07:** every unresolved Go call is sent with
-`outside` and the checker's far end, or `untyped`/`unfollowed` and a sentence; on beads the
-Go calls whose reader does not say fell from 25,392 to 2. **Python's half done the same day**
-(Society: 19,616 unsaid to 2,445; DEAD_CODE 313 to 280, by its own rule that an untyped call
-naming a routine spares it). TypeScript remains: DunneNote's 3,608.
-
 **37. `--include-tests` does not bring back Rust's inline tests.** The walk leaves test
 *files* out unless asked; the Rust reader leaves `#[cfg(test)]` items out always, because
 nothing tells a reader the flag and the cache key does not carry it (rule 81). 159 items on

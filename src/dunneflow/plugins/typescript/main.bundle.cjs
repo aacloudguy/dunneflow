@@ -214098,10 +214098,23 @@ function collectEdges(session2, rules2) {
       const answer = resolveOne(group.checker, call.node, anchors);
       if (answer === "unknown") {
         unknown += 1;
+        edges.push({
+          site_id: call.site_id,
+          caller_id: call.caller_id,
+          reason: "untyped",
+          how: "symbol; the checker could not say: a call through `any`, a computed name, or a name the compilation does not hold"
+        });
         continue;
       }
-      if (answer === "outside") {
+      if (typeof answer === "object" && "outside" in answer) {
         outside += 1;
+        edges.push({
+          site_id: call.site_id,
+          caller_id: call.caller_id,
+          reason: "outside",
+          frontier: answer.outside,
+          how: "symbol; declared outside this map"
+        });
         continue;
       }
       if (typeof answer === "number") {
@@ -214117,6 +214130,12 @@ function collectEdges(session2, rules2) {
       const target = where.get(answer.routine);
       if (target === void 0) {
         unknown += 1;
+        edges.push({
+          site_id: call.site_id,
+          caller_id: call.caller_id,
+          reason: "unfollowed",
+          how: "symbol; a routine this reader found and could not place"
+        });
         continue;
       }
       edges.push({
@@ -214133,10 +214152,12 @@ function collectEdges(session2, rules2) {
 }
 function resolveOne(checker, node, anchors) {
   let answered = false;
+  let far;
   const signature = checker.getResolvedSignature(node);
   const declared = signature?.declaration;
   if (declared !== void 0) {
     answered = true;
+    far = declared;
     const hit = climb(declared, anchors);
     if (hit !== null) return { routine: hit, how: "signature" };
   }
@@ -214145,18 +214166,35 @@ function resolveOne(checker, node, anchors) {
     try {
       symbol = checker.getAliasedSymbol(symbol);
     } catch {
-      return answered ? "outside" : "unknown";
+      return answered ? { outside: farEnd(far, callee(node)) } : "unknown";
     }
   }
   const decls = symbol?.declarations;
-  if (decls === void 0 || decls.length === 0) return answered ? "outside" : "unknown";
+  if (decls === void 0 || decls.length === 0) {
+    return answered ? { outside: farEnd(far, callee(node)) } : "unknown";
+  }
   const found = anchorsOf(decls, anchors);
   if (found.length === 1) {
     const one = found[0];
     if (one !== void 0) return { routine: one, how: "symbol" };
   }
   if (found.length > 1) return found.length;
-  return "outside";
+  return { outside: farEnd(far ?? decls[0], callee(node)) };
+}
+function farEnd(decl, name) {
+  const called = import_typescript6.default.isPropertyAccessExpression(name) ? name.name.text : import_typescript6.default.isIdentifier(name) ? name.text : name.getText();
+  if (decl === void 0) return called;
+  const file = decl.getSourceFile().fileName.replace(/\\/g, "/");
+  const nm = file.lastIndexOf("/node_modules/");
+  let home;
+  if (nm >= 0) {
+    const rest = file.slice(nm + "/node_modules/".length).split("/");
+    home = rest[0]?.startsWith("@") ? `${rest[0]}/${rest[1] ?? ""}` : rest[0] ?? "";
+    if (home === "@types/node" || home.startsWith("@types/")) home = home.slice("@types/".length);
+  } else {
+    home = file.slice(file.lastIndexOf("/") + 1);
+  }
+  return `${home}.${called}`;
 }
 
 // src/facts.ts

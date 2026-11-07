@@ -18149,6 +18149,36 @@ function aboutSays(field, whenNone, notRecorded) {
   return field.none ? esc(whenNone) : esc(field.value);
 }
 
+/* **A map no model touched says nothing about models** (Tom, 2026-11-07, BACKLOG 41). The
+   two rows *Inferred facts: none* and *Read by a model: none* sat directly under a row
+   saying calls were *matched by name*, which is a different kind of inference, and read
+   quickly the two contradicted each other. *"If no model was invoked, we should not
+   mention the word 'Model' at all. If one was used, we can mention it and state plainly
+   what the results were."* So the rows exist only where a model was used, and say what it
+   did; a map that predates the question says so without naming one; and a map that used
+   none says what is true of every fact in it, in words that need no model to be read. */
+function aboutVow(d) {
+  const recorded = d.inference && d.inference.recorded && d.model && d.model.recorded;
+  if (!recorded) {
+    return `<p class="hint">This map was written before it could say how its facts were made.
+       Read it again to have it say.</p>`;
+  }
+  if (d.inference.none && d.model.none) {
+    return `<p class="hint">Every fact here was read from the source with the standard
+       library, and nothing left this machine.</p>`;
+  }
+  return `<div class="about-vow">
+      <div class="about-k">Inferred facts</div>
+      <div class="about-v">${aboutSays(d.inference,
+          "none \u2014 every fact here was read, not guessed",
+          "not recorded \u2014 written before this map could say")}</div>
+      <div class="about-k">Read by a model</div>
+      <div class="about-v">${aboutSays(d.model,
+          "none \u2014 this analysis is deterministic and local",
+          "not recorded \u2014 written before this map could say")}</div>
+    </div>`;
+}
+
 function aboutDialog() {
   if (!ABOUT) return "";
   if (ABOUT.loading || ABOUT.failed) {
@@ -18279,19 +18309,7 @@ function aboutDialog() {
     <h2 class="about-title">About this map</h2>
     <div class="about-grid">${rows.join("")}</div>
 
-    <div class="about-vow">
-      <div class="about-k">Inferred facts</div>
-      <div class="about-v">${aboutSays(d.inference,
-          "none \u2014 every fact here was read, not guessed",
-          "not recorded \u2014 written before this map could say")}</div>
-      <div class="about-k">Read by a model</div>
-      <div class="about-v">${aboutSays(d.model,
-          "none \u2014 this analysis is deterministic and local",
-          "not recorded \u2014 written before this map could say")}</div>
-    </div>
-    <p class="hint">DunneFlow reads code with the standard library and reads prose by hand.
-       Nothing here was asked of a model and nothing left this machine. If that ever
-       changes it will be something you turn on, and this is where it will say so.</p>
+${aboutVow(d)}
 
     <div class="about-foot">
       <button class="linkbtn" data-aboutagain>Analyse this again&hellip;</button>

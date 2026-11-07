@@ -330,3 +330,17 @@ def test_what_the_run_was_told_names_only_what_it_removed(
     assert _args_said(plain) == "", f"a default run claims {_args_said(plain)!r}"
     with_flag = build_parser().parse_args(["analyze", "x", flag])
     assert expected in _args_said(with_flag)
+
+
+def test_a_map_no_model_touched_says_nothing_about_models() -> None:
+    """Tom, 2026-11-07 (BACKLOG 41): "If no model was invoked, we should not mention the
+    word 'Model' at all." The rows exist only on the branch where one was used."""
+    shell = (SRC / "web/static/shell.js").read_text(encoding="utf-8")
+    body = shell.split("function aboutVow", 1)[1].split("\nfunction ", 1)[0]
+    unrecorded, none, used = body.split("return `")[1:4]
+    for branch in (unrecorded, none):
+        text = branch.split("`;", 1)[0].lower()
+        assert "model" not in text and "inferred" not in text, text
+    assert "d.inference" in used and "d.model" in used
+    dialog = shell.split("function aboutDialog", 1)[1].split("\nfunction ", 1)[0]
+    assert "model" not in dialog.split("aboutVow(d)", 1)[1].split("about-foot", 1)[0].lower()

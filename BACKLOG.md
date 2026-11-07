@@ -28,7 +28,10 @@ now holds the Go reader's seven `.go` files and the Rust reader's `.rs` files (i
 is pruned), so a self-map reads `python · typescript · go · rust`, and the
 figures the guide was photographed against (`python 131 · typescript 11`, chapters 1 and 4)
 move. Not done because a retake is its own session with its own record. *Settled by* the next
-retake, with `GROUND-TRUTH.md`'s screenshot-map figures rewritten from it.
+retake, with `GROUND-TRUTH.md`'s screenshot-map figures rewritten from it. *Added 2026-11-07:* `docs/01-installing.md`'s
+*About this map* screenshot still shows *Inferred facts* and *Read by a model*, which a map no
+model touched no longer says (BACKLOG 41, settled); the image and its caption go with the
+retake.
 
 **32. A dependency is an empty stand-in, so methods on its types are *unknown*, not
 *outside*.** Measured: rain's 628 unknown calls are mostly cobra's `Cmd.Flags()` and
@@ -93,17 +96,6 @@ never taken is a common problem, so finding it and pointing it out is a very str
 feature."* A command no client in the tree sends is a finding at **DEAD_CODE's severity and
 place in the worklist**, with its blind spot stated: a client in a language this build does
 not read, a test, or a second front end outside the tree.
-
-**41. *About this map* says "Inferred facts: none" directly under "matched by name".** Design
-rule 28's *inferred* is a provenance tier: a fact guessed by a model, of which there are
-none. A link matched by name is `Confidence.INFERRED` in the sense Python's by-name edges
-have always been. Read quickly, the two rows contradict each other. *Settled by* Tom
-choosing between leaving it, adding a clause to the vow ("a call or command matched by name
-is labelled where it is shown"), or rewording one of the rows.
-**Tom's decision, 2026-11-07:** *"If no model was invoked, we should not mention the word
-'Model' at all. If one was used, we can mention it and state plainly what the results
-were."* So a map no model touched has no inference row at all, and one that used a model
-says plainly what it produced; "matched by name" stays where it is.
 
 **42. The second recursive arm's cost on a large map is unmeasured.** Every reach query now
 also joins `ipc_links`. That table is empty on every map but DunneNote's, and a read-only

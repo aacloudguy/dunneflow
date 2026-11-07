@@ -15,13 +15,11 @@ without going back to the start page, and **× Close this map**, which puts you 
 start page with nothing open.
 
 **source directory** is a button, not a label. It opens *About this map*: what read it,
-when, and the two rows it exists for:
-
-| Inferred facts | none — every fact here was read, not guessed |
-| Read by a model | none — this analysis is deterministic and local |
-
-Those are a standing guarantee rather than a placeholder waiting for a model to be wired
-in. Nothing on the analysis path calls a model or opens a network connection.
+when, and how its facts were made. A map read the ordinary way ends with one sentence:
+*Every fact here was read from the source with the standard library, and nothing left this
+machine.* Nothing on the analysis path calls a model or opens a network connection, so the
+dialog says nothing about one. If a model is ever used it will be something you turn on,
+and this is where the dialog will say what it did.
 
 It shows the **leaf** of the directory the map was read from, never the path. A path is
 one machine's layout, in an artefact built to be handed to someone else.

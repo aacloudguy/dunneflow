@@ -147,8 +147,15 @@ func (r *reader) edges(id any) {
 	for _, n := range h.notes {
 		note("%s", n)
 	}
+	// The notes go to the host as well as to stderr, which nobody reads (rule 38): the
+	// host shows them beside the reader's opening notes (`edges_done.notes`).
+	notes := h.notes
+	if notes == nil {
+		notes = []string{}
+	}
 	r.send(frame{"t": "edges_done", "id": id, "supplied": supplied,
-		"unresolved": h.outside + h.unknown, "outside": h.outside, "unknown": h.unknown})
+		"unresolved": h.outside + h.unknown, "outside": h.outside, "unknown": h.unknown,
+		"notes": notes})
 }
 
 func main() {

@@ -426,3 +426,33 @@ reader does not list (rule 49). A new reader that wants these implements them an
 
 **A conditioned rule also stops a remote call being recorded**: a LOCAL_IPC hit makes no
 `net_calls` row, so a socket file has no protocol and no NO_TIMEOUT.
+
+## A method by its receiver's type, and why the types are declared
+
+*Written 2026-11-07, for Society2.* Every file operation Society2 makes through an `os.Root`
+was missing, because a Go boundary was matched on the spelling a file writes and `r.ReadFile`
+names no package. `os.Root` is how Go code that must not follow a symlink out of a folder
+reads and writes, so the gap hid the file boundaries that mattered most. The same gap hid
+`net.Dialer.DialContext(ctx, "unix", p)`, Society2's own IPC client.
+
+**The facts pass now asks `go/types` what a receiver is** (`plugins/go/typed.go`). A method
+of a declared type is spelled with its type, `os.Root.ReadFile`, matched against `exact`
+entries only, and recorded with that spelling as its evidence; a type of the program's own
+with a `ReadFile` method is nothing, whatever its variable is called (rule 30). A boundary
+function **taken as a value** (`var lchown = (*os.Root).Lchown`, beads' `openFileFn =
+os.OpenFile`) is a touch where it is taken, `— taken as a value` in its evidence, because the
+call that follows is through a variable and names nothing.
+
+**The types are declared in the rules file, never read from GOROOT, and that is the whole
+design.** A file's facts are cached under its hash and the reader's stamp, and the stamp does
+not carry the toolchain. Facts read against the installed standard library would change with
+an upgrade and nothing would notice (rule 81); putting the toolchain in the stamp would make
+every Go row stale on a machine with no Go, which a writable open discards. So `go.yaml`'s
+`typed_packages` holds the API the typed rules need, as Go source with no bodies, and the
+answer depends on the file and the rules. **One file is checked, never its package** (rule
+95): a receiver whose type is declared in another file is not typed, the edge pass counts
+those calls on the whole module, and the count reaches the map in `edges_done.notes`.
+
+**Ask the next reader which of its boundaries are methods.** A reader with a checker can do
+this; one without (Rust's path resolver) can do it only where the source writes the type
+down. Either way the type must come from something its cache key covers.

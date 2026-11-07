@@ -522,6 +522,11 @@ queries know a language exists.
   nothing is ever fetched; `facts.go` is generated from `schema.py` by
   `tools/gen_facts_go.py` and compared by a test that needs no Go, and its hand-written
   BLAKE2b and Python-compatible decoding are pinned by `tests/fixtures/ids/vectors.json`.
+  **`typed.go` types a method's receiver one file at a time**, against declarations
+  `go.yaml` carries (`typed_packages`) rather than GOROOT, so `r.ReadFile` on an `*os.Root`
+  is `os.Root.ReadFile` and a file's facts still depend on that file and the rules alone
+  (rules 81 and 95). The edge pass counts the calls whose receiver is typed in another file
+  and says so in `edges_done.notes`.
 
   **`plugins/rust/` is the same shape with its dependencies vendored**: `syn`, `proc-macro2`,
   `quote` and `unicode-ident` under `vendor/`, built `--offline --locked`, every file in the

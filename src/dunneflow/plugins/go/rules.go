@@ -10,6 +10,9 @@ package main
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"sort"
 	"strings"
 )
@@ -112,6 +115,10 @@ type Rules struct {
 	Registrations []Registration `json:"registrations"`
 	Commands      []Command      `json:"commands"`
 	Signatures    []Signature    `json:"signatures"`
+	// The packages a method's receiver is typed against, as Go source with no bodies,
+	// keyed by import path (`typed.go`). A method of one of their types is spelled
+	// `os.Root.ReadFile` and matched against `exact` entries only.
+	TypedPackages map[string]string `json:"typed_packages"`
 	Network       struct {
 		Libraries map[string]netLibrary `json:"libraries"`
 		Verbs     []string              `json:"verbs"`
@@ -123,6 +130,8 @@ type Rules struct {
 	// Longest prefix first, as `load_rules` sorts them.
 	netPrefixes []string
 	entryNames  map[string]bool
+	// Every type the declared packages declare, as its typed spelling begins: `os.Root`.
+	typedType map[string]bool
 }
 
 func parseRules(raw any) Rules {
@@ -166,6 +175,21 @@ func parseRules(raw any) Rules {
 	r.entryNames = map[string]bool{}
 	for _, n := range r.EntryNames {
 		r.entryNames[n] = true
+	}
+	r.typedType = map[string]bool{}
+	for path, src := range r.TypedPackages {
+		f, err := parser.ParseFile(token.NewFileSet(), path, src, parser.SkipObjectResolution)
+		if err != nil || f == nil || f.Name == nil {
+			note("go.yaml declares typed_packages[%s] and it does not parse: %v", path, err)
+			continue
+		}
+		for _, d := range f.Decls {
+			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.TYPE {
+				for _, sp := range g.Specs {
+					r.typedType[f.Name.Name+"."+sp.(*ast.TypeSpec).Name.Name] = true
+				}
+			}
+		}
 	}
 	return r
 }
@@ -217,6 +241,41 @@ func (r *Rules) matchCall(dotted string, args []argValue) (*BoundaryRule, string
 			continue
 		}
 		if b.WhenArg != nil {
+			yes, known := b.WhenArg.decide(args)
+			if !known && b.Undecided != "" {
+				blind = append(blind, b.Undecided)
+			}
+			if !yes {
+				continue
+			}
+		}
+		return b, strings.Join(blind, "; ")
+	}
+	return nil, strings.Join(blind, "; ")
+}
+
+// matchTyped is `matchCall` for a typed spelling (`os.Root.ReadFile`), and against
+// `exact` entries only. A prefix or a bare method was written for the spelling a file
+// writes, and turning it loose on typed names would be a new rule nobody wrote: `log.` would
+// make every `log.Logger` method a touch, and `QueryContext` would change the evidence of
+// every database row from `s.db.QueryContext` to `sql.DB.QueryContext`.
+//
+// **A value cannot decide a condition.** `f := d.DialContext` names no network, so a rule
+// conditioned on one is undecided rather than decided no, and says so.
+func (r *Rules) matchTyped(name string, args []argValue, value bool) (*BoundaryRule, string) {
+	var blind []string
+	for i := range r.Boundaries {
+		b := &r.Boundaries[i]
+		if !contains(b.Exact, name) {
+			continue
+		}
+		if b.WhenArg != nil {
+			if value {
+				if b.Undecided != "" {
+					blind = append(blind, b.Undecided)
+				}
+				continue
+			}
 			yes, known := b.WhenArg.decide(args)
 			if !known && b.Undecided != "" {
 				blind = append(blind, b.Undecided)

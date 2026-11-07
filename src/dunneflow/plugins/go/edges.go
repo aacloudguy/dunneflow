@@ -397,6 +397,32 @@ func (c *checker) resolve(call *ast.CallExpr) answer {
 	return answer{}
 }
 
+// typedResidue says whether a call the per-file pass offered as an edge is, on the whole
+// module's types, a method a typed rule names: a boundary that pass could not see, because
+// the receiver's type is declared in another file (`typed.go`). Only counted, never
+// recorded: a fact one file's cache key does not cover may not be written into that file's
+// rows (rule 95).
+func (c *checker) typedResidue(call *ast.CallExpr, declared map[string]bool) bool {
+	sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	fn, ok := c.info.Uses[sel.Sel].(*types.Func)
+	if !ok {
+		return false
+	}
+	name := methodName(fn, declared)
+	if name == "" {
+		return false
+	}
+	for _, b := range c.s.rules.Boundaries {
+		if contains(b.Exact, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func identOf(x ast.Expr) *ast.Ident {
 	switch v := ast.Unparen(x).(type) {
 	case *ast.Ident:
@@ -483,7 +509,12 @@ func collectEdges(root string, files []string, rules *Rules) harvest {
 	// One answer per site per target.
 	answers := map[string][]answer{}
 	siteOf := map[string]CallSite{}
-	for _, t := range targets {
+	declared := map[string]bool{}
+	for p := range rules.TypedPackages {
+		declared[p] = true
+	}
+	residue := 0
+	for ti, t := range targets {
 		c := &checker{s: s, ctx: ctxFor(t.goos, t.goarch), pkgs: map[string]*types.Package{},
 			busy: map[string]bool{}, fakes: map[string]*types.Package{},
 			checked: map[*ast.File]bool{},
@@ -524,6 +555,10 @@ func collectEdges(root string, files []string, rules *Rules) harvest {
 					if site.AtBoundary {
 						// Rule 2: a boundary call is never also an internal edge.
 						continue
+					}
+					// Counted once, under the reference target, because a site is one call.
+					if ti == 0 && c.typedResidue(call, declared) {
+						residue++
 					}
 					// Appended in `targets` order, which is what makes the first location
 					// the reference target's (`join`).
@@ -577,6 +612,11 @@ func collectEdges(root string, files []string, rules *Rules) harvest {
 		default:
 			h.unknown++
 		}
+	}
+	if residue > 0 {
+		s.note(itoa(residue) + " call(s) through " + strings.Join(rules.typedTypes(), " or ") +
+			" are not recorded as boundaries: the receiver's type is declared in another " +
+			"file, and a file's boundaries are read from that file alone")
 	}
 	if variants > 0 {
 		s.note(itoa(variants) + " call(s) reach a function defined once per platform; each " +

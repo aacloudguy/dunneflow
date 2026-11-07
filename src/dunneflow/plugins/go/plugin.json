@@ -38,6 +38,7 @@
     "facts.go",
     "rules.go",
     "extract.go",
-    "edges.go"
+    "edges.go",
+    "typed.go"
   ]
 }

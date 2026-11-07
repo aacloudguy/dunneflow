@@ -19,6 +19,15 @@
 # `Exec`, `Read` and `Write` are on half the types in any module and are deliberately not
 # here. The SQL itself is still found: a string that reads as SQL is judged by the host
 # (`ingest/literals.py`) whatever called it.
+#
+# **A method is also matched by its receiver's type, where the type is declared below**
+# (`typed_packages`, `plugins/go/typed.go`). `r.ReadFile(name)` is spelled `os.Root.ReadFile`
+# when the checker says `r` is an `*os.Root`, and only then: a type of the program's own with
+# a `ReadFile` method is not, whatever its variable is called (rule 30). A typed spelling is
+# matched against `exact` entries only, and it is the evidence, so it cannot be mistaken for
+# the package function. A function of a declared package, or a typed method, **taken as a
+# value** (`var lchown = (*os.Root).Lchown`, `f := r.Chmod`) is a touch where it is taken,
+# with `taken as a value` in its evidence, because the call that follows names nothing.
 
 version: 1
 
@@ -36,25 +45,35 @@ boundaries:
     target_arg: 0
 
   # -- files ------------------------------------------------------------------ #
+  # `os.Root` (Go 1.24, most of it 1.25) is each package function again, confined to one
+  # directory, so each method takes the package function's kind and direction. `Name` and
+  # `Close` touch nothing and are not here. `os.OpenRoot` opens a directory to read through.
   - kind: FILE
     direction: IN
     salience: high
-    exact: [os.Open, os.ReadFile, os.ReadDir, os.Stat, os.Lstat, os.DirFS,
+    exact: [os.Open, os.ReadFile, os.ReadDir, os.Stat, os.Lstat, os.DirFS, os.Readlink,
+            os.OpenRoot, os.OpenInRoot,
             ioutil.ReadFile, ioutil.ReadDir, ioutil.ReadAll,
             filepath.Walk, filepath.WalkDir, filepath.Glob, fs.ReadFile, fs.WalkDir,
-            fs.ReadDir, embed.FS]
+            fs.ReadDir, embed.FS,
+            os.Root.Open, os.Root.OpenRoot, os.Root.ReadFile, os.Root.Stat, os.Root.Lstat,
+            os.Root.Readlink, os.Root.FS]
     target_arg: 0
   - kind: FILE
     direction: OUT
     salience: high
     exact: [os.Create, os.WriteFile, os.Remove, os.RemoveAll, os.Mkdir, os.MkdirAll,
-            os.MkdirTemp, os.CreateTemp, os.Rename, os.Chmod, os.Chown, os.Truncate,
-            os.Symlink, os.Link, ioutil.WriteFile, ioutil.TempFile, ioutil.TempDir]
+            os.MkdirTemp, os.CreateTemp, os.Rename, os.Chmod, os.Chown, os.Lchown,
+            os.Chtimes, os.Truncate, os.Symlink, os.Link,
+            ioutil.WriteFile, ioutil.TempFile, ioutil.TempDir,
+            os.Root.Create, os.Root.WriteFile, os.Root.Mkdir, os.Root.MkdirAll,
+            os.Root.Remove, os.Root.RemoveAll, os.Root.Rename, os.Root.Link,
+            os.Root.Symlink, os.Root.Chmod, os.Root.Chown, os.Root.Lchown, os.Root.Chtimes]
     target_arg: 0
   - kind: FILE
     direction: BOTH
     salience: high
-    exact: [os.OpenFile]
+    exact: [os.OpenFile, os.Root.OpenFile]
     target_arg: 0
 
   # -- processes -------------------------------------------------------------- #
@@ -89,6 +108,29 @@ boundaries:
     when_arg: {index: 0, in: [unix, unixgram, unixpacket]}
     undecided: "the network argument is not a literal, so a Unix-domain socket here reads as NETWORK"
     target_arg: 1
+  # The same two decisions made through a `net.Dialer` or a `net.ListenConfig`, typed by
+  # receiver. `DialContext(ctx, network, address)` puts the network second.
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [net.Dialer.Dial]
+    when_arg: {index: 0, in: [unix, unixgram, unixpacket]}
+    undecided: "the network argument is not a literal, so a Unix-domain socket here reads as NETWORK"
+    target_arg: 1
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [net.Dialer.DialContext]
+    when_arg: {index: 1, in: [unix, unixgram, unixpacket]}
+    undecided: "the network argument is not a literal, so a Unix-domain socket here reads as NETWORK"
+    target_arg: 2
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    exact: [net.ListenConfig.Listen, net.ListenConfig.ListenPacket]
+    when_arg: {index: 1, in: [unix, unixgram, unixpacket]}
+    undecided: "the network argument is not a literal, so a Unix-domain socket here reads as NETWORK"
+    target_arg: 2
   - kind: LOCAL_IPC
     direction: IN
     salience: high
@@ -147,6 +189,23 @@ boundaries:
             http.NewRequestWithContext, net.Dial, net.DialTimeout, net.DialTCP, net.DialUDP,
             tls.Dial, grpc.Dial, grpc.DialContext, grpc.NewClient, websocket.Dial]
     target_arg: 0
+  # Typed, so their own rules: each puts its address at a different index. They make no
+  # `net_calls` row, because `network.libraries` is keyed by the spelling a file writes.
+  - kind: NETWORK
+    direction: OUT
+    salience: high
+    exact: [net.Dialer.Dial]
+    target_arg: 1
+  - kind: NETWORK
+    direction: OUT
+    salience: high
+    exact: [net.Dialer.DialContext]
+    target_arg: 2
+  - kind: NETWORK
+    direction: IN
+    salience: high
+    exact: [net.ListenConfig.Listen, net.ListenConfig.ListenPacket]
+    target_arg: 2
   - kind: NETWORK
     direction: IN
     salience: high
@@ -209,6 +268,95 @@ signatures:
   - {type: "*net.UnixConn",     kind: LOCAL_IPC, direction: BOTH}
   - {type: "net.Listener",      kind: NETWORK,   direction: IN,   note: "may be a Unix-domain socket"}
   - {type: "net.Conn",          kind: NETWORK,   direction: BOTH, note: "may be a Unix-domain socket"}
+
+# **The packages a method's receiver is typed against** (`plugins/go/typed.go`), keyed by
+# import path: Go source with no bodies, declaring what the typed rules above name and the
+# package functions a value may be taken of. **Declared here and never read from GOROOT**,
+# because a file's facts are cached under the reader's stamp and the stamp does not carry
+# the toolchain: read against whatever Go is installed, the facts would change with an
+# upgrade and nothing would notice (rule 81). What is declared is Go 1's promise, so it does
+# not drift. A name missing here is simply undefined to the checker: its calls keep the
+# spelling the file writes and its values are not recorded.
+typed_packages:
+  os: |
+    package os
+
+    type File struct{}
+    type FileInfo interface{}
+    type FileMode uint32
+    type DirEntry interface{}
+    type Root struct{}
+
+    func Open(name string) (*File, error)
+    func Create(name string) (*File, error)
+    func OpenFile(name string, flag int, perm FileMode) (*File, error)
+    func OpenRoot(name string) (*Root, error)
+    func OpenInRoot(dir, name string) (*File, error)
+    func ReadFile(name string) ([]byte, error)
+    func WriteFile(name string, data []byte, perm FileMode) error
+    func ReadDir(name string) ([]DirEntry, error)
+    func Stat(name string) (FileInfo, error)
+    func Lstat(name string) (FileInfo, error)
+    func Readlink(name string) (string, error)
+    func DirFS(dir string) any
+    func Remove(name string) error
+    func RemoveAll(path string) error
+    func Mkdir(name string, perm FileMode) error
+    func MkdirAll(path string, perm FileMode) error
+    func MkdirTemp(dir, pattern string) (string, error)
+    func CreateTemp(dir, pattern string) (*File, error)
+    func Rename(oldpath, newpath string) error
+    func Chmod(name string, mode FileMode) error
+    func Chown(name string, uid, gid int) error
+    func Lchown(name string, uid, gid int) error
+    func Chtimes(name string, atime, mtime any) error
+    func Truncate(name string, size int64) error
+    func Symlink(oldname, newname string) error
+    func Link(oldname, newname string) error
+
+    func (r *Root) Name() string
+    func (r *Root) Close() error
+    func (r *Root) Open(name string) (*File, error)
+    func (r *Root) Create(name string) (*File, error)
+    func (r *Root) OpenFile(name string, flag int, perm FileMode) (*File, error)
+    func (r *Root) OpenRoot(name string) (*Root, error)
+    func (r *Root) ReadFile(name string) ([]byte, error)
+    func (r *Root) WriteFile(name string, data []byte, perm FileMode) error
+    func (r *Root) Stat(name string) (FileInfo, error)
+    func (r *Root) Lstat(name string) (FileInfo, error)
+    func (r *Root) Readlink(name string) (string, error)
+    func (r *Root) Mkdir(name string, perm FileMode) error
+    func (r *Root) MkdirAll(name string, perm FileMode) error
+    func (r *Root) Remove(name string) error
+    func (r *Root) RemoveAll(name string) error
+    func (r *Root) Rename(oldname, newname string) error
+    func (r *Root) Link(oldname, newname string) error
+    func (r *Root) Symlink(oldname, newname string) error
+    func (r *Root) Chmod(name string, mode FileMode) error
+    func (r *Root) Chown(name string, uid, gid int) error
+    func (r *Root) Lchown(name string, uid, gid int) error
+    func (r *Root) Chtimes(name string, atime, mtime any) error
+    func (r *Root) FS() any
+  os/exec: |
+    package exec
+
+    type Cmd struct{}
+
+    func Command(name string, arg ...string) *Cmd
+    func CommandContext(ctx any, name string, arg ...string) *Cmd
+  net: |
+    package net
+
+    type Conn interface{}
+    type Listener interface{}
+    type PacketConn interface{}
+    type Dialer struct{}
+    type ListenConfig struct{}
+
+    func (d *Dialer) Dial(network, address string) (Conn, error)
+    func (d *Dialer) DialContext(ctx any, network, address string) (Conn, error)
+    func (lc *ListenConfig) Listen(ctx any, network, address string) (Listener, error)
+    func (lc *ListenConfig) ListenPacket(ctx any, network, address string) (PacketConn, error)
 
 network:
   libraries:

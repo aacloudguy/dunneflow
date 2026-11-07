@@ -1496,3 +1496,32 @@ def test_a_name_that_only_might_hold_fetch_is_not_one(fetched):
     named = {n.expr for n in fetched.network} | {b.evidence for b in fetched.boundaries}
     for expr in ("fetchImpl", "reassigned", "mine"):
         assert expr not in named, expr
+
+
+def test_a_declaration_the_checker_made_itself_does_not_take_the_edge_pass_down(tmp_path):
+    """DunneCorp, 2026-11-07: `<Tag>` where `Tag` is a union of intrinsic element names
+    resolves to a declaration with no source file, and asking it for one threw inside the
+    edge pass, so the whole language read with no edges. The far end is then the name."""
+    plugin = ingest.PLUGINS.get("typescript")
+    if plugin is None:
+        pytest.skip("this build ships no TypeScript reader")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "heading.tsx").write_text(
+        "declare namespace JSX {\n"
+        "  interface IntrinsicElements { h2: { id?: string }; h3: { id?: string } }\n"
+        "  interface Element {}\n}\n\n"
+        'export function heading(Tag: "h2" | "h3") {\n'
+        "  return function Heading() {\n"
+        '    return <Tag id="x" />;\n  };\n}\n', encoding="utf-8")
+    files = [src / "heading.tsx"]
+    plugin.probe()
+    plugin.open(src, files)
+    try:
+        facts = {ff.path: ff for ff in plugin.extract(files, src)}
+        edges = list(plugin.edges())
+    finally:
+        plugin.close()
+    site = next(c for c in facts["heading.tsx"].calls if c.callee_expr == "Tag")
+    (edge,) = [e for e in edges if e.site_id == site.site_id]
+    assert (edge.reason, edge.frontier, edge.file) == ("outside", "Tag", "")

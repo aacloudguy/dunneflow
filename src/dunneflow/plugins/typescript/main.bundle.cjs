@@ -214183,8 +214183,9 @@ function resolveOne(checker, node, anchors) {
 }
 function farEnd(decl, name) {
   const called = import_typescript6.default.isPropertyAccessExpression(name) ? name.name.text : import_typescript6.default.isIdentifier(name) ? name.text : name.getText();
-  if (decl === void 0) return called;
-  const file = decl.getSourceFile().fileName.replace(/\\/g, "/");
+  const source = decl === void 0 ? void 0 : decl.getSourceFile();
+  if (source === void 0) return called;
+  const file = source.fileName.replace(/\\/g, "/");
   const nm = file.lastIndexOf("/node_modules/");
   let home;
   if (nm >= 0) {

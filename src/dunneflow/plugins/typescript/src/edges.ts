@@ -380,8 +380,12 @@ function resolveOne(
 function farEnd(decl: ts.Declaration | undefined, name: ts.Node): string {
   const called = ts.isPropertyAccessExpression(name) ? name.name.text
     : ts.isIdentifier(name) ? name.text : name.getText();
-  if (decl === undefined) return called;
-  const file = decl.getSourceFile().fileName.replace(/\\/g, "/");
+  /* A declaration the checker made itself -- a mapped type's member, a symbol of a
+   * synthesized type -- has no source file. Found on DunneCorp, where it took the whole edge
+   * pass down: the name called is then all there is to say. */
+  const source = decl === undefined ? undefined : decl.getSourceFile() as ts.SourceFile | undefined;
+  if (source === undefined) return called;
+  const file = source.fileName.replace(/\\/g, "/");
   const nm = file.lastIndexOf("/node_modules/");
   let home: string;
   if (nm >= 0) {

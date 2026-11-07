@@ -471,8 +471,8 @@ class _Progress:
                  + busy(took / 1000, c)
                  for (name, took), c in zip(rows, cpus, strict=True)]
         all_cpu = None if any(c is None for c in cpus) else sum(c for c in cpus if c is not None)
-        lines.append(f"  {'the whole run':<{width}}  {total:7.1f}s         "
-                     + busy(total, all_cpu))
+        lines.append((f"  {'the whole run':<{width}}  {total:7.1f}s         "
+                      + busy(total, all_cpu)).rstrip())
         lines.extend(self.resource_lines())
         return lines
 

@@ -96,6 +96,9 @@ type extractor struct {
 	// Comments that are a declaration's own documentation, recorded there as its
 	// docstring and so never again as a comment (rule 40: one sentence, one fact).
 	docs map[*ast.CommentGroup]bool
+	// The command applications and mounts of the command tree (`commands:` in go.yaml).
+	cliApps   []CliApp
+	cliMounts []CliMount
 	// What the checker says of this file against the declared packages (`typed.go`); nil
 	// where it imports none of them.
 	typing *typing
@@ -139,6 +142,8 @@ func extractFile(rel, source string, rules *Rules) FileFacts {
 	ff.ControlArms = e.arms
 	ff.Literals = e.literals
 	ff.Network = e.network
+	ff.CliApps = e.cliApps
+	ff.CliMounts = e.cliMounts
 	ff.LiteralsDropped = e.dropped
 	// Always sent, claimed or not: a string names its owner before anybody knows whether
 	// it is a fact, and the host decides that (rule 96, `extract.ts:moduleScope`).
@@ -913,6 +918,34 @@ func dotted(x ast.Expr) string {
 
 // ------------------------------------------------------------------ call --- //
 
+// mount records `parent.AddCommand(child, ...)`: one mount per child, named as written, for
+// `resolve/cli.py` to join to the applications it names (BACKLOG 33). Only a receiver that
+// is a plain name: `cmd.Root().AddCommand(x)` names no application anybody declared.
+func (e *extractor) mount(c *ast.CallExpr, expr string) {
+	sel, ok := ast.Unparen(c.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return
+	}
+	recv, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return
+	}
+	for _, cmd := range e.rules.Commands {
+		if !contains(cmd.Mount, sel.Sel.Name) {
+			continue
+		}
+		for _, a := range c.Args {
+			if child := dotted(a); child != "" {
+				e.cliMounts = append(e.cliMounts, CliMount{
+					ParentVar: recv.Name, ParentModule: e.module, ChildExpr: child,
+					File: e.path, Line: e.line(c.Pos()),
+				})
+			}
+		}
+		return
+	}
+}
+
 func (e *extractor) call(c *ast.CallExpr) {
 	expr := dotted(c.Fun)
 	sel, _ := ast.Unparen(c.Fun).(*ast.SelectorExpr)
@@ -961,6 +994,7 @@ func (e *extractor) call(c *ast.CallExpr) {
 			e.maybeNetwork(c, expr, line)
 		}
 	}
+	e.mount(c, expr)
 	claimed := e.registration(c, expr)
 	// The callee is walked too: `a.b(x).c()` holds the call `a.b`, and `func(){...}()`
 	// is an anonymous function whose body belongs to the enclosing routine.
@@ -1589,6 +1623,15 @@ func (e *extractor) command(lit *ast.CompositeLit) bool {
 				break
 			}
 		}
+		// A command declared in a package variable is an application commands hang from,
+		// whether or not it does anything itself, keyed as every app is: by file and name.
+		if e.declaring != "" && len(e.scope) == 0 {
+			e.cliApps = append(e.cliApps, CliApp{
+				Id: makeID("cliapp", e.path, e.declaring), Var: e.declaring,
+				Module: e.module, File: e.path, Line: e.line(lit.Pos()), Title: name,
+				Factory: typ,
+			})
+		}
 		if name == "" || handler == nil {
 			// A command that sets no handler is a group (`rain cc`, whose subcommands are
 			// attached with `AddCommand`): a namespace a reader types on the way to a
@@ -1598,6 +1641,11 @@ func (e *extractor) command(lit *ast.CompositeLit) bool {
 			return true
 		}
 		ep := e.wayIn(cmd.Kind, name, cmd.Evidence, e.line(lit.Pos()), handler, word)
+		if e.declaring != "" && len(e.scope) == 0 {
+			// The command is its own application's: `resolve/cli.py` attaches it there,
+			// and the mounts put that application in the tree.
+			ep.Group = e.declaring
+		}
 		if e.declaring != "" && ep.RoutineId != nil {
 			e.fieldHandlers[e.declaring+"."+word] = *ep.RoutineId
 		}

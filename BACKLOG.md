@@ -40,12 +40,6 @@ local module cache (`go env GOMODCACHE`, pinned by `go.sum`), read only where it
 present, never fetched (design rule 14). *Settled by* a reader that consults the module cache
 when it exists, with the unknown count retaken on rain and beads.
 
-**33. Cobra's command tree is not drawn.** A group (`rain cc`) is correctly not a way in, but
-the `AddCommand` calls that hang commands under it are not read as `cli_mounts`, so the CLI
-tree is flat. Not done because it is a second fact kind for a reader one day old. *Settled by*
-`AddCommand` read as a mount and resolved like Python's, and `cli: … (n in a tree)` above
-zero on rain.
-
 **36. Only the Rust reader says where its calls stop.** `calls.frontier` and `calls.reason`
 (schema 17) are filled by Rust alone, so *About this map* says *3,608 more whose reader does
 not say* of DunneNote's TypeScript, and every Python, Go and C++ map says nothing. Not done

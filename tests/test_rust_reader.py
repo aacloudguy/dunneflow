@@ -735,7 +735,7 @@ def edges(tmp_path_factory):
             "  JOIN routines r ON r.id = c.caller_id JOIN routines t ON t.id = d.routine_id"
             " ORDER BY t.qualname"):
         key = ("may_run", r["caller"].rsplit(".", 1)[-1], r["expr"])
-        got.setdefault(key, []).append(r["body"])  # type: ignore[arg-type, union-attr]
+        got.setdefault(key, []).append(r["body"])
     store.close()
     return got
 

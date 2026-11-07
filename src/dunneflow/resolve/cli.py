@@ -41,6 +41,22 @@ class _AppResolver:
         for r in store.query("SELECT id, module, var FROM cli_apps"):
             self.by_modvar[(r["module"], r["var"])] = r["id"]
 
+        # **A name visible to every file in its directory** (BACKLOG 33). Where a language's
+        # rules say `private_means: package`, a package-level name is the directory's, not
+        # the file's: `root.AddCommand(ccCmd)` names a variable a sibling file declares, and
+        # there is no import to follow to it. Asked of the rules, never of a language's name.
+        self.file_lang: dict[str, str] = {
+            str(r["path"]): str(r["lang"]) for r in store.query("SELECT path, lang FROM files")}
+        self.dir_scoped = {lang for lang in set(self.file_lang.values())
+                           if lang and load_rules(lang).private_means == "package"}
+        by_dir: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for r in store.query("SELECT id, file, var FROM cli_apps ORDER BY file, var, id"):
+            if self.file_lang.get(str(r["file"])) in self.dir_scoped:
+                by_dir[(str(Path(str(r["file"])).parent), str(r["var"]))].append(str(r["id"]))
+        # One answer or none: two files in a directory declaring one name is a package that
+        # does not compile, or two build variants, and a guess between them is rule 1.
+        self.by_dirvar = {k: v[0] for k, v in by_dir.items() if len(v) == 1}
+
         self.module_file: dict[str, str] = {}
         self.packages: set[str] = set()
         for r in store.query("SELECT path, module FROM files"):
@@ -60,6 +76,8 @@ class _AppResolver:
         direct = self.by_modvar.get((module, var))
         if direct:
             return direct
+        if file and self.file_lang.get(file) in self.dir_scoped:
+            return self.by_dirvar.get((str(Path(file).parent), var))
         path = file or self.module_file.get(module)
         if not path:
             return None

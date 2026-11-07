@@ -569,3 +569,39 @@ def test_the_edges_are_the_same_answer_twice(go_edges):
     """Rule 66: the order and the content are the reader's own, never a map iteration's."""
     (_, edges1, o1, u1), (_, edges2, o2, u2) = go_edges
     assert edges1 == edges2 and (o1, u1) == (o2, u2)
+
+
+def test_a_cobra_tree_is_drawn_from_add_command_across_the_files_of_a_package(tmp_path):
+    """BACKLOG 33: `AddCommand` hangs a command under a group, and the group and the command
+    are usually in sibling files of one package, which no import connects."""
+    if PLUGIN is None or shutil.which("go") is None:
+        pytest.skip("needs the Go plugin and `go`")
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.resolve.cli import command_tree, resolve_cli
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path / "t"
+    (root / "cmd").mkdir(parents=True)
+    (root / "go.mod").write_text("module example.com/t\n\ngo 1.22\n", encoding="utf-8")
+    (root / "cmd" / "root.go").write_text(
+        'package cmd\n\nimport "github.com/spf13/cobra"\n\n'
+        'var Root = &cobra.Command{Use: "t"}\n\n'
+        'var cc = &cobra.Command{Use: "cc"}\n\n'
+        'func init() {\n\tRoot.AddCommand(cc)\n}\n', encoding="utf-8")
+    (root / "cmd" / "list.go").write_text(
+        'package cmd\n\nimport "github.com/spf13/cobra"\n\n'
+        'var ccList = &cobra.Command{Use: "list", Run: func(c *cobra.Command, a []string) {}}\n\n'
+        'func init() {\n\tcc.AddCommand(ccList)\n}\n', encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    stats = resolve_cli(store)
+    assert (stats.mounts_resolved, stats.mounts_total) == (2, 2)
+    (app,) = store.query("SELECT id FROM cli_apps WHERE var = 'Root'")
+    tree = command_tree(store, app["id"])
+    store.close()
+    assert tree is not None
+    (cc,) = tree["children"]
+    (lst,) = cc["children"]
+    assert [c["name"] for c in lst["commands"]] == ["list"]

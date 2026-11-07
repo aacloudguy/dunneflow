@@ -441,6 +441,10 @@ commands:
     name_field: Use
     handler_fields: [RunE, Run]
     evidence: "a cobra command"
+    # **The tree.** Every command declared in a package variable is a command application,
+    # a group included, and `parent.AddCommand(child, ...)` mounts children under it, so
+    # `rain cc list` reads as a tree rather than a flat list (BACKLOG 33).
+    mount: [AddCommand]
 
 # **What `private` means here, for the naming lane's LEAKAGE claim** (`RuleSet.private_means`):
 # an unexported name is visible to every file in its package directory.

@@ -101,6 +101,9 @@ type Command struct {
 	NameField     string   `json:"name_field"`
 	HandlerFields []string `json:"handler_fields"`
 	Evidence      string   `json:"evidence"`
+	// The method that hangs one command under another, `root.AddCommand(sub)`: each is a
+	// command application, and each call a mount between two of them (BACKLOG 33).
+	Mount []string `json:"mount"`
 }
 
 // Rules is the rules document. Keys this reader does not read are ignored by design: the

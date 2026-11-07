@@ -43,14 +43,6 @@ tree is flat. Not done because it is a second fact kind for a reader one day old
 `AddCommand` read as a mount and resolved like Python's, and `cli: … (n in a tree)` above
 zero on rain.
 
-**35. A table created twice in one file shows both sets of columns under each definition.**
-`db_columns` is keyed on `(tbl, file)` and holds no line, so DunneNote's migrations — which
-`CREATE TABLE` one table twice in one file as the schema moves — list the union of both
-column sets beside each `CREATE`. Found by `tools/ordering.py` on 2026-11-01, as a tie the
-Rust reader's SQL literals were the first to reach (rule 98); the tie is closed and the
-attribution is not. *Settled by* a `line` on `db_columns`, written by `ingest/literals.py`,
-and `render/database.py` asking for the columns of one statement.
-
 **36. Only the Rust reader says where its calls stop.** `calls.frontier` and `calls.reason`
 (schema 17) are filled by Rust alone, so *About this map* says *3,608 more whose reader does
 not say* of DunneNote's TypeScript, and every Python, Go and C++ map says nothing. Not done

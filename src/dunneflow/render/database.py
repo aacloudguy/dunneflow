@@ -113,11 +113,12 @@ def render_database(store: Store, out: Path, program: str, stamp: Stamp) -> Path
             )
         for t in defs:
             cols = store.query(
-                # `type` and `constraints` close the tie: a file that creates one table
-                # twice holds two columns at one `idx` with one name (rule 66).
-                "SELECT * FROM db_columns WHERE tbl = ? AND file = ?"
+                # One statement's columns: a file that creates one table twice holds two
+                # sets, and each `CREATE` is shown with its own (BACKLOG 35). `type` and
+                # `constraints` still close the tie on a repeated column (rule 66).
+                "SELECT * FROM db_columns WHERE tbl = ? AND file = ? AND line = ?"
                 " ORDER BY idx, name, type, constraints",
-                (name, t["file"]),
+                (name, t["file"], t["line"]),
             )
             where = f"{t['file']}:{t['line']}"
             if cols:

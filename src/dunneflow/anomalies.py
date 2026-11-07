@@ -789,7 +789,9 @@ def _schema_drift(store: Store, r: Report) -> None:
         " GROUP BY name HAVING defs > 1 ORDER BY name"
     ):
         shapes = store.query(
-            "SELECT file, COUNT(*) n FROM db_columns WHERE tbl = ? GROUP BY file",
+            # Per statement, not per file: a file that creates the table twice made two
+            # shapes, and counting them as one summed both (BACKLOG 35).
+            "SELECT file, line, COUNT(*) n FROM db_columns WHERE tbl = ? GROUP BY file, line",
             (row["name"],),
         )
         widths = sorted({s["n"] for s in shapes})

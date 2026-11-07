@@ -58,7 +58,8 @@ from typing import Literal
 # 20: `BoundaryKind.LOCAL_IPC` and `BoundaryHit.declared` -- a Unix-domain socket is not a
 #     network connection, and a boundary a signature names is not one a body was seen to
 #     touch (Society2's Stage 0 stubs, whose bodies only panic). Built on a branch as 18,
-#     which `read_through` also was; it is 20 because it merged second.
+#     which `read_through` also was; it is 20 because it merged second. Before 20 left
+#     the branch, `db_columns.line` joined it: each column belongs to its own CREATE TABLE.
 SCHEMA_VERSION = 20
 
 

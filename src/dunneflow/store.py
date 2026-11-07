@@ -510,6 +510,10 @@ CREATE TABLE IF NOT EXISTS db_tables (
 CREATE TABLE IF NOT EXISTS db_columns (
     tbl         TEXT NOT NULL,
     file        TEXT NOT NULL,
+    -- The `CREATE TABLE` this column was declared in: a migration that creates one table
+    -- twice in one file as its schema moves has two sets of columns, and each belongs to
+    -- its own statement (BACKLOG 35).
+    line        INTEGER NOT NULL DEFAULT 0,
     idx         INTEGER NOT NULL,
     name        TEXT NOT NULL,
     type        TEXT NOT NULL DEFAULT '',
@@ -1540,8 +1544,9 @@ class Store:
             [(t.name, ff.path, t.line, int(t.temporary)) for t in ff.tables],
         )
         c.executemany(
-            "INSERT INTO db_columns(tbl,file,idx,name,type,constraints) VALUES(?,?,?,?,?,?)",
-            [(t.name, ff.path, i, cn, ct, cc)
+            "INSERT INTO db_columns(tbl,file,line,idx,name,type,constraints)"
+            " VALUES(?,?,?,?,?,?,?)",
+            [(t.name, ff.path, t.line, i, cn, ct, cc)
              for t in ff.tables for i, (cn, ct, cc) in enumerate(t.columns)],
         )
         c.executemany(

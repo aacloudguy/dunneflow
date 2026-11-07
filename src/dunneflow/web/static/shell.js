@@ -12958,11 +12958,25 @@ function viewInspectorTable(s) {
   /* The columns as the `CREATE TABLE` wrote them — quoted, never sorted, because `idx` is
      the position in the statement and re-ordering them would be presenting the schema as
      something nobody wrote. */
-  const colsBody = (id.columns || []).length
-    ? `<table class="tblcols"><tbody>${(id.columns || []).map(c => `<tr>
+  /* **One statement's columns under it**, where a table is created more than once: a
+     migration that creates it twice in one file as its schema moves has two shapes, and a
+     flat list showed their union as one (BACKLOG 35). The route sends them ordered by file,
+     line and position, so grouping is reading in order, never sorting. */
+  const colRow = c => `<tr>
         <td><code>${esc(c.name)}</code></td>
         <td class="dim"><code>${esc(c.type || "")}</code></td>
-        <td class="dim">${esc(c.constraints || "")}</td></tr>`).join("")}</tbody></table>`
+        <td class="dim">${esc(c.constraints || "")}</td></tr>`;
+  const colGroups = [];
+  for (const c of (id.columns || [])) {
+    const at = `${c.file}:${c.line}`;
+    const last = colGroups[colGroups.length - 1];
+    if (last && last.at === at) last.cols.push(c);
+    else colGroups.push({ at, cols: [c] });
+  }
+  const colsBody = colGroups.length
+    ? `<table class="tblcols"><tbody>${colGroups.map(g => (colGroups.length > 1
+        ? `<tr><td colspan="3" class="dim"><code>${esc(g.at)}</code></td></tr>` : "")
+        + g.cols.map(colRow).join("")).join("")}</tbody></table>`
     : `<div class="hint">${esc(id.origin)} — so this map has no column list for it. What it
         holds is known only to whoever created it.</div>`;
 

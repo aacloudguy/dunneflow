@@ -112,3 +112,36 @@ def test_upsert_clause_is_not_a_second_table():
         "INSERT INTO x (a) VALUES (?) ON CONFLICT(a) DO UPDATE SET a = excluded.a"
     )
     assert op is not None and op.tables == ["x"]
+
+
+def test_a_table_created_twice_in_one_file_shows_each_statement_s_columns(tmp_path):
+    """BACKLOG 35: `db_columns` held no line, so a migration that creates one table twice
+    as its schema moves listed the union of both column sets beside each `CREATE`."""
+    from dunneflow.render.database import render_database
+    from dunneflow.render.page import Stamp
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    tree = tmp_path / "src"
+    tree.mkdir()
+    (tree / "migrate.py").write_text(
+        'OLD = """\nCREATE TABLE notes (\n    id INTEGER PRIMARY KEY,\n    body TEXT\n);\n"""\n'
+        '\n\n'
+        'NEW = """\nCREATE TABLE notes (\n    id INTEGER PRIMARY KEY,\n    body TEXT,\n'
+        '    pinned INTEGER\n);\n"""\n', encoding="utf-8")
+    store = Store(tmp_path / "graph.db")
+    analyze_tree(tree, store)
+    rows = store.query("SELECT line, name FROM db_columns WHERE tbl = 'notes'"
+                       " ORDER BY line, idx")
+    by_line: dict[int, list[str]] = {}
+    for r in rows:
+        by_line.setdefault(r["line"], []).append(r["name"])
+    assert list(by_line.values()) == [["id", "body"], ["id", "body", "pinned"]]
+    (tmp_path / "out").mkdir()
+    page = render_database(store, tmp_path / "out", "t",
+                           Stamp(generated="x", revision="", analysed=""))
+    assert page is not None
+    text = page.read_text(encoding="utf-8")
+    first = text.index("migrate.py:" + str(min(by_line)))
+    assert text[:first].count("`pinned`") == 0, "the first CREATE has no pinned column"
+    store.close()

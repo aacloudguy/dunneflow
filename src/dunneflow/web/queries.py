@@ -1320,7 +1320,8 @@ SELECT NULL      AS node,
        t.name    AS name,
        COALESCE((SELECT group_concat(c.name, ', ')
                  FROM (SELECT name FROM db_columns
-                       WHERE tbl = t.name ORDER BY idx) c), '') AS columns,
+                       WHERE tbl = t.name AND file = t.file AND line = t.line
+                       ORDER BY idx) c), '') AS columns,
        (SELECT COUNT(*) FROM sql_ops o
          WHERE o.tbl = t.name AND o.direction = 'read')  AS reads,
        (SELECT COUNT(*) FROM sql_ops o
@@ -1485,10 +1486,10 @@ ORDER BY file, line
 # The columns as declared, in the order they were written. `idx` is the position in the
 # `CREATE TABLE`, so ordering by it is quoting the statement rather than sorting it.
 TABLE_COLUMNS = """
-SELECT file, idx, name, type, constraints
+SELECT file, line, idx, name, type, constraints
 FROM db_columns
 WHERE tbl = :name
-ORDER BY file, idx
+ORDER BY file, line, idx, name
 """
 
 # Who touches this table, with what each routine does to it. `BOUNDARY_TOUCHERS` one

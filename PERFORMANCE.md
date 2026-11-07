@@ -1447,3 +1447,23 @@ and 18,206 s (`runtime3.log`) to read the tree, so this one lands between them.
 OpenUSD and 0.567 s on Runtime, because the headers a file pulls in grow with the tree.
 `estimate.RATES` holds Runtime's, so a first run of a smaller tree is priced high: 52 min for
 OpenUSD's 16, and 20 min for Core's 2.5. A program's own last run replaces the rate after that.
+
+## What macros as facts cost (v2, measured 2026-11-07)
+
+A whole analysis at slice M's head, once each, on this Mac with the trees and the output on the
+external volume. Not a budget and not a comparison of phases: the machine was also driving two remote
+test suites over SSH, so read the **sizes** as the figures and the times as an order of magnitude.
+
+| | whole analysis | graph | macro tables and their indexes | share |
+|---|---:|---:|---:|---:|
+| tmux | 4 s | 16.2 MB | 2.0 MB | 12% |
+| git | 27 s | 79.7 MB | 9.7 MB | 12% |
+| nmap | 21 s | 55.5 MB | 9.4 MB | 17% |
+| `Runtime/Core` | 144 s | 97.1 MB | 11.4 MB | 12% |
+| OpenUSD | 956 s | 242.4 MB | 19.4 MB | 8% |
+
+Chunk 0 estimated 2.6 MB on Core, counting `macro_sites`' rows and no index. The real figure holds
+three tables and six indexes, and it was chosen with the cost stated (Tom, 2026-11-06: one row per
+use, at 8.2 MB, which `macro_callees` then raised to 11.4). `Runtime` has not been retaken, and
+scaling Core's share is an estimate of roughly 120 MB on its 1 GB graph, not a measurement.
+

@@ -476,6 +476,29 @@ to 170 of 210 bound, and AugmentedReality from 68 to 103 of 145.
 virtual with no implementation, and 238 with no definition read, which is the figure the fix
 lowers. Against the earlier 1,275 unbound, 57 of the fall is overriders counting as bound.
 
+**Macros as their own fact, read 2026-11-07 at slice M's head, on this Mac.** `MACRO_HIDDEN_BOUNDARY`
+was read against the source on all of them before it shipped and every finding is true, mostly
+ordinary wrappers, which is why it is worded about what happens and never why.
+
+| | C++ routines | written by macros | macro uses | definitions | `macro_callees` | boundaries through a macro | findings | broken / suspect / info |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| tmux | 2,683 | 261 | 12,124 | 811 | 619 | 0 | 0 | 0 / 4 / 3 |
+| git | 12,483 | 331 | 42,745 | 2,484 | 13,412 | 12 | 2 | 1 / 22 / 5 |
+| nmap | 6,969 | 4 | 47,418 | 5,037 | 4,670 | 60 | 13 | 1 / 301 / 7 |
+| `Runtime/Core` | 34,339 | 6,513 | 42,417 | 1,286 | 13,185 | 3 | 1 | 0 / 123 / 3 |
+| OpenUSD | 47,069 | 3,555 | 64,635 | 2,634 | 23,621 | 60 | 6 | 2 / 538 / 5 |
+
+The boundaries column counts the rows; findings leave out definitions outside the tree, low
+salience, and a callee that starts with the macro's name. No corpus has a shadow, so that path is
+proved by the fixtures alone. Python's golden holds exactly: Society's routines, boundaries, calls
+and ways in are the same row for row against the commit before the slice, every macro table empty,
+findings unchanged. pdfcraft likewise, with 5,239 uses of 35 definitions and one finding's count
+moved, `UNREACHABLE` 1,923 to 1,924 of 4,265: the old sum counted a module scope as reached and not
+in the total, so the title was one below its own list (rule 13).
+
+**`Runtime` has not been read with any of this.** Its 7 `ENTRYPOINT_NO_TARGET` going to 0, its routine
+figures, and this finding at its scale all wait for that read.
+
 **Linux and Windows are read through other clangs, and neither has read these corpora.**
 maclab uses LLVM 22.1.0's tarball and GIZA Visual Studio's clang 19.1.5, and each passes the
 suite and `ingest-conform cpp`, and read tmux. The first Windows build did not compile, and the first Linux run

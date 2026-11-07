@@ -1339,11 +1339,94 @@ def _ipc_commands(store: Store, r: Report) -> None:
         ))
 
 
+
+def _macro_hidden_boundaries(store: Store, r: Report) -> None:
+    """**A macro whose expansion leaves the program, at a line that does not say so.**
+
+    One finding per definition, because a name is not an identity: a second `check` that
+    runs `system` is not the first. SUSPECT, and worded about what happens and never about
+    why, because most of these are somebody's ordinary wrapper and the map cannot tell.
+
+    Left out, each for a reason a reader could check:
+
+    * a definition this tree did not write: a library's macro is the library's business, and
+      `FD_SET` is not a tactic. Only what this program, or its build, chose.
+    * a low-salience boundary, which is a log line.
+    * a callee that starts with the macro's name: `open` becoming `open64` and
+      `CreateProcess` becoming `CreateProcessW` are a platform's spelling of the written name.
+    * any language whose reader does not expand: declared, never named here (rule 98).
+    """
+    expanding = {
+        str(x["lang"]) for x in store.query("SELECT DISTINCT lang FROM files")
+        if load_rules(str(x["lang"])).macro_expansion == "read"
+    }
+    if not expanding:
+        return
+    rows = store.query(
+        "SELECT d.id AS def_id, d.name AS macro, d.file AS def_file, d.line AS def_line,"
+        "       d.origin, b.kind, b.direction, b.evidence, b.target, b.file, b.line,"
+        "       b.routine_id, r.qualname, f.lang"
+        "  FROM boundaries b"
+        "  JOIN macro_defs d ON d.id = b.through_macro"
+        "  JOIN files f ON f.path = b.file"
+        "  JOIN routines r ON r.id = b.routine_id"
+        " WHERE b.through_macro <> '' AND b.salience <> 'low'"
+        "   AND d.origin IN ('tree', 'command_line')"
+        " ORDER BY d.name, d.file, d.line, b.file, b.line, b.evidence"
+    )
+    groups: dict[str, list[sqlite3.Row]] = {}
+    for x in rows:
+        last = str(x["evidence"]).rsplit(".", 1)[-1]
+        if str(x["lang"]) in expanding and not last.startswith(str(x["macro"])):
+            groups.setdefault(str(x["def_id"]), []).append(x)
+    for def_id, hits in groups.items():
+        first = hits[0]
+        places = len(hits)
+        kinds = sorted({str(h["kind"]) for h in hits})
+        callees = sorted({str(h["evidence"]) for h in hits})
+        # What a rule cannot see: the other ways its uses leave, which no list of names covers.
+        other = store.query(
+            "SELECT COUNT(DISTINCT CASE WHEN target_file = '' AND candidates = 0 AND indirect = 0"
+            "       THEN callee END) AS leaving,"
+            "       COALESCE(SUM(CASE WHEN indirect = 1 THEN count END), 0) AS indirect"
+            "  FROM macro_callees WHERE def_id = ?", (def_id,))[0]
+        where = (f"defined at {first['def_file']}:{first['def_line']}" if first["def_file"]
+                 else "defined on the build's command line")
+        r.add(Anomaly(
+            kind="MACRO_HIDDEN_BOUNDARY", severity=SUSPECT, confidence=CERTAIN,
+            title=f"`{first['macro']}` reaches {', '.join(kinds)} through its expansion, "
+                  f"at {plural(places, 'place')} that {'does' if places == 1 else 'do'} "
+                  f"not name it",
+            detail=f"`{first['macro']}` ({where}) expands to {', '.join(callees)}, and the "
+                   f"code using it writes only the macro's name. Its uses reach "
+                   f"{plural(int(other['leaving']), 'function')} outside this tree in all"
+                   + (f", and make {plural(int(other['indirect']), 'call')} through a value"
+                      if other["indirect"] else "") + ".",
+            blind_spot="Most macros like this are an ordinary wrapper, and this says what the "
+                       "expansion does and nothing about why. It sees only names the boundary "
+                       "rules list, only the configuration read (an arm not taken is not here), "
+                       "and one hop: a macro inside a macro's body is credited to the one written "
+                       "at the line.",
+            # The definition, without its line: it is what the finding is about, and a macro
+            # that gains another kind of boundary is the same finding, grown.
+            ident_parts=(str(first["macro"]), str(first["def_file"])),
+            subject=str(first["macro"]),
+            file=str(first["file"]), line=int(first["line"] or 0), count=places,
+            occurrences=[
+                Occurrence(nav="routine", id=str(h["routine_id"]),
+                           label=f"{h['qualname']}: {h['evidence']}",
+                           file=str(h["file"]), line=int(h["line"] or 0))
+                for h in hits
+            ],
+        ))
+
+
 DETECTORS = (
     _parse_failures,
     _name_collisions,
     _redefinitions,
     _lost_edges,
+    _macro_hidden_boundaries,
     _unreachable,
     _schema_drift,
     _one_way_tables,

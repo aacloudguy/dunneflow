@@ -780,3 +780,95 @@ def test_what_a_routine_touches_follows_a_macro_s_expansion(tmp_path):
         assert reach == 3 and [k.value for k in kinds] == ["NETWORK"]
     finally:
         store.close()
+
+
+def test_a_macro_that_leaves_the_program_is_one_finding_per_definition(tmp_path):
+    store, found = _anomalies(tmp_path, (
+        "extern \"C\" { int connect(int, const void *, int); int system(const char *); }\n"
+        "#define SEND(a) connect(a, 0, 0)\n"
+        "void one() { SEND(1); }\n"
+        "void two(int fd) { SEND(fd); }\n"
+        "int main() { return 0; }\n"
+    ))
+    try:
+        got = found["MACRO_HIDDEN_BOUNDARY"]
+        assert (got.severity, got.confidence, got.subject, got.count) == (
+            "SUSPECT", "CERTAIN", "SEND", 2)
+        assert "NETWORK" in got.title
+        assert "defined at m.cpp:2" in got.detail
+        assert {o.label for o in got.occurrences} == {"one: connect", "two: connect"}
+    finally:
+        store.close()
+
+
+def _hidden(root: Path, text: str) -> list:
+    from dunneflow.anomalies import detect
+
+    store, _ = _anomalies(root, text)
+    try:
+        return [a for a in detect(store).items if a.kind == "MACRO_HIDDEN_BOUNDARY"]
+    finally:
+        store.close()
+
+
+def test_a_second_definition_of_one_name_is_its_own_finding(tmp_path):
+    got = _hidden(tmp_path, (
+        "extern \"C\" { int connect(int, const void *, int); int system(const char *); }\n"
+        "#define check(x) connect(x, 0, 0)\n"
+        "void a() { check(1); }\n"
+        "#undef check\n"
+        "#define check(x) system(x)\n"
+        "void b() { check(\"x\"); }\n"
+    ))
+    assert sorted(a.title.split(" at ")[0] for a in got) == [
+        "`check` reaches NETWORK through its expansion,",
+        "`check` reaches PROCESS through its expansion,",
+    ]
+
+
+@pytest.mark.parametrize("text", [
+    # A log line.
+    "extern \"C\" int puts(const char *);\n#define SAY(x) puts(x)\nvoid t() { SAY(\"a\"); }\n",
+    # A platform's spelling of the written name.
+    "extern \"C\" int connect64(int);\n#define connect(a) connect64(a)\n"
+    "void t() { connect(1); }\n",
+    # This tree's own function, which is an internal call.
+    "int connect(int) { return 0; }\n#define SEND(a) connect(a)\nvoid t() { SEND(1); }\n",
+    # Written by somebody at the line, so nothing is hidden.
+    "extern \"C\" int connect(int);\n#define RETRY(e) do { e; } while (0)\n"
+    "void t() { RETRY(connect(1)); }\n",
+])
+def test_what_is_not_hidden_is_not_reported(tmp_path, text):
+    assert _hidden(tmp_path, text) == []
+
+
+def test_a_macro_from_outside_the_tree_is_that_library_s_business(tmp_path):
+    (tmp_path.parent / "lib").mkdir(exist_ok=True)
+    (tmp_path.parent / "lib" / "wrap.h").write_text(
+        "extern \"C\" int connect(int);\n#define SEND(a) connect(a)\n", encoding="utf-8")
+    (tmp_path / "compile_commands.json").write_text(
+        json.dumps([{"directory": str(tmp_path), "file": "m.cpp",
+                     "arguments": ["clang++", f"-I{tmp_path.parent / 'lib'}", "-c", "m.cpp"]}]),
+        encoding="utf-8")
+    assert _hidden(tmp_path, "#include <wrap.h>\nvoid t() { SEND(1); }\n") == []
+
+
+def test_a_body_a_macro_wrote_counts_as_hidden_too(tmp_path):
+    got = _hidden(tmp_path, (
+        "extern \"C\" int system(const char *);\n"
+        "#define HANDLER(n) void n() { system(\"x\"); }\n"
+        "HANDLER(go)\n"
+    ))
+    assert [a.subject for a in got] == ["HANDLER"]
+
+
+def test_a_detail_says_what_no_rule_can_see(tmp_path):
+    got = _hidden(tmp_path, (
+        "extern \"C\" { int connect(int); int other(int); }\n"
+        "typedef int (*fn)();\n"
+        "extern fn table;\n"
+        "#define ALL(a) (connect(a), other(a), table())\n"
+        "void t() { ALL(1); }\n"
+    ))
+    assert "2 functions outside this tree" in got[0].detail, got[0].detail
+    assert "1 call through a value" in got[0].detail, got[0].detail

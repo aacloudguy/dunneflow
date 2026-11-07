@@ -1448,7 +1448,7 @@ OpenUSD and 0.567 s on Runtime, because the headers a file pulls in grow with th
 `estimate.RATES` holds Runtime's, so a first run of a smaller tree is priced high: 52 min for
 OpenUSD's 16, and 20 min for Core's 2.5. A program's own last run replaces the rate after that.
 
-## What macros as facts cost (v2, measured 2026-11-07)
+## What macros as facts cost (v2, measured 2026-11-06 and 07)
 
 A whole analysis at slice M's head, once each, on this Mac with the trees and the output on the
 external volume. Not a budget and not a comparison of phases: the machine was also driving two remote
@@ -1461,9 +1461,37 @@ test suites over SSH, so read the **sizes** as the figures and the times as an o
 | nmap | 21 s | 55.5 MB | 9.4 MB | 17% |
 | `Runtime/Core` | 144 s | 97.1 MB | 11.4 MB | 12% |
 | OpenUSD | 956 s | 242.4 MB | 19.4 MB | 8% |
+| `Engine/Source/Runtime` | 31,350 s | 1,199.0 MB | 124.6 MB | 10% |
+
+The five smaller trees were read on the evening of 2026-11-06 (EST); `Runtime` from 20:09 that
+evening to 04:51 on 2026-11-07, at f783860, from an empty graph, with video playing on the same
+machine.
 
 Chunk 0 estimated 2.6 MB on Core, counting `macro_sites`' rows and no index. The real figure holds
 three tables and six indexes, and it was chosen with the cost stated (Tom, 2026-11-06: one row per
-use, at 8.2 MB, which `macro_callees` then raised to 11.4). `Runtime` has not been retaken, and
-scaling Core's share is an estimate of roughly 120 MB on its 1 GB graph, not a measurement.
+use, at 8.2 MB, which `macro_callees` then raised to 11.4). Scaling Core's share estimated roughly
+120 MB on `Runtime`; measured with `dbstat`, it is 124.6 MB: `macro_sites` 83.0 MB with its three
+indexes (381,489 rows), `macro_callees` 40.8 MB with its three (150,853), `macro_defs` 0.7 MB
+(5,764).
+
+**`Runtime`'s phases against 2026-11-05's run** (`--timings`; the graph, its `-shm` and `-wal`
+deleted first, to test whether the slow steps after reading were a scattered graph):
+
+| phase | 2026-11-07, f783860 | 2026-11-05 | 2026-11-04, quiet |
+|---|---:|---:|---:|
+| reading the source tree | 30,660.3 s | 18,584 s | 10,363.0 s |
+| resolving calls and command trees | 398.6 s | 10,557 s | 195.0 s |
+| looking for anomalies | 15.8 s | 3,254 s | 2.6 s |
+| writing the map | 269.6 s | 3,345 s | 115.6 s |
+| the whole run | 31,349.6 s | 36,048 s | 10,977.5 s |
+
+- **The steps after reading are back to 2026-11-04's order**, with 21% more routines and
+  `02-flows.md` at 1.40 GB against 1.28 GB. This run started from no graph; 2026-11-04's started
+  from a full stale one and was fast too. So one run does not show the scattered graph was
+  2026-11-05's cause, and what was is still not known.
+- **Reading the tree took 65% longer than on 2026-11-05 and three times the quiet run, and the
+  slice is not shown to be the cause.** Core read in 134 s before the slice and 144 s with it.
+  Nothing recorded CPU or peak memory; swap stood at 1.8 of 3 GB after it. Runtime's reading time
+  has now been 8,353, 10,363, 18,206, 18,584 and 30,660 s, so a figure for it needs a quiet
+  machine and the conditions logged.
 

@@ -476,7 +476,8 @@ to 170 of 210 bound, and AugmentedReality from 68 to 103 of 145.
 virtual with no implementation, and 238 with no definition read, which is the figure the fix
 lowers. Against the earlier 1,275 unbound, 57 of the fall is overriders counting as bound.
 
-**Macros as their own fact, read 2026-11-07 at slice M's head, on this Mac.** `MACRO_HIDDEN_BOUNDARY`
+**Macros as their own fact, read on the evening of 2026-11-06 (EST) at slice M's head, on this Mac,
+and `Runtime` overnight into 2026-11-07 at f783860.** `MACRO_HIDDEN_BOUNDARY`
 was read against the source on all of them before it shipped and every finding is true, mostly
 ordinary wrappers, which is why it is worded about what happens and never why.
 
@@ -487,8 +488,10 @@ ordinary wrappers, which is why it is worded about what happens and never why.
 | nmap | 6,969 | 4 | 47,418 | 5,037 | 4,670 | 60 | 13 | 1 / 301 / 7 |
 | `Runtime/Core` | 34,339 | 6,513 | 42,417 | 1,286 | 13,185 | 3 | 1 | 0 / 123 / 3 |
 | OpenUSD | 47,069 | 3,555 | 64,635 | 2,634 | 23,621 | 60 | 6 | 2 / 538 / 5 |
+| `Runtime` | 332,668 | 106,916 | 381,489 | 5,764 | 150,853 | 4 | 1 | 0 / 1,633 / 7 |
 
-The boundaries column counts the rows; findings leave out definitions outside the tree, low
+"Written by macros" counts bodies a macro wrote (`body_by`), as the summary line does; `Runtime`
+has 550 more whose name alone a macro wrote. The boundaries column counts the rows; findings leave out definitions outside the tree, low
 salience, and a callee that starts with the macro's name. No corpus has a shadow, so that path is
 proved by the fixtures alone. Python's golden holds exactly: Society's routines, boundaries, calls
 and ways in are the same row for row against the commit before the slice, every macro table empty,
@@ -496,8 +499,19 @@ findings unchanged. pdfcraft likewise, with 5,239 uses of 35 definitions and one
 moved, `UNREACHABLE` 1,923 to 1,924 of 4,265: the old sum counted a module scope as reached and not
 in the total, so the title was one below its own list (rule 13).
 
-**`Runtime` has not been read with any of this.** Its 7 `ENTRYPOINT_NO_TARGET` going to 0, its routine
-figures, and this finding at its scale all wait for that read.
+**`Runtime` at f783860** (log `output/cpp-scale/runtime-slicem.log`): 332,739 routines against
+274,430 read on 2026-11-05, the 21% that 9ad9d0d's exclusion had hidden, now counted and marked. Its one
+`MACRO_HIDDEN_BOUNDARY` is `STUBBED` (`Core/Public/Misc/CoreDefines.h:5`), whose body calls
+`fprintf(stderr, …)` at 4 uses that write only its name: true, and an ordinary wrapper.
+
+**`ENTRYPOINT_NO_TARGET` went from 7 to 3, and all 3 were this tool's.** Each has a body:
+`UGameplayStatics::SpawnForceFeedbackAtLocation` and `SpawnForceFeedbackAttached` declare `FVector
+Location` and define `const FVector Location`, and `UARBlueprintLibrary::IsARSupported()` is defined
+`IsARSupported(void)`. Their USRs differ (the out-of-line body lost the `#S` of its static
+declaration, traced on AugmentedReality), so the types as written decide, and those kept what C++
+drops. Fixed at 7536d32: `AugmentedReality` retaken went from 1 to 0 with no definition read;
+`Engine`, which holds the other 2, is proved by the fixtures alone. **`Runtime` has not been retaken
+with that fix**, so 0 is expected and not measured.
 
 **Linux and Windows are read through other clangs, and neither has read these corpora.**
 maclab uses LLVM 22.1.0's tarball and GIZA Visual Studio's clang 19.1.5, and each passes the

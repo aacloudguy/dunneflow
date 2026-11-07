@@ -102,6 +102,11 @@ against the source (`GROUND-TRUTH.md`). That is dead code by another route, but 
 `DEAD_CODE` finding, because an `IPC_COMMAND` is a way in. Not built, because its blind spot is
 large: a client in a language this build does not read, a test, or a second front end outside
 the tree. *Settled by* Tom deciding whether an INFO finding with that blind spot is wanted.
+**Tom's decision, 2026-11-07: build it, and highlight it.** *"Unused code and paths that are
+never taken is a common problem, so finding it and pointing it out is a very strong
+feature."* A command no client in the tree sends is a finding at **DEAD_CODE's severity and
+place in the worklist**, with its blind spot stated: a client in a language this build does
+not read, a test, or a second front end outside the tree.
 
 **41. *About this map* says "Inferred facts: none" directly under "matched by name".** Design
 rule 28's *inferred* is a provenance tier: a fact guessed by a model, of which there are
@@ -109,6 +114,10 @@ none. A link matched by name is `Confidence.INFERRED` in the sense Python's by-n
 have always been. Read quickly, the two rows contradict each other. *Settled by* Tom
 choosing between leaving it, adding a clause to the vow ("a call or command matched by name
 is labelled where it is shown"), or rewording one of the rows.
+**Tom's decision, 2026-11-07:** *"If no model was invoked, we should not mention the word
+'Model' at all. If one was used, we can mention it and state plainly what the results
+were."* So a map no model touched has no inference row at all, and one that used a model
+says plainly what it produced; "matched by name" stays where it is.
 
 **42. The second recursive arm's cost on a large map is unmeasured.** Every reach query now
 also joins `ipc_links`. That table is empty on every map but DunneNote's, and a read-only
@@ -134,6 +143,9 @@ inspector and the canvas draw calls and IPC crossings; a body reached by dispatc
 reach and in `touches`/`impact` and MCP, and has no row or line of its own on screen. Not
 drawn because a 271-way fan-out (traccar's `decode`) is noise by default (design rule 19).
 *Settled by* Tom choosing how a dispatched call should look when it is asked for.
+**Tom's decision, 2026-11-07: an inspector list.** The inspector lists the bodies a selected
+call may run, collapsed behind a count; the canvas draws nothing until one is picked, and then
+one dashed line to it.
 
 **45. Java registers by supertype, and the grammar cannot say so.** Spring Data writes a
 repository at run time from an interface that extends `JpaRepository`, so petclinic's every
@@ -142,18 +154,23 @@ repository at run time from an interface that extends `JpaRepository`, so petcli
 extends a framework type is a whole-program fact and a file's facts may not depend on one
 (rule 95), so this is the edge pass's to say. *Settled by* an `extends:` key in `java.yaml`
 read by the edge pass, measured on petclinic (DATABASE) and traccar (ways in).
+**Tom's decision, 2026-11-07: build it**, as written.
 
 **46. JAX-RS's client is not NETWORK.** `client.target(url).request().get()` is 18 of traccar's
 network calls and is read as calls on a value named `client`; `target` and `request` are far
 too common to match bare (rule 5). *Settled by* the edge pass naming the far end's type
 (`jakarta.ws.rs.client.WebTarget`) where the jars are present, and a frontier-to-boundary rule
 deciding it, or by a stated decision that it stays a residue.
+**Tom's decision, 2026-11-07: type it in the edge pass** where the jars are present, with a
+rule turning the type into NETWORK; with no jars it stays a stated residue.
 
 **47. A Kotlin file in a Java tree is a missing class to javac.** A call from Java into
 Kotlin is `untyped`, and a call from Kotlin into Java has no edge at all (the Kotlin reader
 supplies none). anki-android is all Kotlin and no corpus here mixes them. *Settled by* a
 mixed tree to measure, then deciding whether the Kotlin reader's declarations are handed to
 javac as a classpath stub.
+**Tom's decision, 2026-11-07: find a public mixed Java and Kotlin tree first**, measure it, and
+decide the stubs from what it shows.
 
 **48. A declared boundary is in the graph and nowhere on the dashboard.** Go's reader
 records what a stub's signature names (`*net.UnixListener`) in `declared_boundaries`, and

@@ -4,6 +4,7 @@
   "version": "1.3.0",
   "protocol": 1,
   "schema_version": 20,
+  "rule_keys": ["when_arg", "undecided", "note", "target_field"],
   "rules": "typescript.yaml",
   "in_process": false,
   "entry": "main.bundle.cjs",

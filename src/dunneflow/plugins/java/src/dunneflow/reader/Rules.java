@@ -39,6 +39,32 @@ public final class Rules {
         final Set<String> method = new HashSet<>();
         final List<String> contains = new ArrayList<>();
         Integer targetArg;
+        // `detectors.ArgCondition` (`when_arg`): the rule applies only for some values of one
+        // argument. Java has no keyword arguments, so only the position is read.
+        Integer whenIndex;
+        final Set<String> whenIn = new HashSet<>();
+        final Set<String> whenNotIn = new HashSet<>();
+        // Said on whatever rule matches instead, when `when_arg` could not decide.
+        String undecided = "";
+        // A fixed phrase after the evidence.
+        String note = "";
+
+        /** {@code ArgCondition.decide}: TRUE, FALSE, or null for undecided. An absent
+         *  argument, a literal or a {@code not_in} entry decides no; anything else that is not
+         *  in {@code in} -- a variable, a call -- is undecided, and never matches (rule 49). */
+        Boolean decide(List<String> texts, List<Boolean> literal) {
+            if (whenIndex == null || whenIndex < 0 || whenIndex >= texts.size()) {
+                return Boolean.FALSE;
+            }
+            String v = texts.get(whenIndex);
+            if (whenIn.contains(v)) {
+                return Boolean.TRUE;
+            }
+            if (literal.get(whenIndex) || whenNotIn.contains(v)) {
+                return Boolean.FALSE;
+            }
+            return null;
+        }
 
         boolean matches(String dotted) {
             if (dotted.isEmpty()) {
@@ -107,6 +133,20 @@ public final class Rules {
             if (Json.get(b, "target_arg") instanceof Long n) {
                 r.targetArg = n.intValue();
             }
+            Object when = Json.get(b, "when_arg");
+            if (when != null) {
+                if (Json.get(when, "index") instanceof Long n) {
+                    r.whenIndex = n.intValue();
+                } else {
+                    // Refused rather than defaulted: a condition with no position decides
+                    // nothing, and would read as "never" without a word (rule 49).
+                    r.whenIndex = -1;
+                }
+                r.whenIn.addAll(Json.strings(Json.get(when, "in")));
+                r.whenNotIn.addAll(Json.strings(Json.get(when, "not_in")));
+            }
+            r.undecided = orEmpty(Json.str(b, "undecided"));
+            r.note = orEmpty(Json.str(b, "note"));
             boundaries.add(r);
         }
         for (Object e : Json.list(raw, "entrypoints")) {
@@ -147,14 +187,30 @@ public final class Rules {
         return boundaries.size();
     }
 
-    /** The first matching rule, so order in the YAML is meaningful. */
-    Boundary matchCall(String dotted) {
+    /** A matching rule, and the blind spot the conditioned rules before it left. */
+    record Match(Boundary rule, String blind) { }
+
+    /** The first matching rule, so order in the YAML is meaningful. A rule conditioned on an
+     *  argument is decided on {@code texts}; one that cannot be decided does not match, and
+     *  its {@code undecided} sentence is the blind spot of the rule that does. */
+    Match matchCall(String dotted, List<String> texts, List<Boolean> literal) {
+        List<String> blind = new ArrayList<>();
         for (Boundary b : boundaries) {
-            if (b.matches(dotted)) {
-                return b;
+            if (!b.matches(dotted)) {
+                continue;
             }
+            if (b.whenIndex != null) {
+                Boolean yes = b.decide(texts, literal);
+                if (yes == null && !b.undecided.isEmpty()) {
+                    blind.add(b.undecided);
+                }
+                if (!Boolean.TRUE.equals(yes)) {
+                    continue;
+                }
+            }
+            return new Match(b, String.join("; ", blind));
         }
-        return null;
+        return new Match(null, String.join("; ", blind));
     }
 
     /** {@code RuleSet.network_profile}, including the clause that makes a bare key exact:

@@ -30,6 +30,25 @@ struct Boundary {
     std::vector<std::string> exact, prefix, method, contains;
     std::optional<int64_t> target_arg;
     bool names_macro = false;  // about the macro itself: what it reaches cannot contradict it
+    // `detectors.ArgCondition` (`when_arg`): the rule applies only for some values of one
+    // argument, read as written (`AF_UNIX` is named, never evaluated).
+    std::optional<int64_t> when_index;
+    std::set<std::string> when_in, when_not_in;
+    std::string undecided;  // said on whatever rule matches instead, when the condition cannot decide
+    std::string note;       // a fixed phrase after the evidence
+
+    // `ArgCondition.decide`: 1 yes, 0 no, -1 undecided. An absent argument, a literal or a
+    // `not_in` entry decides no; anything else not in `in` -- a variable, a call -- is
+    // undecided and never matches (rule 49).
+    int decide(const std::vector<std::string>& args) const {
+        if (!when_index || *when_index < 0 || *when_index >= static_cast<int64_t>(args.size())) return 0;
+        std::string v = args[static_cast<size_t>(*when_index)];
+        bool literal = !v.empty() && (v[0] == '"' || v[0] == '\'' || std::isdigit(static_cast<unsigned char>(v[0])));
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
+        if (when_in.count(v)) return 1;
+        if (literal || when_not_in.count(v)) return 0;
+        return -1;
+    }
 
     // `BoundaryRule.matches_call`: the four tests and nothing else.
     bool matches(const std::string& dotted) const {
@@ -133,6 +152,15 @@ inline Rules parse(const json::Value& raw, std::vector<std::string>& notes) {
         x.contains = b["contains"].strings();
         if (!b["target_arg"].is_null()) x.target_arg = b["target_arg"].integer();
         x.names_macro = b["names_macro"].boolean();
+        if (!b["when_arg"].is_null()) {
+            const auto& w = b["when_arg"];
+            // A condition with no position decides nothing: refused as never, and said.
+            x.when_index = w["index"].is_null() ? -1 : w["index"].integer();
+            for (const auto& v : w["in"].strings()) x.when_in.insert(v);
+            for (const auto& v : w["not_in"].strings()) x.when_not_in.insert(v);
+        }
+        x.undecided = b["undecided"].str();
+        x.note = b["note"].str();
         std::string target = b["target"].str();
         if (!target.empty() && target != "arg") {
             // Refused rather than defaulted: a strategy nobody reads is a boundary row naming

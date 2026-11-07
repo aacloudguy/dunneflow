@@ -39,9 +39,45 @@ import ts from "typescript";
 import { callSiteId, controlPointId, definitionId, hashSource } from "./ids.js";
 import { dotted, isConstruction } from "./dotted.js";
 import {
-  matchCall, matchNetwork, matchSubscript,
-  type BoundaryRule, type RuleSet, type TargetKind,
+  matchCall, matchCallWith, matchNetwork, matchSubscript,
+  type BoundaryRule, type RuleSet, type TargetKind, type WhenArg,
 } from "./rules.js";
+
+/** `ArgCondition.decide` on what the source wrote: yes, no, or `null` for undecided. An
+ *  absent argument, a literal, or a `not_in` entry decides no; anything else -- a variable,
+ *  a call -- is undecided, and never matches (rule 49). */
+function decideArg(w: WhenArg, args: readonly ts.Expression[],
+                   checker: ts.TypeChecker | null): boolean | null {
+  const arg = w.index >= 0 ? args[w.index] : undefined;
+  if (arg === undefined) return false;
+  const inner = ts.isParenthesizedExpression(arg) ? arg.expression : arg;
+  if (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner)) {
+    if (w.anyString || w.in.has(inner.text)) return true;
+    return false;
+  }
+  if (ts.isObjectLiteralExpression(inner) && w.hasKey) {
+    return inner.properties.some((p) => {
+      const n = p.name;
+      return n !== undefined && (ts.isIdentifier(n) || ts.isStringLiteral(n)) && n.text === w.hasKey;
+    });
+  }
+  const text = inner.getText();
+  if (w.in.has(text)) return true;
+  // **A variable the checker can type is decided by its type** where the shape is the
+  // question: `net.connect(p)` with `p: string` is a path, and with `port: number` is not.
+  if (w.anyString && checker !== null) {
+    const t = checker.getTypeAtLocation(inner);
+    const flags = t.isUnion()
+      ? t.types.reduce((f, u) => f | u.flags, 0) : t.flags;
+    const stringy = ts.TypeFlags.StringLike;
+    const numeric = ts.TypeFlags.NumberLike;
+    if ((flags & stringy) !== 0 && (flags & ~stringy & ~ts.TypeFlags.Undefined) === 0) return true;
+    if ((flags & numeric) !== 0 && (flags & ~numeric & ~ts.TypeFlags.Undefined) === 0) return false;
+  }
+  if (ts.isNumericLiteral(inner) || ts.isObjectLiteralExpression(inner)
+      || w.notIn.has(text)) return false;
+  return null;
+}
 import { waysIn } from "./routes.js";
 import { isGlobalFetch, packageBoundary } from "./pkg.js";
 import type {
@@ -739,7 +775,10 @@ export class Extractor {
       // neither the package nor the spelling has said anything (BACKLOG 4).
       const viaName = inPackage === null && matchCall(this.rules, expr) === null
         && isGlobalFetch(this.checker, node) ? "fetch" : "";
-      const named = matchCall(this.rules, viaName || expr);
+      const args = node.arguments ?? [];
+      const matched = matchCallWith(this.rules, viaName || expr,
+                                    (w) => decideArg(w, args, this.checker ?? null));
+      const named = matched.rule;
       const rule: BoundaryRule | null = inPackage !== null
         ? {
             kind: inPackage.rule.kind,
@@ -747,6 +786,7 @@ export class Extractor {
             salience: inPackage.rule.salience,
             exact: new Set(), prefix: [], method: new Set(), subscript: new Set(),
             contains: [], targetArg: 0, target: inPackage.rule.target,
+            whenArg: null, undecided: "", note: "", targetField: "",
           }
         : named;
       const site = this.recordCall(owner.id, expr, line, rule !== null,
@@ -758,14 +798,19 @@ export class Extractor {
           kind: rule.kind as BoundaryHit["kind"],
           direction: rule.direction as BoundaryHit["direction"],
           target: this.target(node, expr, rule.target, rule.targetArg,
-                              inPackage?.pkg ?? ""),
+                              inPackage?.pkg ?? "", rule.targetField),
           line,
-          evidence: expr,
+          // The call's spelling first, always (`detectors.EVIDENCE_NOTE`).
+          evidence: expr + (rule.note ? " — " + rule.note : "")
+            + (inPackage === null && matched.blind ? " — blind spot: " + matched.blind : ""),
         };
         if (rule.salience !== "normal") hit.salience = rule.salience;
         this.boundaries.push(hit);
       }
-      this.maybeNetwork(node, expr, line, viaName || expr);
+      // A Unix-domain socket is not a remote call: no protocol, no timeout to miss.
+      if (rule === null || rule.kind !== "LOCAL_IPC") {
+        this.maybeNetwork(node, expr, line, viaName || expr);
+      }
     }
     // **Outside the `expr` test, and that is the fix rather than the shape it started
     // in.** A `.map`/`.filter`/`.forEach` chain is a loop that is an expression, and
@@ -948,6 +993,7 @@ export class Extractor {
     kind: TargetKind,
     idx: number | null,
     pkg: string,
+    field = "",
   ): string {
     if (kind === "package") return pkg;
     if (kind === "receiver_tail") {
@@ -967,8 +1013,22 @@ export class Extractor {
         : (parts[0] ?? "");
     }
     if (idx === null) return "";
-    const arg = (node.arguments ?? [])[idx];
+    let arg: ts.Expression | undefined = (node.arguments ?? [])[idx];
     if (arg === undefined) return "";
+    // `net.connect({ path: p })` touches `p`: the field the rule names, where it is set.
+    if (field && ts.isObjectLiteralExpression(arg)) {
+      for (const p of arg.properties) {
+        if (ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))
+            && p.name.text === field) {
+          arg = p.initializer;
+          break;
+        }
+        if (ts.isShorthandPropertyAssignment(p) && p.name.text === field) {
+          arg = p.name;
+          break;
+        }
+      }
+    }
     if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
     return this.text(arg);
   }

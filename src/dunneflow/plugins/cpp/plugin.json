@@ -5,7 +5,10 @@
   "protocol": 1,
   "schema_version": 20,
   "rule_keys": [
-    "names_macro"
+    "names_macro",
+    "when_arg",
+    "undecided",
+    "note"
   ],
   "rules": "cpp.yaml",
   "in_process": false,

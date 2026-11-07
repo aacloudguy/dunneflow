@@ -1740,8 +1740,15 @@ private:
                             if (!x_.root.empty() && g.rfind(x_.root, 0) == 0) m.seen = g.substr(x_.root.size());
                         }
                     }
+                    std::string blind;
                     for (const auto& rule : x_.rules->boundaries) {
                         if (!rule.matches(callee)) continue;
+                        // A macro's call has no arguments anybody at this line wrote, so a
+                        // condition on one cannot be decided here.
+                        if (rule.when_index) {
+                            if (!rule.undecided.empty()) blind += (blind.empty() ? "" : "; ") + rule.undecided;
+                            continue;
+                        }
                         // Written and expanded on one line are one act: `UE_LOG` is STDIO by
                         // its own name, whatever it calls to do it.
                         if (written_hits_.count({owner, line, rule.kind})) continue;
@@ -1751,9 +1758,10 @@ private:
                         h.direction = rule.direction;
                         h.target = rule.target_arg && *rule.target_arg >= 0 ? expanded_arg(c, *rule.target_arg, off) : "";
                         h.line = line;
-                        h.evidence = callee;
+                        h.evidence = evidence_of(callee, rule, blind);
                         h.salience = rule.salience;
                         m.hits.push_back(h);
+                        if (rule.kind == "LOCAL_IPC") break;
                     }
                 }
                 rows.emplace(key, std::move(m));
@@ -2375,6 +2383,15 @@ private:
         }
     }
 
+    // The call's spelling first, always, then the rule's note, then a blind spot
+    // (`detectors.EVIDENCE_NOTE`, which `acts.one_act` folds chains on).
+    static std::string evidence_of(const std::string& spelling, const rules::Boundary& rule, const std::string& blind) {
+        std::string e = spelling;
+        if (!rule.note.empty()) e += " \xE2\x80\x94 " + rule.note;
+        if (!blind.empty()) e += " \xE2\x80\x94 blind spot: " + blind;
+        return e;
+    }
+
     bool outside_tree(CXCursor ref) const {
         CXFile f = nullptr;
         C().clang_getExpansionLocation(C().clang_getCursorLocation(ref), &f, nullptr, nullptr, nullptr);
@@ -2385,8 +2402,19 @@ private:
 
     bool boundaries(Routine* owner, const facts::CallSite& s, const std::string& name, const std::string& through) {
         bool any = false;
+        std::vector<std::string> argv;
+        for (const auto& arg : s.args) {
+            if (arg.idx >= static_cast<int64_t>(argv.size())) argv.resize(static_cast<size_t>(arg.idx) + 1);
+            argv[static_cast<size_t>(arg.idx)] = arg.expr ? *arg.expr : "";
+        }
+        std::string blind;
         for (const auto& rule : x_.rules->boundaries) {
             if (!rule.matches(name)) continue;
+            if (rule.when_index) {
+                int yes = rule.decide(argv);
+                if (yes < 0 && !rule.undecided.empty()) blind += (blind.empty() ? "" : "; ") + rule.undecided;
+                if (yes != 1) continue;
+            }
             any = true;
             facts::BoundaryHit h;
             h.routine_id = owner->r.id;
@@ -2399,11 +2427,14 @@ private:
             }
             h.target = target;
             h.line = s.line;
-            h.evidence = name;
+            h.evidence = evidence_of(name, rule, blind);
             h.salience = rule.salience;
             h.through_macro = through;
             written_hits_.insert({*owner->r.id, static_cast<long>(s.line), rule.kind});
             x_.ff.boundaries.push_back(h);
+            // **A Unix-domain socket is not also the network.** Every other rule that matches
+            // is its own fact here, so LOCAL_IPC, written first, ends it (rule 40).
+            if (rule.kind == "LOCAL_IPC") break;
         }
         return any;
     }

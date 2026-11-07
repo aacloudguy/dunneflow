@@ -280,3 +280,154 @@ def test_a_declared_boundary_is_stored_apart_from_every_touch(tmp_path):
     assert not [r for r in touches if "declared by signature" in r["evidence"]]
     assert [r["kind"] for r in declared] == ["LOCAL_IPC", "LOCAL_IPC", "NETWORK"]
     assert counts["declared_boundaries"] == 3
+
+
+# ---------------------------------------------- the other four readers, 2026-11-07 --- #
+# LOCAL_IPC was taught to Go and Python first. C and C++ read `socket(AF_UNIX, ...)` as
+# NETWORK, Kotlin read `java.net.UnixDomainSocketAddress.of` as NETWORK through its
+# `java.net.` prefix, and Rust and Java recorded no Unix socket at all.
+
+def _read(lang: str, files: dict[str, str], tmp_path_factory) -> dict[str, FileFacts]:
+    from dunneflow.ingest.contract import ToolchainMissing
+
+    plugin = ingest.PLUGINS.get(lang)
+    if plugin is None:
+        pytest.skip(f"this build ships no {lang} reader")
+    try:
+        plugin.probe()
+    except ToolchainMissing as exc:
+        pytest.skip(f"no {lang} toolchain on this machine: {exc}")
+    root = tmp_path_factory.mktemp(f"ipc{lang}")
+    paths = []
+    for name, text in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text, encoding="utf-8")
+        paths.append(root / name)
+    plugin.open(root, paths)
+    try:
+        return {ff.path: ff for ff in plugin.extract(paths, root)}
+    finally:
+        plugin.close()
+
+
+def _by_line(ff: FileFacts) -> dict[int, list[tuple[str, str, str]]]:
+    out: dict[int, list[tuple[str, str, str]]] = {}
+    for b in ff.boundaries:
+        out.setdefault(b.line, []).append((b.kind.value, b.target, b.evidence))
+    return out
+
+
+C_SOURCE = """#include <sys/socket.h>
+
+int unix_client(void) { return socket(AF_UNIX, SOCK_STREAM, 0); }
+int tcp_client(void) { return socket(AF_INET, SOCK_STREAM, 0); }
+int either(int fam) { return socket(fam, SOCK_STREAM, 0); }
+int pair(int sv[2]) { return socketpair(AF_UNIX, SOCK_STREAM, 0, sv); }
+"""
+
+
+def test_c_decides_a_socket_on_its_family_and_an_ipv4_one_says_nothing(tmp_path_factory):
+    rows = _by_line(_read("cpp", {"p.c": C_SOURCE}, tmp_path_factory)["p.c"])
+    assert rows[3] == [("LOCAL_IPC", "", "socket")]
+    # NETWORK's target is its argument 0, which for `socket` is the family, as before.
+    assert rows[4] == [("NETWORK", "AF_INET", "socket")], "not_in: decided, not a blind spot"
+    assert rows[5] == [("NETWORK", "fam", "socket" + EVIDENCE_NOTE + "blind spot: the address "
+                        "family is not written as AF_UNIX, so a Unix-domain socket here "
+                        "reads as NETWORK")]
+    assert rows[6] == [("LOCAL_IPC", "", "socketpair")]
+
+
+RUST_SOURCE = """use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
+
+fn client(p: &str) { let _s = UnixStream::connect(p); }
+fn server(p: &str) { let _l = UnixListener::bind(p); }
+async fn tok(p: &str) { let _s = tokio::net::UnixStream::connect(p).await; }
+fn pair() { let _q = UnixStream::pair(); let _d = UnixDatagram::bind("/tmp/d"); }
+fn tcp(a: &str) { let _t = std::net::TcpStream::connect(a); }
+fn main() {}
+"""
+
+
+def test_rust_names_a_unix_socket_by_its_type(tmp_path_factory):
+    ff = _read("rust", {"Cargo.toml": '[package]\nname = "p"\nversion = "0.1.0"\n',
+                        "src/main.rs": RUST_SOURCE}, tmp_path_factory)["src/main.rs"]
+    rows = _by_line(ff)
+    assert rows[3] == [("LOCAL_IPC", "p", "UnixStream.connect")]
+    assert rows[4] == [("LOCAL_IPC", "p", "UnixListener.bind")]
+    assert rows[5] == [("LOCAL_IPC", "p", "tokio.net.UnixStream.connect")]
+    assert sorted(rows[6]) == [("LOCAL_IPC", "", "UnixStream.pair"),
+                               ("LOCAL_IPC", "/tmp/d", "UnixDatagram.bind")]
+    assert rows[7] == [("NETWORK", "a", "std.net.TcpStream.connect")]
+    assert [n.line for n in ff.network] == [7], "a Unix socket is not a remote call"
+
+
+JAVA_SOURCE = """import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+
+class P {
+    void client(String p) throws Exception {
+        var a = UnixDomainSocketAddress.of(p);
+        SocketChannel c = SocketChannel.open(StandardProtocolFamily.UNIX);
+        ServerSocketChannel s = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+    }
+    void tcp(java.net.InetSocketAddress a) throws Exception {
+        SocketChannel.open(a);
+        SocketChannel.open();
+    }
+}
+"""
+
+
+def test_java_decides_a_channel_on_its_family_and_names_a_unix_address(tmp_path_factory):
+    rows = _by_line(_read("java", {"P.java": JAVA_SOURCE}, tmp_path_factory)["P.java"])
+    assert rows[8] == [("LOCAL_IPC", "p", "UnixDomainSocketAddress.of")]
+    assert rows[9] == [("LOCAL_IPC", "", "SocketChannel.open")]
+    assert rows[10] == [("LOCAL_IPC", "", "ServerSocketChannel.open")]
+    # A variable is NETWORK with no blind spot: every TCP channel would carry one (rule 43).
+    assert rows[13] == [("NETWORK", "a", "SocketChannel.open")]
+    assert rows[14] == [("NETWORK", "", "SocketChannel.open")]
+
+
+KOTLIN_SOURCE = """import java.net.UnixDomainSocketAddress
+
+fun client(p: String) {
+    val a = UnixDomainSocketAddress.of(p)
+    val b = java.net.UnixDomainSocketAddress.of(p)
+}
+"""
+
+
+def test_kotlin_s_java_net_prefix_does_not_make_a_unix_address_the_network(tmp_path_factory):
+    """Rule 40: Kotlin records every rule that matches, so LOCAL_IPC must end it."""
+    rows = _by_line(_read("kotlin", {"P.kt": KOTLIN_SOURCE}, tmp_path_factory)["P.kt"])
+    assert rows[4] == [("LOCAL_IPC", "p", "UnixDomainSocketAddress.of")]
+    assert rows[5] == [("LOCAL_IPC", "p", "java.net.UnixDomainSocketAddress.of")]
+
+
+TS_SOURCE = """import * as net from "net";
+
+export function a(p: string) { return net.connect(p); }
+export function b(p: string) { return net.createConnection({ path: p }); }
+export function c() { return net.connect(8080, "localhost"); }
+export function d() { return net.connect({ port: 80, host: "example.com" }); }
+export function e(x: any) { return net.connect(x); }
+export function f() { return net.connect("/run/s.sock"); }
+"""
+
+
+def test_node_decides_a_connection_by_its_first_argument_s_shape(tmp_path_factory):
+    """A string is a path, a number a port, and an options object is a Unix socket when it
+    sets `path`. A typed variable is decided by its type; an `any` cannot be."""
+    ff = _read("typescript", {"p.ts": TS_SOURCE}, tmp_path_factory)["p.ts"]
+    rows = _by_line(ff)
+    assert rows[3] == [("LOCAL_IPC", "p", "net.connect")], "p: string is a path"
+    assert rows[4] == [("LOCAL_IPC", "p", "net.createConnection")]
+    assert rows[5] == [("NETWORK", "8080", "net.connect")]
+    assert rows[6] == [("NETWORK", "example.com", "net.connect")]
+    assert rows[7] == [("NETWORK", "x", "net.connect" + EVIDENCE_NOTE + "blind spot: the first "
+                        "argument is not written as a path or an options object, so a "
+                        "Unix-domain socket here reads as NETWORK")]
+    assert rows[8] == [("LOCAL_IPC", "/run/s.sock", "net.connect")]
+    assert ff.network == [], "a Unix socket is not a remote call, and net.connect is no library"

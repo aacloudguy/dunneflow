@@ -57,6 +57,42 @@ boundaries:
     exact: [System.exit, Runtime.getRuntime.halt]
     target_arg: 0
 
+  # -- local IPC -------------------------------------------------------------- #
+  # **A Unix-domain socket is another process on this machine, never the network**
+  # (`LANGUAGES.md`, *LOCAL_IPC*). Java 16 names one two ways: an address built from a path,
+  # which is the act and carries the path, and a channel opened for the `UNIX` family, which
+  # is decided on its argument. A channel opened from a variable is NETWORK and says
+  # nothing: every TCP `open(new InetSocketAddress(...))` would otherwise carry a blind
+  # spot (rule 43), and a Unix one built from an address has that address's own row.
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [UnixDomainSocketAddress.of, java.net.UnixDomainSocketAddress.of]
+    target_arg: 0
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [SocketChannel.open, java.nio.channels.SocketChannel.open]
+    when_arg: {index: 0, in: [StandardProtocolFamily.UNIX, java.net.StandardProtocolFamily.UNIX, UNIX]}
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    exact: [ServerSocketChannel.open, java.nio.channels.ServerSocketChannel.open]
+    when_arg: {index: 0, in: [StandardProtocolFamily.UNIX, java.net.StandardProtocolFamily.UNIX, UNIX]}
+  - kind: NETWORK
+    direction: OUT
+    salience: high
+    exact: [SocketChannel.open, java.nio.channels.SocketChannel.open, DatagramChannel.open,
+            java.nio.channels.DatagramChannel.open, AsynchronousSocketChannel.open,
+            java.nio.channels.AsynchronousSocketChannel.open]
+    target_arg: 0
+  - kind: NETWORK
+    direction: IN
+    salience: high
+    exact: [ServerSocketChannel.open, java.nio.channels.ServerSocketChannel.open,
+            AsynchronousServerSocketChannel.open,
+            java.nio.channels.AsynchronousServerSocketChannel.open]
+
   - kind: NETWORK
     direction: BOTH
     exact: [Socket, ServerSocket, DatagramSocket, java.net.Socket, java.net.ServerSocket,

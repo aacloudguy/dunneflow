@@ -113,6 +113,27 @@ boundaries:
     exact: [process.exit, process.abort, process.kill, Deno.exit]
     target_arg: 0
 
+  # -- local IPC -------------------------------------------------------------- #
+  # **A Unix-domain socket is another process on this machine, never the network**
+  # (`LANGUAGES.md`, *LOCAL_IPC*). Node decides by the first argument's shape: a string is
+  # the socket's path, a number is a TCP port, and an options object is a Unix socket when
+  # it sets `path`. A variable cannot be decided, and the TCP rule below says so. A server's
+  # `listen(path)` is not here: `listen` is a bare common method name (rule 5).
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [net.connect, net.createConnection, node:net.connect]
+    when_arg: {index: 0, any_string: true, has_key: path}
+    undecided: "the first argument is not written as a path or an options object, so a Unix-domain socket here reads as NETWORK"
+    target_arg: 0
+    target_field: path
+  - kind: NETWORK
+    direction: OUT
+    salience: high
+    exact: [net.connect, net.createConnection, tls.connect, node:net.connect]
+    target_arg: 0
+    target_field: host
+
   # -- network ---------------------------------------------------------------- #
   # `fetch` is the whole modern surface and it is a bare global, so `exact` rather than a
   # prefix. `new WebSocket(u)` folds to `WebSocket` by clause 7 of the dotted contract and

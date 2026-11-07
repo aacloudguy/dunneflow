@@ -26,6 +26,31 @@ export interface BoundaryRule {
   contains: string[];
   targetArg: number | null;
   target: TargetKind;
+  /** `when_arg`: the rule applies only for some values of one argument (`ArgCondition`). */
+  whenArg: WhenArg | null;
+  /** Said on whatever rule matches instead, when `whenArg` could not decide. */
+  undecided: string;
+  /** A fixed phrase after the evidence (`detectors.EVIDENCE_NOTE`). */
+  note: string;
+  /** Where the target argument is an object literal, the property to read it from. */
+  targetField: string;
+}
+
+/**
+ * `detectors.ArgCondition`, with two shapes only JavaScript needs. Node decides what
+ * `net.connect` reaches by the *shape* of its first argument: a string is a Unix-domain
+ * socket's path, a number is a TCP port, and an options object is either, by whether it
+ * sets `path`. So `any_string` says a string literal decides yes, and `has_key` says an
+ * object literal decides yes when it sets that property and no when it does not.
+ * `typescript.yaml` is the only rules file that writes either, so no other reader is
+ * handed a key it would ignore (rule 49).
+ */
+export interface WhenArg {
+  index: number;
+  in: Set<string>;
+  notIn: Set<string>;
+  anyString: boolean;
+  hasKey: string;
 }
 
 /**
@@ -140,6 +165,10 @@ export function parseRules(doc: unknown): RuleSet {
         ? null
         : Number(raw["target_arg"]),
       target: asTarget(raw["target"]),
+      whenArg: asWhenArg(raw["when_arg"]),
+      undecided: String(raw["undecided"] ?? ""),
+      note: String(raw["note"] ?? ""),
+      targetField: String(raw["target_field"] ?? ""),
     };
     boundaries.push(rule);
     for (const s of rule.subscript) subscriptIndex.set(s, rule);
@@ -224,12 +253,46 @@ export function matchesCall(rule: BoundaryRule, dotted: string): boolean {
   return false;
 }
 
+function asWhenArg(raw: unknown): WhenArg | null {
+  if (raw === undefined || raw === null) return null;
+  const w = raw as Record<string, unknown>;
+  return {
+    // A condition with no position decides nothing, and is read as never (rule 49).
+    index: typeof w["index"] === "number" ? w["index"] : -1,
+    in: new Set(asArray(w["in"])),
+    notIn: new Set(asArray(w["not_in"])),
+    anyString: w["any_string"] === true,
+    hasKey: String(w["has_key"] ?? ""),
+  };
+}
+
 /** First matching rule wins, so order in the YAML is meaningful. */
 export function matchCall(rules: RuleSet, dotted: string): BoundaryRule | null {
   for (const rule of rules.boundaries) {
     if (matchesCall(rule, dotted)) return rule;
   }
   return null;
+}
+
+/**
+ * `matchCall` with each conditioned rule decided on its call's arguments, by `decide`
+ * (yes, no, or `null` for undecided). One that cannot be decided does not match, and its
+ * `undecided` sentence is the blind spot of the rule that does.
+ */
+export function matchCallWith(
+  rules: RuleSet, dotted: string, decide: (w: WhenArg) => boolean | null,
+): { rule: BoundaryRule | null; blind: string } {
+  const blind: string[] = [];
+  for (const rule of rules.boundaries) {
+    if (!matchesCall(rule, dotted)) continue;
+    if (rule.whenArg !== null) {
+      const yes = decide(rule.whenArg);
+      if (yes === null && rule.undecided) blind.push(rule.undecided);
+      if (yes !== true) continue;
+    }
+    return { rule, blind: blind.join("; ") };
+  }
+  return { rule: null, blind: blind.join("; ") };
 }
 
 export function matchSubscript(rules: RuleSet, dotted: string): BoundaryRule | null {

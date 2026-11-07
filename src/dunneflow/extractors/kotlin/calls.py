@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from ...detectors import RuleSet
-from ...schema import BoundaryHit, CallArg, CallSite, Routine, call_site_id
+from ...schema import BoundaryHit, BoundaryKind, CallArg, CallSite, Routine, call_site_id
 from . import names
 from .ctx import Ctx
 from .scopes import Scope, ScopeKind
@@ -66,6 +66,12 @@ def read(ctx: Ctx, rules: RuleSet, owners: dict[int, Routine]
                     routine_id=owner.id, kind=rule.kind, direction=rule.direction,
                     target=target, line=site.line, evidence=site.callee_expr,
                     salience=rule.salience))
+                # **A Unix-domain socket is not also the network.** Every other rule that
+                # matches is its own fact here, and `java.net.` would make
+                # `java.net.UnixDomainSocketAddress.of` NETWORK as well as LOCAL_IPC: two
+                # numbers about one act (rule 40). So LOCAL_IPC, written first, ends it.
+                if rule.kind is BoundaryKind.LOCAL_IPC:
+                    break
             i = nxt
     return calls, boundaries
 

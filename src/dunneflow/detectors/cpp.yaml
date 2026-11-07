@@ -118,6 +118,31 @@ boundaries:
             IFileManager.Get.DirectoryExists]
     target_arg: 0
 
+  # ------------------------------------------------------------------- local IPC ---
+  # **A Unix-domain socket is another process on this machine, never the network**
+  # (`LANGUAGES.md`, *LOCAL_IPC*), decided where the family is written: `socket(AF_UNIX, ...)`.
+  # The families a program spells for anything else are `not_in`, so an IPv4 socket decides
+  # no rather than carrying a blind spot; a family held in a variable is undecided, and says so.
+  # `connect`, `bind` and `accept` take a socket that already exists and a `sockaddr` cast to
+  # the generic type, so nothing at the call says which family it is: they stay NETWORK, and
+  # the `socket` row in the same routine is where a Unix one shows. `socketpair` is local by
+  # construction.
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [socket]
+    when_arg:
+      index: 0
+      in: [AF_UNIX, AF_LOCAL, PF_UNIX, PF_LOCAL]
+      not_in: [AF_INET, AF_INET6, PF_INET, PF_INET6, AF_PACKET, PF_PACKET, AF_NETLINK,
+               PF_NETLINK, AF_BLUETOOTH, AF_CAN, AF_VSOCK, AF_UNSPEC, AF_ROUTE, PF_ROUTE,
+               AF_SYSTEM, PF_SYSTEM, AF_IRDA]
+    undecided: "the address family is not written as AF_UNIX, so a Unix-domain socket here reads as NETWORK"
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [socketpair]
+
   # --------------------------------------------------------------------- network ---
   - kind: NETWORK
     direction: BOTH

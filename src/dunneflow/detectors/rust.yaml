@@ -81,6 +81,32 @@ boundaries:
     exact: [std.process.exit, process.exit, std.process.abort, process.abort]
     target_arg: 0
 
+  # -- local IPC -------------------------------------------------------------- #
+  # **A Unix-domain socket is another process on this machine, never the network**
+  # (`LANGUAGES.md`, *LOCAL_IPC*). Rust names it by type, so no argument has to be read:
+  # `std::os::unix::net` and tokio's `net` each have their own `UnixStream`, `UnixListener`
+  # and `UnixDatagram`. The target is the socket's path.
+  - kind: LOCAL_IPC
+    direction: OUT
+    salience: high
+    exact: [UnixStream.connect, std.os.unix.net.UnixStream.connect, net.UnixStream.connect,
+            tokio.net.UnixStream.connect, UnixDatagram.connect,
+            std.os.unix.net.UnixDatagram.connect, tokio.net.UnixDatagram.connect]
+    target_arg: 0
+  - kind: LOCAL_IPC
+    direction: IN
+    salience: high
+    exact: [UnixListener.bind, std.os.unix.net.UnixListener.bind, net.UnixListener.bind,
+            tokio.net.UnixListener.bind, UnixDatagram.bind, std.os.unix.net.UnixDatagram.bind,
+            tokio.net.UnixDatagram.bind]
+    target_arg: 0
+  # A connected pair has no path: two ends of one socket, usually handed to a child.
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [UnixStream.pair, std.os.unix.net.UnixStream.pair, tokio.net.UnixStream.pair,
+            UnixDatagram.pair, std.os.unix.net.UnixDatagram.pair]
+
   # -- network ---------------------------------------------------------------- #
   - kind: NETWORK
     direction: OUT

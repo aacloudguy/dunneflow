@@ -4,6 +4,11 @@
   "version": "0.1.0",
   "protocol": 1,
   "schema_version": 20,
+  "rule_keys": [
+    "when_arg",
+    "undecided",
+    "note"
+  ],
   "rules": "java.yaml",
   "in_process": false,
   "workers": 1,

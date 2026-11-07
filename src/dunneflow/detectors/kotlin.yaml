@@ -36,6 +36,16 @@ boundaries:
              createNewFile, deleteRecursively, openFileOutput, renameTo]
     target_arg: 0
 
+  # **A Unix-domain socket is another process on this machine, never the network**
+  # (`LANGUAGES.md`, *LOCAL_IPC*), and before the NETWORK rule because `java.net.` is one of
+  # its prefixes. Only the address: a channel opened for the `UNIX` family is decided on its
+  # argument, and this reader does not read `when_arg`, so that stays NETWORK.
+  - kind: LOCAL_IPC
+    direction: BOTH
+    salience: high
+    exact: [UnixDomainSocketAddress.of, java.net.UnixDomainSocketAddress.of]
+    target_arg: 0
+
   # `fetch`'s Kotlin cousins. OkHttp, Retrofit, Ktor and the JDK's own client — the four a
   # corpus this size actually holds, named by the prefix the author wrote.
   - kind: NETWORK

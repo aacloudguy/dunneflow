@@ -211173,7 +211173,11 @@ function parseRules(doc) {
       subscript: new Set(asArray(raw["subscript"])),
       contains: asArray(raw["contains"]),
       targetArg: raw["target_arg"] === void 0 || raw["target_arg"] === null ? null : Number(raw["target_arg"]),
-      target: asTarget(raw["target"])
+      target: asTarget(raw["target"]),
+      whenArg: asWhenArg(raw["when_arg"]),
+      undecided: String(raw["undecided"] ?? ""),
+      note: String(raw["note"] ?? ""),
+      targetField: String(raw["target_field"] ?? "")
     };
     boundaries.push(rule);
     for (const s of rule.subscript) subscriptIndex.set(s, rule);
@@ -211241,11 +211245,36 @@ function matchesCall(rule, dotted2) {
   }
   return false;
 }
+function asWhenArg(raw) {
+  if (raw === void 0 || raw === null) return null;
+  const w = raw;
+  return {
+    // A condition with no position decides nothing, and is read as never (rule 49).
+    index: typeof w["index"] === "number" ? w["index"] : -1,
+    in: new Set(asArray(w["in"])),
+    notIn: new Set(asArray(w["not_in"])),
+    anyString: w["any_string"] === true,
+    hasKey: String(w["has_key"] ?? "")
+  };
+}
 function matchCall(rules2, dotted2) {
   for (const rule of rules2.boundaries) {
     if (matchesCall(rule, dotted2)) return rule;
   }
   return null;
+}
+function matchCallWith(rules2, dotted2, decide) {
+  const blind = [];
+  for (const rule of rules2.boundaries) {
+    if (!matchesCall(rule, dotted2)) continue;
+    if (rule.whenArg !== null) {
+      const yes = decide(rule.whenArg);
+      if (yes === null && rule.undecided) blind.push(rule.undecided);
+      if (yes !== true) continue;
+    }
+    return { rule, blind: blind.join("; ") };
+  }
+  return { rule: null, blind: blind.join("; ") };
 }
 function matchSubscript(rules2, dotted2) {
   return rules2.subscriptIndex.get(dotted2) ?? null;
@@ -211412,6 +211441,33 @@ function isGlobalFetch(checker, node) {
 }
 
 // src/extract.ts
+function decideArg(w, args, checker) {
+  const arg = w.index >= 0 ? args[w.index] : void 0;
+  if (arg === void 0) return false;
+  const inner = import_typescript4.default.isParenthesizedExpression(arg) ? arg.expression : arg;
+  if (import_typescript4.default.isStringLiteral(inner) || import_typescript4.default.isNoSubstitutionTemplateLiteral(inner)) {
+    if (w.anyString || w.in.has(inner.text)) return true;
+    return false;
+  }
+  if (import_typescript4.default.isObjectLiteralExpression(inner) && w.hasKey) {
+    return inner.properties.some((p) => {
+      const n = p.name;
+      return n !== void 0 && (import_typescript4.default.isIdentifier(n) || import_typescript4.default.isStringLiteral(n)) && n.text === w.hasKey;
+    });
+  }
+  const text = inner.getText();
+  if (w.in.has(text)) return true;
+  if (w.anyString && checker !== null) {
+    const t = checker.getTypeAtLocation(inner);
+    const flags = t.isUnion() ? t.types.reduce((f, u) => f | u.flags, 0) : t.flags;
+    const stringy = import_typescript4.default.TypeFlags.StringLike;
+    const numeric = import_typescript4.default.TypeFlags.NumberLike;
+    if ((flags & stringy) !== 0 && (flags & ~stringy & ~import_typescript4.default.TypeFlags.Undefined) === 0) return true;
+    if ((flags & numeric) !== 0 && (flags & ~numeric & ~import_typescript4.default.TypeFlags.Undefined) === 0) return false;
+  }
+  if (import_typescript4.default.isNumericLiteral(inner) || import_typescript4.default.isObjectLiteralExpression(inner) || w.notIn.has(text)) return false;
+  return null;
+}
 var LITERAL_MIN = 3;
 var LITERAL_MAX = 2e5;
 var MODULE_SCOPE = "<module>";
@@ -211969,7 +212025,13 @@ var Extractor = class {
       const owner = this.owner();
       const inPackage = packageBoundary(this.checker, node, this.rules);
       const viaName = inPackage === null && matchCall(this.rules, expr) === null && isGlobalFetch(this.checker, node) ? "fetch" : "";
-      const named = matchCall(this.rules, viaName || expr);
+      const args = node.arguments ?? [];
+      const matched = matchCallWith(
+        this.rules,
+        viaName || expr,
+        (w) => decideArg(w, args, this.checker ?? null)
+      );
+      const named = matched.rule;
       const rule = inPackage !== null ? {
         kind: inPackage.rule.kind,
         direction: inPackage.rule.direction,
@@ -211980,7 +212042,11 @@ var Extractor = class {
         subscript: /* @__PURE__ */ new Set(),
         contains: [],
         targetArg: 0,
-        target: inPackage.rule.target
+        target: inPackage.rule.target,
+        whenArg: null,
+        undecided: "",
+        note: "",
+        targetField: ""
       } : named;
       const site = this.recordCall(
         owner.id,
@@ -212001,15 +212067,19 @@ var Extractor = class {
             expr,
             rule.target,
             rule.targetArg,
-            inPackage?.pkg ?? ""
+            inPackage?.pkg ?? "",
+            rule.targetField
           ),
           line,
-          evidence: expr
+          // The call's spelling first, always (`detectors.EVIDENCE_NOTE`).
+          evidence: expr + (rule.note ? " \u2014 " + rule.note : "") + (inPackage === null && matched.blind ? " \u2014 blind spot: " + matched.blind : "")
         };
         if (rule.salience !== "normal") hit.salience = rule.salience;
         this.boundaries.push(hit);
       }
-      this.maybeNetwork(node, expr, line, viaName || expr);
+      if (rule === null || rule.kind !== "LOCAL_IPC") {
+        this.maybeNetwork(node, expr, line, viaName || expr);
+      }
     }
     this.maybeComprehension(node);
     if (import_typescript4.default.isCallExpression(node)) this.expressionsIn(node.expression);
@@ -212170,7 +212240,7 @@ var Extractor = class {
    * the dependency, for a rule the checker matched: what a `stripe` call touches is
    * Stripe, and the expression is already in `evidence`.
    */
-  target(node, expr, kind, idx, pkg) {
+  target(node, expr, kind, idx, pkg, field = "") {
     if (kind === "package") return pkg;
     if (kind === "receiver_tail") {
       const parts = expr.split(".");
@@ -212180,8 +212250,20 @@ var Extractor = class {
       return parts.length >= 3 ? parts[parts.length - 2] ?? "" : parts[0] ?? "";
     }
     if (idx === null) return "";
-    const arg = (node.arguments ?? [])[idx];
+    let arg = (node.arguments ?? [])[idx];
     if (arg === void 0) return "";
+    if (field && import_typescript4.default.isObjectLiteralExpression(arg)) {
+      for (const p of arg.properties) {
+        if (import_typescript4.default.isPropertyAssignment(p) && (import_typescript4.default.isIdentifier(p.name) || import_typescript4.default.isStringLiteral(p.name)) && p.name.text === field) {
+          arg = p.initializer;
+          break;
+        }
+        if (import_typescript4.default.isShorthandPropertyAssignment(p) && p.name.text === field) {
+          arg = p.name;
+          break;
+        }
+      }
+    }
     if (import_typescript4.default.isStringLiteral(arg) || import_typescript4.default.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
     return this.text(arg);
   }

@@ -848,7 +848,16 @@ public final class Extract {
                 return; // clause 3: no name at the root, and `""` is never matched
             }
             long line = lineOf(site);
-            Rules.Boundary rule = rules.matchCall(dotted);
+            List<String> texts = new ArrayList<>();
+            List<Boolean> literal = new ArrayList<>();
+            for (ExpressionTree a : args) {
+                boolean lit = a instanceof LiteralTree;
+                Object v = lit ? ((LiteralTree) a).getValue() : null;
+                texts.add(v instanceof String str ? str : text(a));
+                literal.add(lit);
+            }
+            Rules.Match match = rules.matchCall(dotted, texts, literal);
+            Rules.Boundary rule = match.rule();
             String caller = ownerId();
             String key = caller + "\0" + dotted;
             long ordinal = callOrd.merge(key, 1L, Long::sum) - 1;
@@ -877,11 +886,22 @@ public final class Extract {
                 hit.direction = direction(rule.direction);
                 hit.target = target(args, rule);
                 hit.line = line;
-                hit.evidence = dotted;
+                // The call's spelling first, always (`detectors.EVIDENCE_NOTE`).
+                String evidence = dotted;
+                if (!rule.note.isEmpty()) {
+                    evidence += " — " + rule.note;
+                }
+                if (!match.blind().isEmpty()) {
+                    evidence += " — blind spot: " + match.blind();
+                }
+                hit.evidence = evidence;
                 hit.salience = rule.salience;
                 ff.boundaries.add(hit);
             }
-            network(dotted, line, site, args);
+            // A Unix-domain socket is not a remote call: no protocol, no timeout to miss.
+            if (rule == null || !"LOCAL_IPC".equals(rule.kind)) {
+                network(dotted, line, site, args);
+            }
         }
 
         String target(List<? extends ExpressionTree> args, Rules.Boundary rule) {

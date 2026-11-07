@@ -542,6 +542,23 @@ reader does not list (rule 49). A new reader that wants these implements them an
 **A conditioned rule also stops a remote call being recorded**: a LOCAL_IPC hit makes no
 `net_calls` row, so a socket file has no protocol and no NO_TIMEOUT.
 
+**Every reader reads it now** (2026-11-07). LOCAL_IPC was taught to Go and Python first, and
+the other four were each wrong in their own way: C and C++ read `socket(AF_UNIX, ...)` as
+NETWORK, Kotlin's `java.net.` prefix made `java.net.UnixDomainSocketAddress.of` NETWORK, and
+Rust, Java and Node recorded no Unix socket at all.
+- **C and C++** read `when_arg`, with the families a program spells for anything else under
+  `not_in`, so an IPv4 socket decides no rather than carrying a blind spot. `connect` and
+  `bind` stay NETWORK: nothing at the call says which family their socket is.
+- **Rust** names the socket by its type (`UnixStream`, `UnixListener`), so it needs no key.
+- **Java** reads `when_arg` for `SocketChannel.open(StandardProtocolFamily.UNIX)`, with no
+  `undecided` sentence, because every TCP channel opened from an address would carry one
+  (rule 43); `UnixDomainSocketAddress.of(path)` is the act either way.
+- **Kotlin** records every rule that matches, so a LOCAL_IPC hit ends the matching for its
+  call, as it does in C and C++: a Unix socket is not also the network (rule 40).
+- **TypeScript** has two condition shapes nobody else needs: `any_string` (Node's
+  `net.connect("/run/s.sock")`) and `has_key` (`{path: p}`), and asks the checker the type
+  of a variable, so `p: string` is a path and `port: number` is not.
+
 ## A method by its receiver's type, and why the types are declared
 
 *Written 2026-11-07, for Society2.* Every file operation Society2 makes through an `os.Root`

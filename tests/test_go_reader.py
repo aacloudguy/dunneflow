@@ -543,6 +543,10 @@ def test_an_interface_call_is_ambiguous_and_never_guessed(go_edges):
     """Rule 1: two types implement `Speaker`, and the edge names neither."""
     by = _by_callee(go_edges)
     assert by["s.Speak"].file == "" and by["s.Speak"].candidates == 2
+    # BACKLOG 43: and it names both bodies, so every walk can follow them as *may run*.
+    assert by["s.Speak"].reason == "dynamic"
+    assert sorted(a.name for a in by["s.Speak"].answers) == ["Speak", "Speak"]
+    assert len({(a.file, a.line) for a in by["s.Speak"].answers}) == 2
 
 
 def test_a_function_defined_per_platform_is_drawn_to_the_reference_target(go_edges):

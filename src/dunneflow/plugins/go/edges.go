@@ -331,6 +331,11 @@ type answer struct {
 	line       int
 	outside    bool
 	candidates int
+	// **The bodies an interface call may run**, where they are this program's (BACKLOG
+	// 43): each implementing type's method, named by location as a target is. Sent as
+	// `SuppliedEdge.answers` with reason `dynamic`, as Java's reader sends them, so the
+	// host links them and every walk follows them as *may run* (`resolve/dispatch.py`).
+	answers []answer
 }
 
 // implementers is how many named types of this tree implement an interface: the number a
@@ -343,6 +348,46 @@ func (c *checker) implementers(iface *types.Interface) int {
 		}
 	}
 	return n
+}
+
+// bodies is each implementer's own method of that name, where it is written in this tree:
+// the bodies a call through the interface may run. A method promoted from an embedded type
+// is that type's body, and two implementers that share one are one answer.
+func (c *checker) bodies(iface *types.Interface, m *types.Func) []answer {
+	var out []answer
+	seen := map[string]bool{}
+	for _, t := range c.named {
+		var recv types.Type
+		switch {
+		case types.Implements(t, iface):
+			recv = t
+		case types.Implements(types.NewPointer(t), iface):
+			recv = types.NewPointer(t)
+		default:
+			continue
+		}
+		obj, _, _ := types.LookupFieldOrMethod(recv, true, m.Pkg(), m.Name())
+		fn, ok := obj.(*types.Func)
+		if !ok {
+			continue
+		}
+		a := c.at(fn.Origin().Pos(), fn.Name())
+		if a.file == "" {
+			continue
+		}
+		key := a.file + "\x00" + itoa(a.line)
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].file != out[j].file {
+			return out[i].file < out[j].file
+		}
+		return out[i].line < out[j].line
+	})
+	return out
 }
 
 // resolve asks the checker where one call goes.
@@ -381,7 +426,7 @@ func (c *checker) resolve(call *ast.CallExpr) answer {
 		o = o.Origin()
 		if sig, ok := o.Type().(*types.Signature); ok && sig.Recv() != nil {
 			if iface, ok := sig.Recv().Type().Underlying().(*types.Interface); ok {
-				return answer{candidates: c.implementers(iface)}
+				return answer{candidates: c.implementers(iface), answers: c.bodies(iface, o)}
 			}
 		}
 		return c.at(o.Pos(), o.Name())
@@ -650,6 +695,29 @@ func (s *session) importPath(dir, name string) string {
 func join(as []answer) (SuppliedEdge, string) {
 	locs := map[string]answer{}
 	outside, iface := false, 0
+	// The bodies every target named, once each, in a fixed order (rule 66).
+	bodies := map[string]answer{}
+	for _, a := range as {
+		for _, b := range a.answers {
+			bodies[b.file+"\x00"+itoa(b.line)] = b
+		}
+	}
+	keys := make([]string, 0, len(bodies))
+	for k := range bodies {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var answers List[Answer]
+	for _, k := range keys {
+		b := bodies[k]
+		answers = append(answers, Answer{File: b.file, Line: b.line, Name: b.name})
+	}
+	dispatched := func(e SuppliedEdge) SuppliedEdge {
+		if len(answers) > 0 {
+			e.Reason, e.Answers = "dynamic", answers
+		}
+		return e
+	}
 	for _, a := range as {
 		switch {
 		case a.file != "":
@@ -681,9 +749,9 @@ func join(as []answer) (SuppliedEdge, string) {
 		if outside {
 			n++
 		}
-		return SuppliedEdge{Candidates: n}, "ambiguous"
+		return dispatched(SuppliedEdge{Candidates: n}), "ambiguous"
 	case iface > 0:
-		return SuppliedEdge{Candidates: iface}, "ambiguous"
+		return dispatched(SuppliedEdge{Candidates: iface}), "ambiguous"
 	case outside:
 		return SuppliedEdge{}, "outside"
 	}

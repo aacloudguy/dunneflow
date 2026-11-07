@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -1171,3 +1172,16 @@ def test_the_instant_before_a_child_exists_has_its_own_sentence(tmp_path) -> Non
     assert said != "no analysis is running", (
         "the two answers were flattened, and the panel says one of them is wrong"
     )
+
+
+def test_a_crash_says_where_it_was(tmp_path: Path) -> None:
+    """2026-11-07: an analysis subprocess died with SIGSEGV and an empty stderr (rule 38).
+    Every way in turns on `faulthandler`, so the next one prints its stack."""
+    probe = ("import faulthandler, sys\n"
+             "from dunneflow import cli\n"
+             "cli.say_how_it_crashed()\n"
+             "print(faulthandler.is_enabled())\n")
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                         timeout=60, env={k: v for k, v in os.environ.items()
+                                          if k != "PYTHONFAULTHANDLER"})
+    assert out.stdout.strip() == "True", out.stderr

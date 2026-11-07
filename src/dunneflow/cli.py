@@ -2483,6 +2483,28 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def say_how_it_crashed() -> None:
+    """A crash in native code says where it was, on stderr, instead of nothing.
+
+    An analysis subprocess died with SIGSEGV on 2026-11-07, after it had printed its last
+    progress line, and its stderr was empty: nothing said which thread or which frame, and
+    41 reruns did not bring it back. An instrument that cannot see cannot report (rule 38),
+    and a run that takes eight hours is the worst place to learn that. `faulthandler` writes
+    every thread's Python stack when the process is killed by SIGSEGV, SIGFPE, SIGABRT,
+    SIGBUS or SIGILL, and costs nothing until then.
+
+    **Skipped, not refused, where there is no stderr to write to**: a windowed frozen
+    application may have none, and a tool that will not start because it cannot describe a
+    crash it has not had has the order of things wrong.
+    """
+    import faulthandler
+
+    if faulthandler.is_enabled():
+        return
+    with contextlib.suppress(AttributeError, OSError, RuntimeError, ValueError):
+        faulthandler.enable(file=sys.stderr, all_threads=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     """The entry point, and `freeze_support()` is its first statement for a reason.
 
@@ -2506,6 +2528,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     multiprocessing.freeze_support()
     speak_utf8()
+    say_how_it_crashed()
     args = build_parser().parse_args(argv)
     return int(args.func(args))
 

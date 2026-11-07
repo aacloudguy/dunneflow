@@ -31,6 +31,7 @@ from .anomalies import render_anomalies
 from .constants import render_constants
 from .database import render_database
 from .glossary import render_glossary
+from .macros import render_macros
 from .mermaid import command_tree_diagram, flow_diagram
 from .mirror import render_mirror
 from .naming import render_naming
@@ -191,6 +192,7 @@ def render_all(store: Store, out_dir: Path, program: str,
         lambda: render_traceability(store, docs, out_dir, program, stamp),
         lambda: render_mirror(store, docs, out_dir, program, stamp),
         lambda: render_constants(store, out_dir, program, stamp),
+        lambda: render_macros(store, out_dir, program, stamp),
     ]
     written = []
     for i, page in enumerate(pages):
@@ -215,7 +217,7 @@ PAGE_NAMES = (
     "README.md", "01-entrypoints.md", "02-flows.md", "03-routines.md", "04-data.md",
     "05-boundaries.md", "06-governance.md", "07-database.md", "08-network.md",
     "09-anomalies.md", "10-glossary.md", "11-naming.md", "12-traceability.md",
-    "13-mirror.md", "14-constants.md",
+    "13-mirror.md", "14-constants.md", "15-macros.md",
 )
 
 
@@ -266,6 +268,8 @@ def _overview(store: Store, out: Path, program: str, stamp: Stamp,
         ("Comment annotations", "annotations"),
     ]:
         lines.append(f"| {label} | {c.get(key, 0):,} |")
+        if key == "routines" and c.get("routines_by_macro"):
+            lines.append(f"| of which written by macros | {c['routines_by_macro']:,} |")
     lines.append("")
 
     if ranked:
@@ -311,6 +315,7 @@ def _overview(store: Store, out: Path, program: str, stamp: Stamp,
         ("02-flows.md", "What happens after each way in, as diagrams"
                         + (f"; {choice.short()}." if choice else ".")),
         ("03-routines.md", "Every routine, with typed signatures and its comments."),
+        ("15-macros.md", "What macros do where they are used, and what could not be seen."),
         ("04-data.md", "The shapes that move between routines."),
         ("05-boundaries.md", "Every point where the program touches the outside world."),
         ("06-governance.md", "Plan IDs, audit locks, and warnings mined from comments."),
@@ -760,13 +765,30 @@ def _routines(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
         "docstring attached to it — the part the code itself cannot tell you.\n"
     )
     lines.append(f"Modules: **{len(rows)}**\n")
+    ways = {str(x["routine_id"]) for x in store.query(
+        "SELECT routine_id FROM entrypoints WHERE routine_id IS NOT NULL")}
+    macro_names = {
+        str(d["id"]): (str(d["name"]), f"{d['file']}:{d['line']}" if d["file"] else "")
+        for d in store.query("SELECT id, name, file, line FROM macro_defs")
+    }
 
     for r in rows:
         module = r["module"]
         rts = [x for x in store.routines(module) if x.name != "<module>"]
         if not rts:
             continue
-        lines.append(f"## `{module}` ({len(rts)})\n")
+        # **A macro's output is one row, per definition, and a pointer.** `DECLARE_CYCLE_STAT`
+        # writes seven accessors 231 times over in Core, and a page that lists them is a page
+        # nobody reads. A way in is never folded: `main` written by a macro is what you came
+        # for, and so is whatever runs before it.
+        folds: dict[str, int] = {}
+        for x in rts:
+            if x.body_by and x.id not in ways:
+                folds[x.body_by] = folds.get(x.body_by, 0) + 1
+        hidden = sum(folds.values())
+        rts = [x for x in rts if not x.body_by or x.id in ways]
+        lines.append(f"## `{module}` ({len(rts) + hidden}"
+                     + (f", {hidden} written by macros" if hidden else "") + ")\n")
         through = store.query(
             "SELECT path, read_through FROM files WHERE module = ? AND read_through <> ''"
             " ORDER BY path", (module,))
@@ -788,6 +810,10 @@ def _routines(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
                 f"| `{_esc(rt.name)}` | `{marker}{_esc(rt.signature())}` "
                 f"| {_esc(why)} | {_esc(where)} |"
             )
+        for def_id, n in sorted(folds.items(), key=lambda kv: (-kv[1], macro_names[kv[0]][0])):
+            name, at = macro_names[def_id]
+            lines.append(f"| *{n} written by `{_esc(name)}`* | | *see `15-macros.md`* "
+                         f"| {_esc(at)} |")
         lines.append("")
 
     path = out / "03-routines.md"

@@ -889,6 +889,8 @@ struct FileFacts {
     std::vector<MacroDef> macro_defs;
     std::vector<MacroSite> macro_sites;
     int64_t macro_directive_uses = 0;
+    int64_t skipped_lines = 0;
+    std::string first_missing = "";
     std::vector<std::string> errors;
 
     void write_json(std::string& out) const {
@@ -929,6 +931,8 @@ struct FileFacts {
         if (!macro_defs.empty()) json::field(out, first, "macro_defs", macro_defs);
         if (!macro_sites.empty()) json::field(out, first, "macro_sites", macro_sites);
         if (macro_directive_uses != 0) json::field(out, first, "macro_directive_uses", macro_directive_uses);
+        if (skipped_lines != 0) json::field(out, first, "skipped_lines", skipped_lines);
+        if (first_missing != "") json::field(out, first, "first_missing", first_missing);
         if (!errors.empty()) json::field(out, first, "errors", errors);
         out += '}';
     }

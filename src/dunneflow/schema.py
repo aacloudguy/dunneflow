@@ -1155,6 +1155,10 @@ class FileFacts:
     macro_defs: list[MacroDef] = field(default_factory=list)
     macro_sites: list[MacroSite] = field(default_factory=list)
     macro_directive_uses: int = 0
+    # What was **not read** in this file, which is not the same as what is not there. Lines in
+    # `#if` arms this configuration does not take, and the first include clang could not find.
+    skipped_lines: int = 0
+    first_missing: str = ""
     errors: list[str] = field(default_factory=list)
 
 

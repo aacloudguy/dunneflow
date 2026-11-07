@@ -95,6 +95,20 @@ def classify(node_id: str) -> tuple[str, dict[str, Any]]:
 # Routines
 # --------------------------------------------------------------------------- #
 
+def written_by(store: Store, node_id: str) -> dict[str, Any]:
+    """Which macro wrote this routine's name and which wrote its body, each with where it is
+    defined, so the provenance opens (design rule 13). Empty for what somebody wrote."""
+    out: dict[str, Any] = {}
+    for x in store.query(
+        "SELECT 'name' AS part, d.id, d.name, d.file, d.line, d.origin FROM routines r"
+        " JOIN macro_defs d ON d.id = r.name_by WHERE r.id = ?"
+        " UNION ALL SELECT 'body', d.id, d.name, d.file, d.line, d.origin FROM routines r"
+        " JOIN macro_defs d ON d.id = r.body_by WHERE r.id = ?", (node_id, node_id)):
+        out[str(x["part"])] = {"id": str(x["id"]), "name": str(x["name"]), "file": str(x["file"]),
+                               "line": int(x["line"]), "origin": str(x["origin"])}
+    return out
+
+
 def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
     ident = _one(store, queries.ROUTINE_DETAIL, {"id": node_id})
     if ident is None:
@@ -102,6 +116,7 @@ def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
     args = {"id": node_id}
     return {
         "kind": "ROUTINE",
+        "written_by": written_by(store, node_id),
         "id": node_id,
         "label": ident["name"],
         "identity": ident,

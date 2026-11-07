@@ -2901,6 +2901,11 @@ inline void read(CXIndex index, const std::string& abs, const std::string& rel, 
     Reader(x).run();
     C().clang_disposeTranslationUnit(x.tu);
 
+    x.ff.skipped_lines = out.skipped_lines;
+    // clang's message is `'a/b.h' file not found`, and the header is what can be gone and found.
+    size_t quote = out.first_missing.find('\'');
+    size_t shut = quote == std::string::npos ? quote : out.first_missing.find('\'', quote + 1);
+    x.ff.first_missing = shut == std::string::npos ? out.first_missing : out.first_missing.substr(quote + 1, shut - quote - 1);
     std::string j;
     x.ff.write_json(j);
     out.facts_json = std::move(j);

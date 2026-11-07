@@ -1362,6 +1362,8 @@ public final class Facts {
         public List<MacroDef> macro_defs = new ArrayList<>();
         public List<MacroSite> macro_sites = new ArrayList<>();
         public long macro_directive_uses = 0L;
+        public long skipped_lines = 0L;
+        public String first_missing = "";
         public List<String> errors = new ArrayList<>();
 
         @Override
@@ -1464,6 +1466,12 @@ public final class Facts {
             }
             if (macro_directive_uses != 0L) {
                 Json.field(out, first, "macro_directive_uses", macro_directive_uses);
+            }
+            if (skipped_lines != 0L) {
+                Json.field(out, first, "skipped_lines", skipped_lines);
+            }
+            if (!Objects.equals(first_missing, "")) {
+                Json.field(out, first, "first_missing", first_missing);
             }
             if (!errors.isEmpty()) {
                 Json.field(out, first, "errors", errors);

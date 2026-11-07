@@ -346,6 +346,8 @@ export interface FileFacts {
   macro_defs?: MacroDef[];
   macro_sites?: MacroSite[];
   macro_directive_uses?: number;
+  skipped_lines?: number;
+  first_missing?: string;
   errors?: string[];
 }
 

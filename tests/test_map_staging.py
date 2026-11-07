@@ -67,7 +67,7 @@ def test_a_render_that_dies_leaves_a_folder_nothing_counts_as_a_map(
     assert mapless(out_dir) == [REV_A], "render must offer the revision again"
 
     note = (staged / revisions.UNFINISHED_NOTE).read_text(encoding="utf-8")
-    assert "page 4 of 15, `03-routines.md`" in note, note
+    assert "page 4 of 16, `03-routines.md`" in note, note
     assert f"--revision {REV_A}" in note, "the note must name the command that repairs it"
 
 

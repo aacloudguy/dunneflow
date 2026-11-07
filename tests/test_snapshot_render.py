@@ -85,7 +85,7 @@ def test_a_snapshot_gets_its_map_and_the_graph_is_untouched(tmp_path: Path) -> N
     assert {f.name for f in r.files} == {
         "README.md", "01-entrypoints.md", "02-flows.md", "03-routines.md", "04-data.md",
         "05-boundaries.md", "06-governance.md", "09-anomalies.md", "10-glossary.md",
-        "11-naming.md", "12-traceability.md", "13-mirror.md", "14-constants.md",
+        "11-naming.md", "12-traceability.md", "13-mirror.md", "14-constants.md", "15-macros.md",
     }, f"got {sorted(f.name for f in r.files)}"
     assert _digest(graph) == before, \
         "rendering a map read the graph and must not have changed one byte of it"

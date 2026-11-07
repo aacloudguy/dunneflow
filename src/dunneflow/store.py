@@ -83,7 +83,10 @@ CREATE TABLE IF NOT EXISTS files (
     -- a map cannot hold two answers about which reader read a file (rule 40).
     extractor    TEXT NOT NULL DEFAULT '',
     -- `FileFacts.read_through`: the file this one was parsed as part of, or ''.
-    read_through TEXT NOT NULL DEFAULT ''
+    read_through TEXT NOT NULL DEFAULT '',
+    macro_directive_uses INTEGER NOT NULL DEFAULT 0,
+    skipped_lines INTEGER NOT NULL DEFAULT 0,
+    first_missing TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS routines (
@@ -1370,9 +1373,11 @@ class Store:
         self.forget_file(ff.path)
         c.execute(
             "INSERT INTO files(path, lang, module, content_hash, doc, errors, extractor,"
-            " read_through) VALUES(?,?,?,?,?,?,?,?)",
+            " read_through, macro_directive_uses, skipped_lines, first_missing)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (ff.path, ff.lang, ff.module, ff.content_hash, ff.doc, json.dumps(ff.errors),
-             lang_fingerprint(ff.lang), ff.read_through),
+             lang_fingerprint(ff.lang), ff.read_through, ff.macro_directive_uses,
+             ff.skipped_lines, ff.first_missing),
         )
         for r in ff.routines:
             c.execute(
@@ -1605,6 +1610,11 @@ class Store:
                   "db_indexes", "net_calls", "control", "control_arms",
                   "macro_defs", "macro_sites", "macro_callees"):
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
+        # Beside `routines` and never subtracted from it: how many the program has and how many
+        # of those nobody typed are two numbers (rule 32).
+        out["routines_by_macro"] = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM routines WHERE body_by <> ''"
+        ).fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"
         ).fetchone()["n"]

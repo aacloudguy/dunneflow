@@ -1305,6 +1305,8 @@ pub struct FileFacts {
     pub macro_defs: Vec<MacroDef>,
     pub macro_sites: Vec<MacroSite>,
     pub macro_directive_uses: i64,
+    pub skipped_lines: i64,
+    pub first_missing: String,
     pub errors: Vec<String>,
 }
 
@@ -1397,6 +1399,12 @@ impl ToJson for FileFacts {
         }
         if self.macro_directive_uses != zero.macro_directive_uses {
             crate::json::field(out, &mut first, "macro_directive_uses", &self.macro_directive_uses);
+        }
+        if self.skipped_lines != zero.skipped_lines {
+            crate::json::field(out, &mut first, "skipped_lines", &self.skipped_lines);
+        }
+        if self.first_missing != zero.first_missing {
+            crate::json::field(out, &mut first, "first_missing", &self.first_missing);
         }
         if self.errors != zero.errors {
             crate::json::field(out, &mut first, "errors", &self.errors);

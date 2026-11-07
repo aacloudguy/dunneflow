@@ -28,6 +28,7 @@ from typing import Any
 from .. import sql as sqlmod
 from ..lookup import find_routine, search_said
 from ..resolve.flows import GOVERNANCE_KINDS, entry_reach, governance_over, ways_in_affected
+from ..resolve.macros import macro_places, macro_report
 from ..web.detail import describe
 from ..web.search import search_files, search_in_file
 from ..web.serve import glossary_sidecars
@@ -277,6 +278,23 @@ def _find(session: Session, args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _macros(session: Session, args: dict[str, Any]) -> dict[str, Any]:
+    """What the program's macros do, and what the map could not see of them."""
+    store = session.base.store
+    report = macro_report(store)
+    wanted = str(args.get("macro", "") or "").strip()
+    limit = int(args.get("limit") or DEFAULT_LIMIT)
+    head = {"summary": report["summary"], "expansion": report["expansion"],
+            "unread": {**report["unread"], "arms": report["unread"]["arms"][:limit],
+                       "headers": report["unread"]["headers"][:limit]}}
+    if not wanted:
+        return {**head, "total": len(report["definitions"]),
+                "definitions": report["definitions"][:limit]}
+    found = [d for d in report["definitions"] if d["name"] == wanted]
+    return {**head, "asked": wanted, "found": bool(found),
+            "definitions": [{**d, **macro_places(store, d["id"])} for d in found[:limit]]}
+
+
 def _glossary(session: Session, args: dict[str, Any]) -> dict[str, Any]:
     """What the program's words mean, and who says so.
 
@@ -436,6 +454,17 @@ TOOLS: tuple[Tool, ...] = (
           "regex": {"type": "boolean", "description": "read q as a regular expression"},
           "limit": {"type": "integer", "description": f"name matches (default {DEFAULT_LIMIT})"}},
          ("q",)),
+    Tool("macros",
+         "What the program's macros do where they are used, leading with those that reach "
+         "something, and what could not be seen: arms not taken, headers not found. Name a "
+         "macro for every definition of it, each with its places.",
+         _macros,
+         {"macro": {"type": "string",
+                    "description": "a macro's name, exactly. A name is not an identity, so "
+                                   "each definition of it comes back separately."},
+          "limit": {"type": "integer",
+                    "description": f"rows to report (default {DEFAULT_LIMIT})"}},
+         ()),
     Tool("glossary",
          "What the program's words mean and who says so — every definition carries where "
          "it came from. Name a term for one, or omit it for the whole vocabulary with its "

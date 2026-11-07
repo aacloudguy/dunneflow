@@ -1353,7 +1353,10 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
               settled=settled)
     if not prog.on:
         print(
-            f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal "
+            f"{program}: {c['routines']:,} routines"
+            + (f" ({c['routines_by_macro']:,} written by macros)"
+               if c.get("routines_by_macro") else "")
+            + f" · {c['resolved_calls']:,} internal "
             f"calls · {c['boundaries']:,} boundary touches · {c['structures']:,} "
             f"structures · {c['entrypoints']:,} way{'' if c['entrypoints'] == 1 else 's'} in"
         )

@@ -497,6 +497,8 @@ type FileFacts struct {
 	MacroDefs          List[MacroDef]        `json:"macro_defs,omitempty"`
 	MacroSites         List[MacroSite]       `json:"macro_sites,omitempty"`
 	MacroDirectiveUses int                   `json:"macro_directive_uses,omitempty"`
+	SkippedLines       int                   `json:"skipped_lines,omitempty"`
+	FirstMissing       string                `json:"first_missing,omitempty"`
 	Errors             List[string]          `json:"errors,omitempty"`
 }
 

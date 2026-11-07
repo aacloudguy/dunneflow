@@ -414,6 +414,7 @@ const DEFAULTS = {
   trailShown: true,
   trailCap: 12,
   namingUnderscore: false, // a leading underscore: counted as a violation, or allowed
+  macroFold: true,        // what a macro wrote: one navigator row per macro, or every routine
   density: 'comfortable', // 'compact' | 'comfortable' | 'spacious'
   /* Whether the cover's two ranked lists draw a proportion bar beside their counts.
    *
@@ -841,6 +842,7 @@ function resetSettings(program, current) {
     startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'how many steps the trail shows',
     namingUnderscore: 'whether a leading underscore is allowed in a name',
+    macroFold: 'whether routines a macro wrote are folded in the navigator',
     density: 'row density', bandScroll: 'scrolling change bands',
     coverBars: 'proportion bars on the cover',
     rowTagsWrap: 'tags on their own line', coverWhatWrap: 'wrapped evidence lines',

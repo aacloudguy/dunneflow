@@ -140,3 +140,50 @@ def test_the_cover_counts_say_how_many_routines_nobody_typed(store, tmp_path):
     counts = store.counts()
     assert counts["routines_by_macro"] == 3
     assert counts["macro_sites"] >= 4
+
+
+def test_the_diagram_gives_what_a_macro_wrote_one_box_and_a_way_in_stays_itself(store):
+    from dunneflow.web.diagram import build as diagram
+    from dunneflow.web.graph import build as model
+
+    comps = diagram(model(store, level="routine"), ways={
+        r["routine_id"]: ["main"] for r in store.query(
+            "SELECT routine_id FROM entrypoints WHERE routine_id IS NOT NULL")})
+    boxes = [b for c in comps.values() for b in c.boxes]
+    macro = [b for b in boxes if b.kind == "macro"]
+    assert [(b.label, b.holds) for b in macro] == [("MANY", 2)]
+    assert sorted(macro[0].labels) == ["tree_a", "tree_b"]
+    # `main` is written by a macro and is on the same file box as what somebody typed.
+    files = [b for b in boxes if b.kind == "file"]
+    assert sorted(x for b in files for x in b.labels) == ["hand", "main"]
+
+
+def test_the_navigator_rows_say_who_wrote_each_routine_and_which_are_ways_in(store):
+    from dunneflow.web import queries
+    from dunneflow.web.graph import pkg_params
+
+    rows = {r["name"]: dict(r) for r in store.query(
+        queries.NAV_ROUTINES, pkg_params(str(Path(store.path).parent)))}
+    assert rows["tree_a"]["by_macro"] == "MANY" and not rows["tree_a"]["way_in"]
+    assert rows["main"]["by_macro"] == "ENTRY" and rows["main"]["way_in"]
+    assert rows["hand"]["by_macro"] == ""
+
+
+def test_a_macro_box_is_drawn_as_what_it_is_and_counts_what_it_holds(store):
+    from dunneflow.web.diagram import build as diagram
+    from dunneflow.web.diagram import dot as to_dot
+    from dunneflow.web.graph import build as model
+
+    comps = diagram(model(store, level="routine"))
+    comp = next(c for c in comps.values() if any(b.kind == "macro" for b in c.boxes))
+    dot = to_dot(comp)
+    line = next(x for x in dot.splitlines() if 'label="MANY' in x)
+    assert "2 functions" in line and "dashed" in line and "cylinder" not in line
+
+
+def test_a_file_box_is_named_after_the_file_in_any_language(store):
+    from dunneflow.web.diagram import build as diagram
+    from dunneflow.web.graph import build as model
+
+    comps = diagram(model(store, level="routine"))
+    assert {b.label for c in comps.values() for b in c.boxes if b.kind == "file"} == {"m.cpp"}

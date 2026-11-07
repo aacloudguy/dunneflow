@@ -110,7 +110,7 @@ class Box:
 
     id: str
     label: str
-    kind: str          # 'class' | 'file' | 'touch' | 'port' | 'wayin'
+    kind: str          # 'class' | 'file' | 'macro' | 'touch' | 'port' | 'wayin'
     holds: int = 0     # how many routines are folded into it -- 0 for a touch or a port
     # The node ids this box stands for, so a click on the drawing reaches the selection the
     # rest of the dashboard shares. A box that cannot name what it holds is a shape (rule
@@ -310,13 +310,24 @@ def build(model: GraphModel,
             if n.label == "<module>":
                 continue
             mod, cls = d.get("module"), d.get("class_name")
-            if cls:
+            # **What a macro wrote is one box per macro per file**, because `DECLARE_CYCLE_STAT`
+            # is a class of seven accessors 231 times over and a drawing of them is a drawing
+            # of nothing. Opening the box lists them all (design rule 1). A way in stays itself:
+            # `main` written by a macro is the thing the drawing is for.
+            macro = d.get("by_macro")
+            if macro and not (ways and n.id in ways):
+                bid = _box_id(n.disk, "macro", f"{mod}.{macro}")
+                box = seen.get(bid) or Box(bid, _clip(str(macro)), "macro",
+                                           detail={"module": mod, "macro": macro})
+            elif cls:
                 bid = _box_id(n.disk, "class", f"{mod}.{cls}")
                 box = seen.get(bid) or Box(bid, _clip(cls), "class",
                                            detail={"module": mod, "class_name": cls})
             else:
                 bid = _box_id(n.disk, "file", str(mod))
-                leaf = (mod or "?").rsplit(".", 1)[-1] + ".py"
+                # The file's own name: a module's last segment plus `.py` called every C++ file
+                # a Python one.
+                leaf = str(d.get("file") or "?").replace("\\", "/").rsplit("/", 1)[-1]
                 box = seen.get(bid) or Box(bid, _clip(leaf), "file", detail={"module": mod})
         elif n.kind in TOUCH_KINDS:
             what = d.get("bkind") or d.get("akind") or n.kind
@@ -500,6 +511,11 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
         if b.kind == "class":
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}", '
                        f'class="{_role_class(roles, b)}", shape=box, style="rounded,bold"];')
+        elif b.kind == "macro":
+            # Dashed: it stands for what a macro wrote and nobody typed. Without this branch it
+            # was drawn as a boundary, a cylinder claiming to be a database.
+            out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}", '
+                       f'class="{_role_class(roles, b)}", shape=box, style="rounded,dashed"];')
         elif b.kind == "file":
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}", '
                        f'class="{_role_class(roles, b)}"];')

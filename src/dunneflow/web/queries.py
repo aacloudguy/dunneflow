@@ -85,7 +85,8 @@ SELECT r.id                AS id,
        r.visibility        AS visibility,
        r.is_async          AS is_async,
        r.class_name        AS class_name,
-       {PACKAGE_EXPR}      AS pkg
+       {PACKAGE_EXPR}      AS pkg,
+       (SELECT d.name FROM macro_defs d WHERE d.id = r.body_by) AS by_macro
 FROM routines r NOT INDEXED
 ORDER BY r.id
 """
@@ -1223,7 +1224,10 @@ SELECT r.id           AS id,
        r.name         AS name,
        r.module       AS module,
        {PACKAGE_EXPR} AS pkg,
-       COALESCE(r.docstring, '') AS why
+       COALESCE(r.docstring, '') AS why,
+       r.body_by      AS by_macro_id,
+       COALESCE((SELECT d.name FROM macro_defs d WHERE d.id = r.body_by), '') AS by_macro,
+       r.id IN (SELECT routine_id FROM entrypoints WHERE routine_id IS NOT NULL) AS way_in
 FROM routines r
 ORDER BY r.module, r.line_start, r.file, r.qualname, r.id
 """

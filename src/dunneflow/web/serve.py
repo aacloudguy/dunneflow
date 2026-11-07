@@ -42,6 +42,7 @@ from ..estimate import WARN_AFTER_DEFAULT, WARN_AFTER_MAX, WARN_AFTER_MIN
 from ..render.markdown import INVENTORY_MODES, human_bytes
 from ..resolve import languages
 from ..resolve import version as version_order
+from ..resolve.macros import macro_places, macro_report
 from ..runtime import resource_root
 from ..sourcedb import DocSourceStore, SourceStore
 from ..standards import STANDARDS_DB
@@ -2317,6 +2318,21 @@ class _Handler(BaseHTTPRequestHandler):
                 base.plate_orders[key] = answer
         self._json(answer)
 
+    def _r_macros(self, q: dict[str, list[str]]) -> None:
+        """What the program's macros do, and with `?def=` one definition's places. Built once
+        per revision: the report is several scans of the larger tables, on a route a reader
+        returns to, and it cannot change under a revision."""
+        with self._live.lock:
+            live = self._live
+            wanted = (q.get("def") or [""])[0]
+            if wanted:
+                self._json(macro_places(live.current.store, wanted))
+                return
+            key = (live.current.revision, "macros")
+            if key not in live.relaxed:
+                live.relaxed[key] = macro_report(live.current.store)
+            self._json(live.relaxed[key])
+
     def _r_naming(self, q: dict[str, list[str]]) -> None:
         """The Form lane: what this program does about names, counted.
 
@@ -3677,6 +3693,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/threads": "_r_threads",
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",
+        "/api/macros": "_r_macros",
         "/api/stated": "_r_stated",
         "/api/checked": "_r_checked",
         "/api/wayin": "_r_wayin",

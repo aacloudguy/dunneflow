@@ -873,6 +873,8 @@ def _fold_qualname(box: dict[str, Any]) -> str:
     cls = str(box.get("class_name") or "")
     if module and cls:
         return f"{module}.{cls}"
+    if box.get("macro"):
+        return f"{module}: {box['macro']}"
     return module or str(box.get("label") or "")
 
 

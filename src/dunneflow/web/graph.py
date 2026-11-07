@@ -219,7 +219,8 @@ def build(store: Store, *, include_constants: bool = True,
             disk=f"pkg:{r['pkg']}",
             detail={"qualname": r["qualname"], "module": r["module"], "file": r["file"],
                     "line": r["line"], "visibility": r["visibility"],
-                    "is_async": bool(r["is_async"]), "class_name": r["class_name"]},
+                    "is_async": bool(r["is_async"]), "class_name": r["class_name"],
+                    **({"by_macro": r["by_macro"]} if r["by_macro"] else {})},
         ))
 
     for r in store.query(queries.STRUCTURE_NODES, params):

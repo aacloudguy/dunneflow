@@ -469,6 +469,8 @@ const state = {
      violation of PascalCase and camelCase; a Setting because it is also the commonest way a
      codebase marks something private (design rule 2; Tom, 2026-10-02). */
   namingUnderscore: false,
+  macroFold: true,
+  macroOpen: "",
   menuOrder: "waysin",   // waysin | explore  — a genuine tie, so both exist       // cover | graph   ← the Setting standing in for a decision
   /* Which colour set carries the difference channel and severity. See `settings.js`, and
    * `tokens.css` for the values and how they were measured. */
@@ -1193,6 +1195,16 @@ const NAV_ROUTES = {
      the other four. `render()` asks, once, for whichever view is about to be painted. */
   glossary:    () => { state.view = "glossary"; },
   naming:      () => { state.view = "naming"; },
+  macros:      (b) => {
+    state.view = "macros";
+    /* A row that came from a particular macro opens it, through the same click everything
+       else that goes to this page makes. */
+    const def = b && b.dataset.macroGoto;
+    if (def) {
+      state.macroOpen = def;
+      loadMacroPlaces(def).then(render);
+    }
+  },
   stated:      () => { state.view = "stated"; },
   checked:     () => { state.view = "checked"; },
   /* Spread rather than deleted, and the key kept on its own line: the guard in
@@ -3899,6 +3911,7 @@ const DGM_CARD_NAMES = 6;
 function diagramCard(box) {
   const what = box.kind === "class" ? "class"
              : box.kind === "file" ? "file"
+             : box.kind === "macro" ? "what a macro wrote"
              : box.kind === "port" ? "another compartment"
              : box.kind === "wayin" ? "a way in" : "what it touches";
   /* **A way in counts what it starts *here*, and says so.** `holds` on this box is the
@@ -7609,6 +7622,18 @@ function viewSettings() {
         </div>
 
         <div class="setrow">
+          <div><div class="lbl">Routines a macro wrote</div>
+            <div class="desc">One macro can write thousands. <b>Folded</b> gives the navigator one
+              row per macro per package, with a count; <b>listed</b> gives every routine. A search
+              always finds them, and a way in is never folded. The diagram keeps its one box per
+              macro either way, and opening the box lists what it holds.</div></div>
+          <div class="seg" role="group" aria-label="Routines a macro wrote">
+            <button data-macrofold="1" aria-pressed="${state.macroFold}">Folded</button>
+            <button data-macrofold="0" aria-pressed="${!state.macroFold}">Listed</button>
+          </div>
+        </div>
+
+        <div class="setrow">
           <div><div class="lbl">Cursor over the diagram</div>
             <div class="desc">A diagram is a drawing you <i>aim</i> at, not a page of links.
               The link <b>hand</b> was here for every box: its hotspot is a fingertip whose
@@ -8344,7 +8369,7 @@ const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram", "shape"];
  * severity). A label a reader recognises is the whole value of the sentence. */
 const OFF_MODE_PAGE = {
   cover: "the overview", anomalies: "the worklist", changes: "the comparison",
-  glossary: "the glossary", naming: "the derived naming standard",
+  glossary: "the glossary", naming: "the derived naming standard", macros: "the macros",
   stated: "the stated naming rules", checked: "the rules checked",
   wayin: "this way in",
   curiosities: "the doorway panel", pins: "what you have kept",
@@ -11117,6 +11142,150 @@ function viewChecked() {
   </div>`;
 }
 
+/* **The Macros page.** One answer, `resolve/macros.py`, which the map's page and the agent read
+ * too. What could not be seen comes before what was seen: a page that opens on a table reads as
+ * complete, and the two facts that make it incomplete are a missing header and an arm not taken.
+ *
+ * A row opens in place rather than navigating, because the reader's next question is *where*,
+ * and each place it lists goes to the routine it is in through the ordinary route. */
+const MACROS = { state: "", report: null, error: "", places: {} };
+
+async function loadMacros() {
+  MACROS.state = "loading";
+  try {
+    const r = await fetch("/api/macros");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    MACROS.report = await r.json();
+    MACROS.state = "ready";
+  } catch (err) {
+    MACROS.state = "failed";
+    MACROS.error = err.message;
+  }
+}
+
+async function loadMacroPlaces(id) {
+  if (MACROS.places[id]) return;
+  MACROS.places[id] = { loading: true };
+  const r = await fetch(`/api/macros?def=${encodeURIComponent(id)}`);
+  MACROS.places[id] = r.ok ? await r.json() : { failed: `the server answered ${r.status}` };
+}
+
+function macroWhere(d) {
+  if (d.file) return `${d.file}:${d.line}`;
+  return { command_line: "the build's command line", builtin: "the compiler",
+           unknown: "not known to this reader" }[d.origin] || d.origin;
+}
+
+function macroPlaces(d) {
+  const p = MACROS.places[d.id];
+  if (!p || p.loading) return `<div class="hint">Reading…</div>`;
+  if (p.failed) return `<div class="hint">Could not read its places: ${esc(p.failed)}.</div>`;
+  const uses = p.uses.map(u => u.routine_id
+    ? `<div><button class="linkbtn mono" data-nav="routine" data-navid="${esc(u.routine_id)}"
+         title="Select ${esc(u.qualname)}">${esc(u.qualname)}</button>
+         <span class="hint mono">${esc(u.file)}:${u.line}</span></div>`
+    : `<div class="hint mono">${esc(u.file)}:${u.line} · ${esc(u.position.replace("_", " "))}</div>`);
+  const goes = p.callees.map(c => `<li class="mono">${esc(c.indirect ? "a call through a value"
+      : c.callee)} <span class="hint">${c.indirect ? "" : c.target_file
+      ? `here, ${esc(c.target_file)}:${c.target_line}` : c.candidates
+      ? `${c.candidates} definitions here` : "outside this tree"} · ${c.uses.toLocaleString()}×</span></li>`);
+  const hits = p.boundaries.map(b => `<li class="mono">${esc(b.kind)} ${esc(b.direction)} ${
+      esc(b.evidence)}${b.target ? ` <span class="hint">${esc(b.target)}</span>` : ""}
+      <span class="hint">${esc(b.file)}:${b.line}</span></li>`);
+  return `
+    ${hits.length ? `<div class="lbl">What it touches</div><ul>${hits.join("")}</ul>` : ""}
+    ${goes.length ? `<div class="lbl">What it expands to</div><ul>${goes.join("")}</ul>` : ""}
+    <div class="lbl">Where it is used (${uses.length.toLocaleString()})</div>
+    <div class="macro-uses">${uses.join("") || `<div class="hint">It writes declarations and is
+      used nowhere in a body.</div>`}</div>`;
+}
+
+function macroRows(rows) {
+  return rows.map(d => {
+    const reach = [d.in_tree ? `${d.in_tree.toLocaleString()} here` : "",
+                   d.leaving ? `${d.leaving.toLocaleString()} outside` : "",
+                   d.indirect ? `${d.indirect.toLocaleString()} through a value` : ""]
+      .filter(Boolean).join(", ");
+    const open = state.macroOpen === d.id;
+    return `<tr>
+      <td><button class="linkbtn mono" data-macro="${esc(d.id)}" aria-expanded="${open}">${esc(d.name)}</button></td>
+      <td class="mono">${esc(macroWhere(d))}</td>
+      <td class="num">${d.uses.toLocaleString()}</td>
+      <td class="num">${(d.routines_written + d.structures_named).toLocaleString()}</td>
+      <td>${esc(reach)}</td>
+      <td>${esc((d.kinds || []).join(", "))}${d.shadows.length
+          ? ` <span class="hint">named like ${esc(d.shadows.join(", "))}</span>` : ""}</td>
+    </tr>${open ? `<tr><td colspan="6">${macroPlaces(d)}</td></tr>` : ""}`;
+  }).join("");
+}
+
+function macroSection(title, blurb, rows) {
+  if (!rows.length) return "";
+  return `<section class="panel">
+    <div class="panel-head"><h2>${esc(title)} <span class="hint">${rows.length.toLocaleString()}</span></h2></div>
+    <div class="panel-body">
+      ${blurb ? `<p class="hint">${blurb}</p>` : ""}
+      <table class="grid docgrid"><thead><tr><th>Macro</th><th>Defined</th><th>Uses</th>
+        <th>Wrote</th><th>Reaches</th><th>Touches</th></tr></thead>
+        <tbody>${macroRows(rows)}</tbody></table>
+    </div></section>`;
+}
+
+function viewMacros() {
+  if (MACROS.state === "failed") {
+    return `<div class="note">Could not read the macros: ${esc(MACROS.error)}.</div>`;
+  }
+  if (MACROS.state !== "ready") return `<div class="note">Reading the macros…</div>`;
+  const m = MACROS.report, s = m.summary, u = m.unread;
+  /* Design rule 21: this view can be empty for two reasons, and they are different sentences. */
+  if (!m.expansion.read.length && !m.expansion.named.length) {
+    return `<div class="note"><b>No language in this map has macros this tool reads.</b> That
+      is not a finding about this program: there is nothing here to look at.</div>`;
+  }
+  if (!m.definitions.length) {
+    return `<div class="note"><b>This map records no use of a macro.</b> The reader for
+      ${esc([...m.expansion.read, ...m.expansion.named].join(", "))} looked and found none.</div>`;
+  }
+  const defs = m.definitions;
+  const leaves = defs.filter(d => d.boundaries);
+  const quietly = defs.filter(d => !d.boundaries);
+  const calls = quietly.filter(d => d.in_tree || d.leaving || d.indirect);
+  const writes = quietly.filter(d => !calls.includes(d) && (d.routines_written || d.structures_named));
+  const rest = quietly.filter(d => !calls.includes(d) && !writes.includes(d));
+  const unseen = [
+    m.expansion.read.length ? `<li><b>${esc(m.expansion.read.join(", "))}</b>: the toolchain
+       expands every macro, so this is what it expanded to, <b>in the one configuration read</b>.</li>
+       <li><b>One hop.</b> A macro inside a macro's body is credited to the one written at the line.</li>
+       <li><b>Boundaries are the names the rules list.</b> A call to anything else is under
+       <i>Reaches</i>, and is not called a boundary.</li>` : "",
+    m.expansion.named.length ? `<li><b>${esc(m.expansion.named.join(", "))}</b>: this reader sees
+       a use and <b>does not read what it does</b>. Nothing reported through these macros does
+       not mean there is nothing to report.</li>` : "",
+    u.lines ? `<li><b>${u.lines.toLocaleString()} lines not read</b> in <code>#if</code> arms
+       this configuration does not take, in ${u.arms.length.toLocaleString()} files.</li>` : "",
+    u.files_missing_headers ? `<li><b>${u.files_missing_headers.toLocaleString()} files with a
+       header not found.</b> Macros from one are <b>not read, rather than absent</b>:
+       ${u.headers.slice(0, 5).map(h => `<code>${esc(h.header)}</code> ${h.files.toLocaleString()}`).join(", ")}${
+         u.headers.length > 5 ? `, and ${(u.headers.length - 5).toLocaleString()} more` : ""}.</li>` : "",
+    s.opaque_asm ? `<li><b>${s.opaque_asm.toLocaleString()} inline assembly statements</b>,
+       which this map cannot read into.</li>` : "",
+  ].filter(Boolean).join("");
+  return `<div style="max-width:72rem;display:flex;flex-direction:column;gap:.75rem">
+    <div class="note"><b>${s.uses.toLocaleString()} uses of ${defs.length.toLocaleString()} definitions.</b>
+      Of ${s.routines.toLocaleString()} routines, <b>${s.routines_written.toLocaleString()} are written by
+      macros</b>, and ${s.routines_named.toLocaleString()} more have a name a macro gave them over a body
+      somebody wrote. ${s.boundaries.toLocaleString()} boundaries are reached through a macro.
+      A macro is not a way in and not a call anybody wrote: it is text a compiler replaced.</div>
+    <div class="note"><b>What this page cannot see.</b><ul>${unseen}</ul></div>
+    ${macroSection("What leaves the program through a macro",
+      "The worklist reports those this program or its build defined. Most are an ordinary wrapper.", leaves)}
+    ${macroSection("What makes calls", "", calls)}
+    ${macroSection("What writes routines and structures",
+      "Folded to one row each in the navigator and the diagram. Settings can list them instead.", writes)}
+    ${macroSection("The rest", "Constants, string wrappers and annotations: no call under them and nothing written.", rest)}
+  </div>`;
+}
+
 function viewNaming() {
   const waiting = laneState(VOCAB, "naming", "namingError", "the derived naming standard");
   if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
@@ -12224,7 +12393,7 @@ function viewInspectorFold(s) {
     : `<div class="hint">No governance ids in anything it holds.</div>`;
 
   const touches = touchRows(t);
-  const what = { class: "class", file: "file", touch: "boundary" }[id.fold] || id.fold || "box";
+  const what = { class: "class", file: "file", touch: "boundary", macro: "macro" }[id.fold] || id.fold || "box";
   return `
     <div class="insp-head">
       <h2>${breakable(id.qualname || s.label || s.id)}</h2>
@@ -12907,6 +13076,19 @@ function isModuleScope(name) {
   return name === "<module>";
 }
 
+/* Who wrote this, where a macro did, and it opens (design rule 13). The two questions stay two:
+ * a name a macro gave a body somebody wrote is the opposite of a body hidden behind a name. */
+function writtenByLine(by) {
+  if (!by || (!by.name && !by.body)) return "";
+  const go = (d) => `<button class="linkbtn mono" data-nav="macros" data-macro-goto="${esc(d.id)}"
+      title="Open ${esc(d.name)} on the Macros page">${esc(d.name)}</button>${d.file
+        ? ` ${gotoCodeBtn(d.file, d.line)}` : ""}`;
+  const both = by.name && by.body && by.name.id === by.body.id;
+  return `<div class="loc">${both ? `written by ${go(by.body)}`
+    : [by.name ? `named by ${go(by.name)}` : "", by.body ? `body written by ${go(by.body)}` : ""]
+        .filter(Boolean).join(" · ")}</div>`;
+}
+
 function viewInspector() {
   const s = SPECIMEN;
   /* Nothing selected is the ordinary state, not an error. The prototype could not reach
@@ -13011,6 +13193,9 @@ function viewInspector() {
             is DunneFlow's own name for module scope — the work a file does at import,
             which owns everything no function does. It is not a way in, and it is not
             dead code.</div>`
+        : (s.written_by || {}).body
+          ? `<div class="hint">Nothing in this map calls it. A macro wrote it, and a macro writes
+              what it writes whether or not all of it is used.</div>`
         : `<div class="hint">Nothing in this map calls it. That is either a
           way in, dead code, or a call DunneFlow cannot see — a dynamic dispatch, or a
           language it does not read.</div>`)))
@@ -13114,6 +13299,7 @@ function viewInspector() {
       <h2>${breakable(id.qualname || s.label || s.id)}</h2>
       <div class="loc">${esc(fileName)}${id.line_start
         ? `:${id.line_start}–${id.line_end}` : ""}</div>
+      ${writtenByLine(s.written_by)}
       <div class="tags">
         <span class="badge certain">ANALYSED</span>
         <span class="kind-tag">${esc(s.kind || "")}</span>
@@ -13254,6 +13440,7 @@ function crumbsFor() {
                     cur: true }],
     glossary:    [{ label: "vocabulary" }, { label: "glossary", cur: true }],
     naming:      [{ label: "vocabulary" }, { label: "derived naming standard", cur: true }],
+    macros:      [{ label: "vocabulary" }, { label: "macros", cur: true }],
     stated:      [{ label: "vocabulary" }, { label: "stated naming rules", cur: true }],
     checked:     [{ label: "vocabulary" }, { label: "stated rules, checked", cur: true }],
     /* Three deep when the reader has gone into a sub-application, because two would name
@@ -13513,6 +13700,10 @@ function render() {
   else if (state.view === "anomalies") vp.innerHTML = viewAnomalies();
   else if (state.view === "changes")   vp.innerHTML = viewChanges();
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
+  else if (state.view === "macros")    {
+    if (!MACROS.state) loadMacros().then(() => { buildNav(); render(); });
+    vp.innerHTML = viewMacros();
+  }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
   else if (state.view === "stated")    { ensureVocabulary(); vp.innerHTML = viewStated(); }
   else if (state.view === "checked")   { ensureVocabulary(); vp.innerHTML = viewChecked(); }
@@ -13864,6 +14055,12 @@ function wire() {
   }));
   $$("[data-scale-set]").forEach(b => b.addEventListener("click", () => {
     state.scale = parseFloat(b.dataset.scaleSet); applyScale(); render();
+  }));
+  $$("[data-macro]").forEach(b => b.addEventListener("click", async () => {
+    const id = b.dataset.macro;
+    state.macroOpen = state.macroOpen === id ? "" : id;
+    render();
+    if (state.macroOpen) { await loadMacroPlaces(id); render(); }
   }));
   $$("[data-namingus]").forEach(b => b.addEventListener("click", () => {
     const want = b.dataset.namingus === "1";
@@ -14715,6 +14912,7 @@ document.addEventListener("keydown", (e) => {
  * from the source, generated markup included, which is the direction the existing guard
  * could not see: it reads `index.html`, and all four of these are written by JavaScript. */
 const WIRED_ATTRS = new Set([
+  "macro", "macro-goto", "macrofold",
   "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "crumb", "curi",
   "cursor", "den", "dgmcursor", "dgmedge", "disk", "drop", "edgesmotion", "egress", "ep",
   /* Written on **both** the figure that opens a band and the band it opens -- the roster is
@@ -15214,6 +15412,17 @@ function routineTree() {
      *
      * It lands last among the rows shown, which is its right place: everything drawn comes
      * before it in the same order, and the cut is between them. The note counts it. */
+    /* **What a macro wrote is one row per macro**, and neither a search nor the selection is
+       ever folded away: a reader looking for `zz_append` by name has said what they want, and
+       a selected routine with no row is the sync looking broken. Counted on the package
+       (design rule 1), and one click from the Setting that lists them. */
+    if (state.macroFold && r.by_macro && !r.way_in && !filtered && !keep.has(r.id)) {
+      const held = g.macros || (g.macros = new Map());
+      const fold = held.get(r.by_macro_id) || { id: r.by_macro_id, name: r.by_macro, n: 0 };
+      fold.n += 1;
+      held.set(r.by_macro_id, fold);
+      continue;
+    }
     if (g.open && (g.rows.length < cap || keep.has(r.id))) g.rows.push(r);
   }
   const packages = [...by.values()].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
@@ -15246,7 +15455,9 @@ function routineList() {
   if (!total) return "";
   return packages.map(g => {
     const open = g.open;
-    const cut = g.n - g.rows.length;
+    const folds = g.macros ? [...g.macros.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)) : [];
+    const foldedN = folds.reduce((t, f) => t + f.n, 0);
+    const cut = g.n - g.rows.length - foldedN;
     return `
     <div class="nav-pkg" data-open="${open}">
       <div class="nav-pkghead">
@@ -15279,7 +15490,7 @@ function routineList() {
             list, and "showing 200 of 645" over a closed package describes nothing that is
             on screen. Forty-seven of them at once would be noise where design rule 1 wants
             a signal. */
-        open && cut > 0 ? `<div class="nav-note">showing ${g.rows.length} of ${g.n.toLocaleString()}
+        open && cut > 0 ? `<div class="nav-note">showing ${g.rows.length} of ${(g.n - foldedN).toLocaleString()}
           — search, or open the table for all of them</div>` : ""}
       <div class="nav-items">
         ${/* Computed once for the whole list rather than per row: a `Set` built inside the
@@ -15295,6 +15506,11 @@ function routineList() {
                make every session pay up to 28 s for a question nobody put. */
             chg: routineChip(r.id),
           })).join("")}
+        ${open ? folds.map(f => navItemHtml({
+            nav: "macros", macroGoto: f.id, label: f.name, sub: "written by this macro", n: f.n,
+          })).join("") : ""}
+        ${open && foldedN ? `<div class="nav-note">${foldedN.toLocaleString()} written by macros, folded —
+          <button class="linkbtn" data-macrofold="0">list them</button></div>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -17140,6 +17356,11 @@ const NAV_GROUPS = [
          those two keep is exactly what makes a *labelled* comparison safe to show. */
       { nav: "checked",  label: "Stated rules, checked", n: vocabCount("checked") },
       { nav: "naming",   label: "Derived naming standard", n: vocabCount("conventions") },
+      /* Beside the naming pages because what a macro writes is a large part of why a name
+         cannot be searched for. Uncounted until opened: the count takes a server scan that
+         nobody asked for by opening this pane. */
+      { nav: "macros",   label: "Macros",
+        n: MACROS.report ? MACROS.report.definitions.length.toLocaleString() : "" },
       ...(INFERENCE_SHIPPED
         ? [{ nav: "inference", label: "Inference", n: "off", id: "navEgress" }] : []),
     ] },
@@ -17598,6 +17819,7 @@ function navItemHtml(i) {
                   text (rule 30). */
               i.epname ? `data-epname="${esc(i.epname)}"` : ""}
             ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
+            ${i.macroGoto ? `data-macro-goto="${esc(i.macroGoto)}"` : ""}
             ${i.current ? 'aria-current="true"' : ""}>
       ${i.dot ? `<span class="sevdot" style="background:var(--sev-${esc(i.dot)})"></span>` : ""}
       ${/* A sibling, not a wrapper: `dressNavItems()` collects the *loose text* of an
@@ -17618,6 +17840,21 @@ function navItemHtml(i) {
         : ""}
     </button>`;
 }
+
+/* Delegated, because one of these two controls is a navigator row's note and `buildNav()` replaces
+ * that markup without `wire()` running: bound there, "list them" was dead after any rebuild, and a
+ * scripted click on the element it was bound to would have passed (rule 48). */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-macrofold]");
+  if (!b) return;
+  const want = b.dataset.macrofold === "1";
+  if (state.macroFold === want) return;
+  state.macroFold = want;
+  used("macros:fold:" + (want ? "folded" : "listed"));
+  persist();
+  buildNav();
+  render();
+});
 
 function buildNav() {
   const nav = $("#navigator");
@@ -18190,7 +18427,9 @@ async function loadRoutines() {
   ROUTINES = (d.routines || [])
     .filter(row => row.id)              // a row with no identity is not selectable
     .map(row => ({ id: row.id, name: row.name || "", module: row.module || "",
-                   pkg: row.pkg || "", why: row.why || "" }));
+                   pkg: row.pkg || "", why: row.why || "",
+                   by_macro: row.by_macro || "", by_macro_id: row.by_macro_id || "",
+                   way_in: !!row.way_in }));
   /* Same rule, same reason: `describe()` resolves a `structures.id`, so a structure is a
      subject exactly as a routine is -- and a row without one could not be acted on. */
   STRUCTURES = (d.structures || [])
@@ -18267,7 +18506,7 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
-  "namingUnderscore",
+  "namingUnderscore", "macroFold",
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "navName", "topFit", "verStrip", "paneFit", "paneAuto",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",

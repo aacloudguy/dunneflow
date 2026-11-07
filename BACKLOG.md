@@ -48,7 +48,9 @@ declaration file, Go's names its package, Python's resolver knows the import it 
 *Settled by* each reader sending `frontier`/`reason` on its unresolved calls (Python's
 through `NoEdge`, which already carries both), with the unsaid count retaken per corpus. **Go's half done 2026-11-07:** every unresolved Go call is sent with
 `outside` and the checker's far end, or `untyped`/`unfollowed` and a sentence; on beads the
-Go calls whose reader does not say fell from 25,392 to 2. Python and TypeScript remain.
+Go calls whose reader does not say fell from 25,392 to 2. **Python's half done the same day**
+(Society: 19,616 unsaid to 2,445; DEAD_CODE 313 to 280, by its own rule that an untyped call
+naming a routine spares it). TypeScript remains: DunneNote's 3,608.
 
 **37. `--include-tests` does not bring back Rust's inline tests.** The walk leaves test
 *files* out unless asked; the Rust reader leaves `#[cfg(test)]` items out always, because

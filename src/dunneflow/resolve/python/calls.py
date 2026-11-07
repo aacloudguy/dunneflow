@@ -332,7 +332,7 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
             # is whatever value it holds, and matching the name against the program would
             # be guessing (BACKLOG 24, rule 1). No rivals are counted: the binding has
             # already settled that none of them is meant.
-            yield NoEdge(candidates=0, suppressed=True)
+            yield NoEdge(candidates=0, suppressed=True, reason="bound")
             continue
 
         # One of this program's classes the call names, and how sure that is. Looked for
@@ -363,7 +363,8 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
                         # field` means `field(...)` is dataclasses', however many local
                         # routines happen to share the name. No rivals are counted --
                         # the import has already settled it.
-                        yield NoEdge(candidates=0, suppressed=True)
+                        yield NoEdge(candidates=0, suppressed=True, reason="outside",
+                                     frontier=f"{abs_mod}.{name}")
                         continue
             if not target and not cls and last not in builtins_:
                 target = _pick(ix.by_name.get(last, []), caller_id)
@@ -431,11 +432,26 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
         elif cls:
             yield _constructor(ix, cls, cls_conf, caller_id)
         else:
+            # **Where it stops, and why** (BACKLOG 36): a builtin and a module imported from
+            # outside go outside, a call on a value whose type this resolver cannot see is
+            # untyped, and a bare name nothing defines is a path it could not follow.
+            frontier, reason = "", ""
+            head = parts[0]
+            if len(parts) == 1 and last in builtins_:
+                frontier, reason = last, "outside"
+            elif len(parts) > 1 and head in alias_map:
+                mod, name, is_from = alias_map[head]
+                abs_mod = _absolute(mod, caller_module, caller_is_pkg)
+                home = f"{abs_mod}.{name}" if is_from and abs_mod else (abs_mod or name)
+                if home and home.split(".")[0] not in ix.roots:
+                    frontier, reason = ".".join([home, *parts[1:]]), "outside"
+            if not reason:
+                reason = "untyped" if len(parts) > 1 else "unfollowed"
             # An edge lost to ambiguity is not the same as a call that leaves the
             # program. Recording the candidate count makes a missing connection
             # visible instead of invisible -- which is the whole point when the
             # program under study may itself be broken.
             yield NoEdge(
                 candidates=_candidates(ix.by_name.get(last, []), caller_id),
-                suppressed=suppressed,
+                suppressed=suppressed, frontier=frontier, reason=reason,
             )

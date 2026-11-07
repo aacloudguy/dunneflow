@@ -470,7 +470,7 @@ func (c *checker) resolve(call *ast.CallExpr) answer {
 		if a.file != "" && c.s.routines[a.file+"\x00"+itoa(a.line)+"\x00"+a.name] {
 			return a
 		}
-		return answer{reason: "unfollowed",
+		return answer{reason: "bound",
 			why: "a function held in a parameter, a field or a variable, which is not followed"}
 	}
 	return answer{reason: "unfollowed", why: "a call the checker answered with nothing callable"}

@@ -12,8 +12,8 @@
 (function () {
   "use strict";
 
-  const esc = (s) => String(s).replace(/[&<>"]/g,
-    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const esc = (s) => String(s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   const Analyze = window.DunneFlowAnalyze;
   let ROOT = "";

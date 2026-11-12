@@ -586,3 +586,21 @@ def test_a_path_that_climbs_out_of_the_static_tree_is_not_served(cold):
     for path in ("/static/../serve.py", "/static/%2e%2e/serve.py", "/vendor/../../schema.py"):
         status, body, _ = _ask(url + path)
         assert status == 404 and "import" not in body, path
+
+
+def test_text_from_a_program_is_escaped_for_both_kinds_of_attribute():
+    """A name, a comment or a path from the tree being read is somebody else's text, and
+    every view writes it through `esc`. Three of the four helpers left `'` alone, so a
+    value written into a single-quoted attribute could have closed it. None is written
+    that way today (swept in the browser on 2026-11-12 with a tree whose every name,
+    docstring and literal carried markup: nothing became an element); this is so that the
+    first one that is cannot matter."""
+    from dunneflow.web.serve import STATIC
+
+    for name in ("shell.js", "start.js", "analyze.js", "prose.js"):
+        js = (STATIC / name).read_text(encoding="utf-8")
+        at = js.index("esc")
+        helper = js[js.index("replace(", at) - 200: js.index("replace(", at) + 260]
+        for ch, entity in (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ('"', "&quot;"),
+                           ("'", "&#39;")):
+            assert entity in helper, f"{name}: esc does not escape {ch!r}"

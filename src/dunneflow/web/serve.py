@@ -1555,7 +1555,9 @@ def said_residue(stored: str | None) -> dict[str, Any]:
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; "
-    "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; "
+    # `data:` and `blob:` under connect-src are deck.gl's: it reads its own generated
+    # textures back through `fetch`, and the graph drew nothing selected without them.
+    "connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; "
     "frame-ancestors 'none'"
 )
 

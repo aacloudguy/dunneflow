@@ -735,7 +735,7 @@ const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
  * counting -- so no caller increments directly. */
 function used(key) { state.usage[key] = (state.usage[key] || 0) + 1; }
 
-const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 /* ═══ theme + scale ═══ */
 /* ── collapsible panes ───────────────────────────────────────────────────────────

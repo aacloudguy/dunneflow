@@ -32,8 +32,8 @@
 (function () {
   "use strict";
 
-  const esc = (s) => String(s).replace(/[&<>"]/g,
-    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const esc = (s) => String(s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   /* Never null, so nothing here has to guard. A host that wires nothing gets a working
      dialog that counts no usage and repaints nothing else, which is exactly right for a

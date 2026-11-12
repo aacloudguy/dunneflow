@@ -24,6 +24,7 @@ public final class Rules {
     final Object raw;
     final List<Boundary> boundaries = new ArrayList<>();
     final List<Entry> entrypoints = new ArrayList<>();
+    final List<Extends> extending = new ArrayList<>();
     final Set<String> entryNames = new HashSet<>();
     /** Longest key first, as {@code load_rules} sorts them. */
     final List<Net> net = new ArrayList<>();
@@ -104,6 +105,36 @@ public final class Rules {
         }
     }
 
+    /**
+     * {@code extends:} -- what a class is <b>by what it extends</b>, which no file can say of
+     * itself and the edge pass can (rule 95). One of two things follows from a match. With
+     * {@code boundary}, a call on a receiver of such a type whose body the tree does not hold
+     * is a touch: {@code owners.save(o)} on a Spring Data repository is the database. With
+     * {@code entrypoint}, a method of such a class that overrides one of the framework's
+     * {@code methods} is a way in: nothing in the program calls {@code doGet}.
+     */
+    static final class Extends {
+        final Set<String> types = new HashSet<>();
+        String boundary = "";
+        String direction = "BOTH";
+        String salience = "normal";
+        String entrypoint = "";
+        final Set<String> methods = new HashSet<>();
+        String evidence = "";
+
+        /** The first of this rule's types among {@code lineage}, or null. */
+        String among(Set<String> lineage) {
+            String found = null;
+            for (String t : types) {
+                // The smallest name, so the answer does not depend on a set's order (rule 105).
+                if (lineage.contains(t) && (found == null || t.compareTo(found) < 0)) {
+                    found = t;
+                }
+            }
+            return found;
+        }
+    }
+
     static final class Net {
         String prefix = "";
         String protocol = "";
@@ -155,6 +186,30 @@ public final class Rules {
             r.decoratorMethod.addAll(Json.strings(Json.get(e, "decorator_method")));
             r.evidence = orEmpty(Json.str(e, "evidence"));
             entrypoints.add(r);
+        }
+        for (Object x : Json.list(raw, "extends")) {
+            Extends r = new Extends();
+            r.types.addAll(Json.strings(Json.get(x, "types")));
+            r.boundary = orEmpty(Json.str(x, "boundary"));
+            String d = Json.str(x, "direction");
+            if (d != null && !d.isEmpty()) {
+                r.direction = d;
+            }
+            String s = Json.str(x, "salience");
+            if (s != null && !s.isEmpty()) {
+                r.salience = s;
+            }
+            r.entrypoint = orEmpty(Json.str(x, "entrypoint"));
+            r.methods.addAll(Json.strings(Json.get(x, "methods")));
+            r.evidence = orEmpty(Json.str(x, "evidence"));
+            // A rule that names no type, or says neither thing, decides nothing: left out
+            // rather than read as "every class" (rule 49). A way in with no methods named
+            // would be every method of the class, which is the same mistake.
+            if (r.types.isEmpty() || (r.boundary.isEmpty() == r.entrypoint.isEmpty())
+                || (!r.entrypoint.isEmpty() && r.methods.isEmpty())) {
+                continue;
+            }
+            extending.add(r);
         }
         entryNames.addAll(Json.strings(Json.get(raw, "entry_names")));
         Object network = Json.get(raw, "network");
@@ -211,6 +266,23 @@ public final class Rules {
             return new Match(b, String.join("; ", blind));
         }
         return new Match(null, String.join("; ", blind));
+    }
+
+    /**
+     * The rule a call is a touch by, <b>where the checker has typed it</b>: {@code qualified}
+     * is the declaring type's own name and the method's, {@code jakarta.ws.rs.client
+     * .SyncInvoker.get}. Matched against {@code exact} entries and nothing else, as Go's
+     * typed methods are: {@code method}, {@code prefix} and {@code contains} are written for
+     * a spelling, and a spelling's looseness has no business deciding a type's name. A rule
+     * conditioned on an argument is left to the file's own pass, which has the arguments.
+     */
+    Boundary typed(String qualified) {
+        for (Boundary b : boundaries) {
+            if (b.whenIndex == null && b.exact.contains(qualified)) {
+                return b;
+            }
+        }
+        return null;
     }
 
     /** {@code RuleSet.network_profile}, including the clause that makes a bare key exact:

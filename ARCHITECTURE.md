@@ -594,6 +594,14 @@ queries know a language exists.
   For each `dynamic` call it sends the location of every body that may answer
   (`SuppliedEdge.answers`). `Deps.java` reads the jars the build files declare out of the
   local Maven and Gradle caches, never fetched, onto the edge pass's own classpath.
+  **Two judgements need a type and are the edge pass's** (`supplies_touches`,
+  `supplies_ways_in`): a call on a receiver whose class extends a type `java.yaml` declares
+  under `extends:`, or one javac resolved to a method a boundary rule names by its declaring
+  type, is sent as a `touch` instead of an edge; a method that fills a framework's slot in
+  such a class is sent as a `way_in`. `Store.replace_supplied_touches` writes the first into
+  `boundaries` (`expanded = 2`) and marks the call `at_boundary`;
+  `Store.replace_supplied_ways_in` writes the second into `entrypoints`. Both are replaced
+  whole with the edges.
 
   **A toolchain that is not installed declines its language and the rest is read.**
   `walk._runnable` asks each language that has files whether its reader can run, before any

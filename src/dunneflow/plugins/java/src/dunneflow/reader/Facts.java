@@ -1565,4 +1565,99 @@ public final class Facts {
         }
     }
 
+    /** `schema.SuppliedTouch`. */
+    public static final class SuppliedTouch implements Json.Writable {
+        public String site_id = null;
+        public String file = null;
+        public String routine_id = null;
+        public BoundaryKind kind = null;
+        public Direction direction = null;
+        public String target = null;
+        public long line;
+        public String evidence = "";
+        public String salience = "normal";
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            out.append('{');
+            boolean[] first = {true};
+            if (site_id == null) {
+                throw new IllegalStateException("SuppliedTouch.site_id is required and was never set");
+            }
+            Json.field(out, first, "site_id", site_id);
+            if (file == null) {
+                throw new IllegalStateException("SuppliedTouch.file is required and was never set");
+            }
+            Json.field(out, first, "file", file);
+            if (routine_id == null) {
+                throw new IllegalStateException("SuppliedTouch.routine_id is required and was never set");
+            }
+            Json.field(out, first, "routine_id", routine_id);
+            if (kind == null) {
+                throw new IllegalStateException("SuppliedTouch.kind is required and was never set");
+            }
+            Json.field(out, first, "kind", kind);
+            if (direction == null) {
+                throw new IllegalStateException("SuppliedTouch.direction is required and was never set");
+            }
+            Json.field(out, first, "direction", direction);
+            if (target == null) {
+                throw new IllegalStateException("SuppliedTouch.target is required and was never set");
+            }
+            Json.field(out, first, "target", target);
+            Json.field(out, first, "line", line);
+            if (!Objects.equals(evidence, "")) {
+                Json.field(out, first, "evidence", evidence);
+            }
+            if (!Objects.equals(salience, "normal")) {
+                Json.field(out, first, "salience", salience);
+            }
+            out.append('}');
+        }
+    }
+
+    /** `schema.SuppliedWayIn`. */
+    public static final class SuppliedWayIn implements Json.Writable {
+        public String id = null;
+        public EntrypointKind kind = null;
+        public String name = null;
+        public String routine_id = null;
+        public String file = null;
+        public String module = "";
+        public String evidence = "";
+
+        @Override
+        public void writeJson(StringBuilder out) {
+            out.append('{');
+            boolean[] first = {true};
+            if (id == null) {
+                throw new IllegalStateException("SuppliedWayIn.id is required and was never set");
+            }
+            Json.field(out, first, "id", id);
+            if (kind == null) {
+                throw new IllegalStateException("SuppliedWayIn.kind is required and was never set");
+            }
+            Json.field(out, first, "kind", kind);
+            if (name == null) {
+                throw new IllegalStateException("SuppliedWayIn.name is required and was never set");
+            }
+            Json.field(out, first, "name", name);
+            if (routine_id == null) {
+                throw new IllegalStateException("SuppliedWayIn.routine_id is required and was never set");
+            }
+            Json.field(out, first, "routine_id", routine_id);
+            if (file == null) {
+                throw new IllegalStateException("SuppliedWayIn.file is required and was never set");
+            }
+            Json.field(out, first, "file", file);
+            if (!Objects.equals(module, "")) {
+                Json.field(out, first, "module", module);
+            }
+            if (!Objects.equals(evidence, "")) {
+                Json.field(out, first, "evidence", evidence);
+            }
+            out.append('}');
+        }
+    }
+
 }

@@ -126,6 +126,33 @@ boundaries:
     method: [writeAndFlush]
     target_arg: 0
 
+  # **JAX-RS's client, by the type javac gives the receiver** (BACKLOG 46).
+  # `client.target(url).request().get()` is 18 of traccar's network calls, and `get`,
+  # `target` and `request` are far too common to match as written (rule 5). These entries are
+  # a declaring type and its method, which no call is ever spelled as: only the edge pass
+  # matches them (`Rules.typed`), against the method javac resolved, and only with the JAX-RS
+  # jar on this machine. Without it the call is `untyped` and stays a stated residue.
+  - kind: NETWORK
+    direction: OUT
+    exact: [jakarta.ws.rs.client.SyncInvoker.get, jakarta.ws.rs.client.SyncInvoker.post,
+            jakarta.ws.rs.client.SyncInvoker.put, jakarta.ws.rs.client.SyncInvoker.delete,
+            jakarta.ws.rs.client.SyncInvoker.head, jakarta.ws.rs.client.SyncInvoker.options,
+            jakarta.ws.rs.client.SyncInvoker.trace, jakarta.ws.rs.client.SyncInvoker.method,
+            jakarta.ws.rs.client.AsyncInvoker.get, jakarta.ws.rs.client.AsyncInvoker.post,
+            jakarta.ws.rs.client.AsyncInvoker.put, jakarta.ws.rs.client.AsyncInvoker.delete,
+            jakarta.ws.rs.client.AsyncInvoker.head, jakarta.ws.rs.client.AsyncInvoker.options,
+            jakarta.ws.rs.client.AsyncInvoker.trace, jakarta.ws.rs.client.AsyncInvoker.method,
+            jakarta.ws.rs.client.Invocation.invoke, jakarta.ws.rs.client.Invocation.submit,
+            javax.ws.rs.client.SyncInvoker.get, javax.ws.rs.client.SyncInvoker.post,
+            javax.ws.rs.client.SyncInvoker.put, javax.ws.rs.client.SyncInvoker.delete,
+            javax.ws.rs.client.SyncInvoker.head, javax.ws.rs.client.SyncInvoker.options,
+            javax.ws.rs.client.SyncInvoker.trace, javax.ws.rs.client.SyncInvoker.method,
+            javax.ws.rs.client.AsyncInvoker.get, javax.ws.rs.client.AsyncInvoker.post,
+            javax.ws.rs.client.AsyncInvoker.put, javax.ws.rs.client.AsyncInvoker.delete,
+            javax.ws.rs.client.AsyncInvoker.head, javax.ws.rs.client.AsyncInvoker.options,
+            javax.ws.rs.client.AsyncInvoker.trace, javax.ws.rs.client.AsyncInvoker.method,
+            javax.ws.rs.client.Invocation.invoke, javax.ws.rs.client.Invocation.submit]
+
   - kind: STDIO
     direction: OUT
     exact: [System.out.println, System.out.print, System.out.printf, System.out.format,
@@ -211,6 +238,72 @@ entrypoints:
     decorator_method: [Test, ParameterizedTest, BeforeEach, AfterEach, BeforeAll, AfterAll,
                        Before, After, BeforeClass, AfterClass]
     evidence: "run by the test framework"
+
+# **What a class is by what it extends** (BACKLOG 45). Read by the edge pass and by nothing
+# else: whether a class extends a framework's type is often said two classes up, in another
+# file, and a file's facts may not depend on one (rule 95).
+#
+# `boundary`: a call on a receiver of such a type, where the tree holds no body to run, is
+# that touch. `entrypoint`: a method named in `methods`, in such a class, that overrides the
+# framework's and not one of the program's own, is a way in.
+#
+# **Every type a program writes after `extends` is listed, not only the root.** With the
+# framework's jars on this machine javac follows `JpaRepository` up to `Repository` itself.
+# Without them, which is the ordinary case, the only name there is to read is the one the
+# file wrote.
+extends:
+  # Spring Data writes the repository at run time from the interface, so no class in the
+  # tree implements it and petclinic's every `owners.save(…)` read as a call that stopped
+  # at an interface: 0 touches, in a program that is a database front end.
+  - types: [org.springframework.data.repository.Repository,
+            org.springframework.data.repository.CrudRepository,
+            org.springframework.data.repository.ListCrudRepository,
+            org.springframework.data.repository.PagingAndSortingRepository,
+            org.springframework.data.repository.ListPagingAndSortingRepository,
+            org.springframework.data.repository.reactive.ReactiveCrudRepository,
+            org.springframework.data.repository.reactive.ReactiveSortingRepository,
+            org.springframework.data.jpa.repository.JpaRepository,
+            org.springframework.data.mongodb.repository.MongoRepository,
+            org.springframework.data.mongodb.repository.ReactiveMongoRepository,
+            org.springframework.data.r2dbc.repository.R2dbcRepository]
+    boundary: DATABASE
+    direction: BOTH
+    evidence: "a Spring Data repository, which the framework implements at run time"
+  - types: [jakarta.servlet.http.HttpServlet, javax.servlet.http.HttpServlet]
+    entrypoint: HTTP_ROUTE
+    methods: [doGet, doPost, doPut, doDelete, doHead, doOptions, doPatch, service]
+    evidence: "called by the servlet container for a request"
+  - types: [jakarta.servlet.Filter, javax.servlet.Filter,
+            jakarta.servlet.http.HttpFilter, javax.servlet.http.HttpFilter]
+    entrypoint: LIBRARY
+    methods: [doFilter]
+    evidence: "called by the servlet container for every request it filters"
+  # Netty calls a handler's methods as bytes arrive and leave. The method must override
+  # Netty's own: traccar's frame decoders each write a `decode` that overrides traccar's
+  # abstract one, and only the class that fills Netty's slot is the way in.
+  - types: [io.netty.channel.ChannelHandler, io.netty.channel.ChannelInboundHandler,
+            io.netty.channel.ChannelOutboundHandler,
+            io.netty.channel.ChannelInboundHandlerAdapter,
+            io.netty.channel.ChannelOutboundHandlerAdapter,
+            io.netty.channel.ChannelDuplexHandler,
+            io.netty.channel.SimpleChannelInboundHandler,
+            io.netty.channel.ChannelInitializer,
+            io.netty.handler.codec.ByteToMessageDecoder,
+            io.netty.handler.codec.ByteToMessageCodec,
+            io.netty.handler.codec.MessageToByteEncoder,
+            io.netty.handler.codec.MessageToMessageDecoder,
+            io.netty.handler.codec.MessageToMessageEncoder,
+            io.netty.handler.codec.MessageToMessageCodec,
+            io.netty.handler.codec.LineBasedFrameDecoder,
+            io.netty.handler.codec.DelimiterBasedFrameDecoder,
+            io.netty.handler.codec.LengthFieldBasedFrameDecoder,
+            io.netty.handler.codec.FixedLengthFrameDecoder]
+    entrypoint: LIBRARY
+    methods: [channelRead, channelRead0, channelActive, channelInactive, channelRegistered,
+              channelUnregistered, channelReadComplete, channelWritabilityChanged,
+              userEventTriggered, exceptionCaught, handlerAdded, handlerRemoved, initChannel,
+              decode, decodeLast, encode, write, flush, read, connect, disconnect, close, bind]
+    evidence: "called by Netty's pipeline"
 
 # `public static void main(String[] args)`, and only that shape: the reader checks that it
 # is static and takes one `String[]` or `String...`. Java 21's instance `main` is a preview

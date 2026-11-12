@@ -514,6 +514,60 @@ class SuppliedBinding:
 
 
 @dataclass
+class SuppliedTouch:
+    """**A call that crosses a boundary, decided by a type the file alone cannot see.**
+
+    A boundary rule is matched in each file against the call as written, and that is all one
+    file can say (rule 95). Two things need the whole program: `owners.save(o)` is a database
+    write because `OwnerRepository` extends Spring Data's `Repository`, which is written in
+    another file or in none; and `client.target(u).request().get()` is a network call because
+    the checker types the receiver as JAX-RS's `SyncInvoker`, where `get` matched bare would
+    match half of every program (rule 5). A reader whose checker knows says so here, in the
+    edge pass, **instead of** a `SuppliedEdge` for that site: a call that touches a boundary
+    is never also an edge (rule 2), so the host marks the call `at_boundary` and writes the
+    touch into `boundaries`, as it would have had the file's own rules matched it.
+
+    The fields are `BoundaryHit`'s, flat, with the call's `site_id` and its `file`. `evidence`
+    begins with the call as written, as every touch's does, and then says which type decided
+    it. Sent only by a reader whose manifest declares `supplies_touches`; replaced whole per
+    language with the rest of the edge pass. Added without a schema bump, as
+    `SuppliedBinding` was: no file's facts change shape.
+    """
+
+    site_id: str
+    file: str
+    routine_id: str
+    kind: BoundaryKind
+    direction: Direction
+    target: str
+    line: int
+    evidence: str = ""
+    salience: str = "normal"
+
+
+@dataclass
+class SuppliedWayIn:
+    """**A way in by inheritance**: a method a framework calls because of what its class
+    extends, with no annotation on it for a file's own rules to match.
+
+    `HttpServlet.doGet` and Netty's `channelRead` are the shape. Whether a class extends the
+    framework's type is often said two classes up, in another file, so it is the edge pass's
+    to say (rule 95). The fields are `Entrypoint`'s that a reader may send, flat, with the
+    `file` the routine is in. `routine_id` is always set: a way in declared this way is a
+    method with a body. Sent only by a reader whose manifest declares `supplies_ways_in`;
+    replaced whole per language.
+    """
+
+    id: str
+    kind: EntrypointKind
+    name: str
+    routine_id: str
+    file: str
+    module: str = ""
+    evidence: str = ""
+
+
+@dataclass
 class SuppliedUse:
     """**A routine named as a value** -- passed, stored or taken the address of -- located as
     a `SuppliedEdge`'s target is.

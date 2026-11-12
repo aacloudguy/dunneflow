@@ -67,6 +67,16 @@ import javax.tools.JavaFileObject;
  * {@code dynamic} too: {@code r.run()} on a {@code Runnable} reaches the anonymous class
  * that implements it.
  *
+ * <p><b>What a call or a method is by a type, and no spelling says</b> (BACKLOG 45 and 46).
+ * A call javac typed to a method the rules name by its declaring type ({@link Rules#typed})
+ * is a touch, and so is a call on a receiver whose class extends a type the rules declare
+ * ({@code extends:}) where the tree holds no body to run: {@code owners.save(o)} on a Spring
+ * Data repository. Such a call is sent as a {@code touch} and <b>never also as an edge</b>
+ * (rule 2). A method that overrides a framework's, in a class that extends the framework's
+ * declared type, is a way in. Without the framework's jars javac cannot type the supertype,
+ * and then its name is read as the file wrote it, through a single-type import or fully
+ * qualified, and never through {@code import a.b.*}: that would be choosing a package.
+ *
  * <p><b>The residue, stated.</b> javac reads Java and nothing else, so a call from Java
  * into the Kotlin of a mixed tree is {@code untyped}. Annotation processors do not run
  * ({@code -proc:none}), so a Lombok getter or a Dagger component is not there to resolve
@@ -77,6 +87,8 @@ public final class Edges {
 
     public static final class Found {
         final List<Facts.SuppliedEdge> edges = new ArrayList<>();
+        final List<Facts.SuppliedTouch> touches = new ArrayList<>();
+        final List<Facts.SuppliedWayIn> waysIn = new ArrayList<>();
         final List<String> notes = new ArrayList<>();
         long outside;
         long unknown;
@@ -124,6 +136,8 @@ public final class Edges {
         String file;
         long line;
         String name;
+        /** What this call is if its far end turns out to have no body in the tree. */
+        Facts.SuppliedTouch touch;
     }
 
     /** Raised from a task listener to abandon a batch whose heap is nearly full. */
@@ -603,6 +617,15 @@ public final class Edges {
                 + (givenUp.size() > 8 ? " and " + (givenUp.size() - 8) + " more" : ""));
         }
         decide(questions, index, !givenUp.isEmpty(), found);
+        if (!found.touches.isEmpty()) {
+            found.notes.add("edges: " + found.touches.size() + " calls are boundary touches by "
+                + "a type javac named or by what the receiver's class extends, and are touches "
+                + "rather than calls with no edge");
+        }
+        if (!found.waysIn.isEmpty()) {
+            found.notes.add("edges: " + found.waysIn.size() + " methods are ways in by what "
+                + "their class extends");
+        }
         return found;
     }
 
@@ -610,6 +633,35 @@ public final class Edges {
         String r = rel.apply(dir.get(0));
         int slash = r.lastIndexOf('/');
         return slash < 0 ? "." : r.substring(0, slash);
+    }
+
+    /** One batch's facts as the walk made them, for the two things the edge pass says in the
+     *  walk's own terms: the line a call was stored at, and the routine stored at a place. */
+    private static final class Walked {
+        final Map<String, Facts.CallSite> calls = new HashMap<>();
+        final Map<String, Facts.Routine> routines = new HashMap<>();
+        final Set<String> twice = new java.util.HashSet<>();
+
+        void add(Facts.FileFacts ff) {
+            for (Facts.CallSite c : ff.calls) {
+                calls.put(c.site_id, c);
+            }
+            for (Facts.Routine r : ff.routines) {
+                String k = at(ff.path, r.line_start, r.name);
+                if (routines.put(k, r) != null) {
+                    twice.add(k); // two routines of one name on one line: neither is named
+                }
+            }
+        }
+
+        static String at(String file, long line, String name) {
+            return file + "\u0000" + line + "\u0000" + name;
+        }
+
+        Facts.Routine routine(String file, long line, String name) {
+            String k = at(file, line, name);
+            return twice.contains(k) ? null : routines.get(k);
+        }
     }
 
     /** Phase A for one batch. Null when it was attributed and recorded; otherwise why not,
@@ -690,20 +742,24 @@ public final class Edges {
         });
         List<Site> sites = new ArrayList<>();
         List<CompilationUnitTree> units = new ArrayList<>();
+        // What the walk stored, as it stored it: a touch is on the line its call was
+        // recorded at, and a way in is the routine recorded at that place.
+        Walked walked = new Walked();
         try {
             for (CompilationUnitTree unit : task.parse()) {
                 units.add(unit);
                 String r = byUri.get(unit.getSourceFile().toUri()).rel;
-                Extract.walk(r, texts.get(r), unit, task, rules,
+                Facts.FileFacts ff = Extract.walk(r, texts.get(r), unit, task, rules,
                     (node, siteId, caller, dotted, atBoundary, construction) -> {
                         // Rule 2: a call that touches a boundary is never also an edge.
                         if (!atBoundary) {
                             sites.add(new Site(unit, node, siteId, caller, dotted, construction));
                         }
                     });
+                walked.add(ff);
             }
             task.analyze();
-            Resolver r = new Resolver(task, units, texts, byUri, tree, sp, index);
+            Resolver r = new Resolver(task, units, texts, byUri, tree, sp, index, rules, walked);
             List<Question> mine = new ArrayList<>(sites.size());
             for (Site s : sites) {
                 mine.add(r.ask(s));
@@ -711,6 +767,7 @@ public final class Edges {
             // Only a batch that finished is counted, so a split batch's errors are not
             // said twice.
             questions.addAll(mine);
+            found.waysIn.addAll(r.waysIn);
             errors[0] += batchErrors[0];
             nUnits[0] += units.size();
             batchMissing.forEach((k, v) -> missing.merge(k, v, Integer::sum));
@@ -743,6 +800,13 @@ public final class Edges {
             Facts.SuppliedEdge e = q.e;
             if (q.pending) {
                 decide(q, index, incomplete);
+            }
+            if (q.touch != null && e.file.isEmpty() && e.constructs.isEmpty()
+                && ("outside".equals(e.reason) || "untyped".equals(e.reason))) {
+                // No body in the tree answers it, and its type says what it is: a touch, and
+                // so not an edge and not a call this map could not follow (rule 2).
+                found.touches.add(q.touch);
+                continue;
             }
             if (e.file.isEmpty()) {
                 if ("outside".equals(e.reason)) {
@@ -870,13 +934,18 @@ public final class Edges {
         /** The tree held in memory as javac's source path, or null for one compilation. */
         final SourcePath sp;
         final Index index;
+        final Rules rules;
+        final Walked walked;
+        final List<Facts.SuppliedWayIn> waysIn = new ArrayList<>();
+        /** Every name a class is a subtype of, as {@link #lineage} reads them. */
+        final Map<TypeElement, Set<String>> lineages = new IdentityHashMap<>();
         /** A supertype's methods by name, asked once per type in this batch. */
         final Map<TypeElement, Map<String, List<ExecutableElement>>> declared =
             new IdentityHashMap<>();
 
         Resolver(JavacTask task, List<CompilationUnitTree> units, Map<String, String> texts,
                  Map<java.net.URI, Extract.Source> byUri, Map<Path, String> tree,
-                 SourcePath sp, Index index) {
+                 SourcePath sp, Index index, Rules rules, Walked walked) {
             this.trees = Trees.instance(task);
             this.elements = task.getElements();
             this.types = task.getTypes();
@@ -886,6 +955,8 @@ public final class Edges {
             this.tree = tree;
             this.sp = sp;
             this.index = index;
+            this.rules = rules;
+            this.walked = walked;
             for (CompilationUnitTree unit : units) {
                 new TreePathScanner<Void, Void>() {
                     @Override
@@ -910,9 +981,10 @@ public final class Edges {
             Set<String> up = closure(owner);
             Over self = null;
             String name = e.getSimpleName().toString();
+            wayIn(path, m, e, owner);
             for (TypeElement sup : supertypes(owner)) {
                 for (ExecutableElement x : declared(sup).getOrDefault(name, List.of())) {
-                    if (x == e || !elements.overrides(e, x, owner)) {
+                    if (!sameSlot(e, x, owner)) {
                         continue;
                     }
                     if (self == null) {
@@ -928,6 +1000,314 @@ public final class Edges {
                 }
             }
             index.closure.putIfAbsent(key(owner), up);
+        }
+
+        /**
+         * A way in by inheritance ({@code extends:} with {@code entrypoint}): a method with a
+         * body, named by the rule, in a class that extends one of the rule's types, <b>that
+         * fills the framework's slot and not one of the program's own</b>. traccar's 69 frame
+         * decoders each write a three-argument {@code decode} that overrides traccar's own
+         * abstract method; only {@code BaseFrameDecoder}'s is Netty's, and a rule on the name
+         * and the class alone would have called all seventy ways in (rule 1).
+         */
+        void wayIn(TreePath path, MethodTree m, ExecutableElement e, TypeElement owner) {
+            if (m.getBody() == null || rules.extending.isEmpty()) {
+                return;
+            }
+            String name = e.getSimpleName().toString();
+            for (Rules.Extends rule : rules.extending) {
+                if (rule.entrypoint.isEmpty() || !rule.methods.contains(name)) {
+                    continue;
+                }
+                String type = rule.among(lineage(owner));
+                if (type == null || !fillsAnOutsideSlot(e, owner, new java.util.HashSet<>())) {
+                    continue;
+                }
+                Facts.EntrypointKind kind = null;
+                for (Facts.EntrypointKind k : Facts.EntrypointKind.values()) {
+                    if (k.wire.equals(rule.entrypoint)) {
+                        kind = k;
+                    }
+                }
+                Facts.SuppliedEdge at = new Facts.SuppliedEdge();
+                pointAt(path, e, at);
+                Facts.Routine r = at.file == null ? null : walked.routine(at.file, at.line, at.name);
+                if (kind == null || r == null) {
+                    return; // a kind this build does not have, or no routine stored there
+                }
+                Facts.SuppliedWayIn w = new Facts.SuppliedWayIn();
+                w.id = Ids.entrypointId(at.file, List.of(r.qualname, kind.wire, "extends"));
+                w.kind = kind;
+                String cls = owner.getSimpleName().length() > 0 ? owner.getSimpleName().toString()
+                    : "an anonymous " + type.substring(type.lastIndexOf('.') + 1);
+                w.name = cls + "." + name;
+                w.routine_id = r.id;
+                w.file = at.file;
+                w.module = r.module;
+                w.evidence = name + "() at " + at.file + ":" + at.line + ": "
+                    + (owner.getSimpleName().length() > 0 ? owner.getSimpleName() + " extends "
+                        : "an anonymous class extends ") + type
+                    + (rule.evidence.isEmpty() ? "" : " — " + rule.evidence);
+                waysIn.add(w);
+                return;
+            }
+        }
+
+        /**
+         * Does this method override one <b>declared outside the tree</b>, directly or through
+         * the tree's own classes? With the framework's jars that is javac's own answer. Without
+         * them the framework's method is not there to ask about, and the evidence is the
+         * source's: {@code @Override} on a method that overrides nothing javac can see says
+         * its author overrode something javac cannot.
+         */
+        boolean fillsAnOutsideSlot(ExecutableElement e, TypeElement owner, Set<ExecutableElement> seen) {
+            if (!seen.add(e)) {
+                return false;
+            }
+            boolean any = false;
+            String name = e.getSimpleName().toString();
+            for (TypeElement sup : supertypes(owner)) {
+                if (sup == owner) {
+                    continue; // a method overrides nothing of its own class
+                }
+                for (ExecutableElement x : declared(sup).getOrDefault(name, List.of())) {
+                    if (!sameSlot(e, x, owner)) {
+                        continue;
+                    }
+                    any = true;
+                    TreePath decl = trees.getPath(x);
+                    if (decl == null || ours(decl.getCompilationUnit()) == null) {
+                        return true;
+                    }
+                    if (fillsAnOutsideSlot(x, sup, seen)) {
+                        return true;
+                    }
+                }
+            }
+            if (any) {
+                return false;
+            }
+            for (javax.lang.model.element.AnnotationMirror a : e.getAnnotationMirrors()) {
+                if (a.getAnnotationType().toString().equals("java.lang.Override")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * javac's {@code overrides}, <b>refused where it was a guess</b>. A parameter whose
+         * type javac could not load is an error type, and an error type matches anything:
+         * with Netty missing, {@code decode(ctx, Channel, ByteBuf)} "overrides"
+         * {@code decode(ctx, ByteBuf, List)}, which would make each of traccar's 69 frame
+         * decoders Netty's own slot, and did make {@code BaseFrameDecoder}'s call to its
+         * own abstract {@code decode} one that the method making it "may run". Where either
+         * side of a parameter is untyped, the two must be written with the same last name:
+         * {@code ByteBuf} and {@code io.netty.buffer.ByteBuf} are one type written twice, and
+         * refusing that pair would hide an override, which is the worse mistake (rule 1).
+         */
+        boolean sameSlot(ExecutableElement e, ExecutableElement x, TypeElement owner) {
+            if (x == e || !elements.overrides(e, x, owner)) {
+                return false;
+            }
+            List<? extends javax.lang.model.element.VariableElement> a = e.getParameters();
+            List<? extends javax.lang.model.element.VariableElement> b = x.getParameters();
+            if (a.size() != b.size()) {
+                return false;
+            }
+            for (int i = 0; i < a.size(); i++) {
+                javax.lang.model.type.TypeMirror ta = a.get(i).asType();
+                javax.lang.model.type.TypeMirror tb = b.get(i).asType();
+                boolean blind = ta.getKind() == javax.lang.model.type.TypeKind.ERROR
+                    || tb.getKind() == javax.lang.model.type.TypeKind.ERROR;
+                if (blind && !lastName(ta.toString()).equals(lastName(tb.toString()))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static String lastName(String type) {
+            int lt = type.indexOf('<');
+            String bare = lt < 0 ? type : type.substring(0, lt);
+            return bare.substring(bare.lastIndexOf('.') + 1);
+        }
+
+        /**
+         * Every type this class is a subtype of, <b>by qualified name</b>: javac's where it
+         * could type the supertype, and the file's own words where it could not. A missing
+         * dependency leaves {@code extends JpaRepository<Owner, Integer>} an error type whose
+         * name javac does not know, and the file does: {@code import org.springframework.data
+         * .jpa.repository.JpaRepository;} names exactly one class. An on-demand import
+         * ({@code a.b.*}) names a package and is not read (rule 1).
+         */
+        Set<String> lineage(TypeElement t) {
+            Set<String> got = lineages.get(t);
+            if (got != null) {
+                return got;
+            }
+            Set<String> out = new java.util.HashSet<>();
+            lineages.put(t, out);
+            for (TypeElement s : supertypes(t)) {
+                boolean typed = s.asType().getKind() != javax.lang.model.type.TypeKind.ERROR;
+                if (typed) {
+                    out.add(s.getQualifiedName().toString());
+                }
+                TreePath p;
+                try {
+                    p = typed ? trees.getPath(s) : null;
+                } catch (RuntimeException ex) {
+                    p = null;
+                }
+                if (p == null || !(p.getLeaf() instanceof ClassTree c)) {
+                    continue;
+                }
+                List<Tree> named = new ArrayList<>();
+                if (c.getExtendsClause() != null) {
+                    named.add(c.getExtendsClause());
+                }
+                named.addAll(c.getImplementsClause());
+                for (Tree n : named) {
+                    javax.lang.model.type.TypeMirror m;
+                    try {
+                        m = trees.getTypeMirror(new TreePath(p, n));
+                    } catch (RuntimeException ex) {
+                        m = null;
+                    }
+                    if (m == null || m.getKind() == javax.lang.model.type.TypeKind.ERROR) {
+                        String q = written(p.getCompilationUnit(), n);
+                        if (q != null) {
+                            out.add(q);
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+
+        /** The qualified name a supertype was written as, or null where the file does not
+         *  say: its type arguments dropped, its first word looked up among the file's
+         *  single-type imports, and a dotted name with no import taken as it stands. */
+        static String written(CompilationUnitTree unit, Tree type) {
+            Tree bare = type;
+            while (true) {
+                if (bare instanceof com.sun.source.tree.ParameterizedTypeTree pt) {
+                    bare = pt.getType();
+                } else if (bare instanceof com.sun.source.tree.AnnotatedTypeTree at) {
+                    bare = at.getUnderlyingType();
+                } else {
+                    break;
+                }
+            }
+            String text = bare.toString().replaceAll("\\s+", "");
+            if (text.isEmpty() || !text.matches("[\\w$.]+")) {
+                return null;
+            }
+            int dot = text.indexOf('.');
+            String first = dot < 0 ? text : text.substring(0, dot);
+            for (com.sun.source.tree.ImportTree imp : unit.getImports()) {
+                String q = imp.getQualifiedIdentifier().toString();
+                if (!imp.isStatic() && q.endsWith("." + first)) {
+                    return q + (dot < 0 ? "" : text.substring(dot));
+                }
+            }
+            return dot < 0 ? null : text;
+        }
+
+        /**
+         * What this call is, if nothing in the tree answers it. A receiver whose class extends
+         * a declared type comes first, because it is the narrower statement; then the method's
+         * own declaring type, where javac named one outside the tree.
+         */
+        Facts.SuppliedTouch touchFor(Site s, ExecutableElement target, TypeElement receiver,
+                                     boolean home) {
+            Facts.CallSite call = walked.calls.get(s.siteId());
+            Extract.Source src = byUri.get(s.unit().getSourceFile().toUri());
+            if (call == null || src == null) {
+                return null;
+            }
+            if (receiver == null && target == null
+                && s.node() instanceof MethodInvocationTree mi
+                && mi.getMethodSelect() instanceof MemberSelectTree ms) {
+                // javac could not find the method, and may still have typed what it is called
+                // on: `owners.save(o)`, where `save` is declared in a jar that is not here.
+                try {
+                    javax.lang.model.type.TypeMirror t = trees.getTypeMirror(
+                        TreePath.getPath(s.unit(), ms.getExpression()));
+                    if (t != null && t.getKind() != javax.lang.model.type.TypeKind.ERROR
+                        && types.asElement(t) instanceof TypeElement te) {
+                        receiver = te;
+                    }
+                } catch (RuntimeException ex) {
+                    receiver = null;
+                }
+            }
+            boolean objects = target != null && target.getEnclosingElement() instanceof TypeElement o
+                && o.getQualifiedName().contentEquals("java.lang.Object");
+            if (receiver != null && !objects
+                && receiver.asType().getKind() != javax.lang.model.type.TypeKind.ERROR) {
+                Set<String> up = null;
+                for (Rules.Extends rule : rules.extending) {
+                    if (rule.boundary.isEmpty()) {
+                        continue;
+                    }
+                    if (up == null) {
+                        up = lineage(receiver);
+                    }
+                    String type = rule.among(up);
+                    if (type != null) {
+                        return touch(s, call, src.rel, rule.boundary, rule.direction, rule.salience,
+                            receiver.getSimpleName().toString(),
+                            receiver.getSimpleName() + " extends " + type
+                                + (rule.evidence.isEmpty() ? "" : ": " + rule.evidence));
+                    }
+                }
+            }
+            if (target == null || home) {
+                return null;
+            }
+            String qualified = qualified(target);
+            Rules.Boundary rule = rules.typed(qualified);
+            if (rule == null) {
+                return null;
+            }
+            String to = "";
+            if (rule.targetArg != null && rule.targetArg < call.args.size()) {
+                to = call.args.get(rule.targetArg).expr;
+                if (to.length() >= 2 && to.startsWith("\"") && to.endsWith("\"")
+                    && to.indexOf('"', 1) == to.length() - 1) {
+                    to = to.substring(1, to.length() - 1);
+                }
+            }
+            return touch(s, call, src.rel, rule.kind, rule.direction, rule.salience, to,
+                "typed " + qualified + (rule.note.isEmpty() ? "" : " — " + rule.note));
+        }
+
+        Facts.SuppliedTouch touch(Site s, Facts.CallSite call, String file, String kind,
+                                  String direction, String salience, String target, String why) {
+            Facts.SuppliedTouch t = new Facts.SuppliedTouch();
+            for (Facts.BoundaryKind k : Facts.BoundaryKind.values()) {
+                if (k.wire.equals(kind)) {
+                    t.kind = k;
+                }
+            }
+            for (Facts.Direction d : Facts.Direction.values()) {
+                if (d.wire.equals(direction)) {
+                    t.direction = d;
+                }
+            }
+            if (t.kind == null || t.direction == null) {
+                return null; // a word this build does not have: nothing, never a default
+            }
+            t.site_id = s.siteId();
+            t.file = file;
+            t.routine_id = s.caller();
+            t.target = target;
+            t.line = call.line;
+            // The call's spelling first, always (`detectors.EVIDENCE_NOTE`).
+            t.evidence = s.dotted() + " — " + why;
+            t.salience = salience;
+            return t;
         }
 
         Map<String, List<ExecutableElement>> declared(TypeElement t) {
@@ -1014,6 +1394,7 @@ public final class Edges {
                 // a Kotlin file, generated code, or a dependency that is not here.
                 e.reason = "untyped";
                 e.frontier = s.dotted();
+                q.touch = touchFor(s, null, null, false);
                 return q;
             }
             TypeElement owner = target.getEnclosingElement() instanceof TypeElement t ? t : null;
@@ -1023,6 +1404,7 @@ public final class Edges {
                 // with nothing to say it was not `width(String)` (rule 1).
                 e.reason = "untyped";
                 e.frontier = s.dotted();
+                q.touch = touchFor(s, target, receiverType(s, target, owner), false);
                 return q;
             }
             if (s.construction() && owner != null && owner.getNestingKind().name().equals("ANONYMOUS")) {
@@ -1040,6 +1422,9 @@ public final class Edges {
             q.targetKey = key(target);
             q.frontier = qualified(target);
             q.nonVirtual = nonVirtual(s, target, owner);
+            if (elements.getOrigin(target) == Elements.Origin.EXPLICIT || home == null) {
+                q.touch = touchFor(s, target, receiver, home != null);
+            }
             if (home == null) {
                 q.pending = true;
                 return q;
@@ -1083,18 +1468,33 @@ public final class Edges {
             if (!blind || owner == null) {
                 return false;
             }
-            int rivals = 0;
+            // **Counted over the class and what it extends, by hand.** `Elements.getAllMembers`
+            // returns nothing at all for a class one of whose supertypes javac could not
+            // load, so this said "no rival" of every class that extends a missing library's:
+            // traccar's `BaseFrameDecoder` calls its abstract `decode(ctx, channel, buf)`,
+            // javac chose the `decode(ctx, in, out)` that makes the call, and the map drew a
+            // routine calling itself (2026-11-12). An override is the same slot as what it
+            // overrides and is counted once, by its parameters as written.
+            Set<String> shapes = new java.util.HashSet<>();
             try {
-                for (Element m : elements.getAllMembers(owner)) {
-                    if (m.getKind() == target.getKind()
-                        && m.getSimpleName().contentEquals(target.getSimpleName())) {
-                        rivals++;
+                boolean ctor = target.getKind() == ElementKind.CONSTRUCTOR;
+                for (TypeElement sup : ctor ? List.of(owner) : supertypes(owner)) {
+                    for (Element m : sup.getEnclosedElements()) {
+                        if (m.getKind() == target.getKind() && m instanceof ExecutableElement x
+                            && m.getSimpleName().contentEquals(target.getSimpleName())) {
+                            StringBuilder shape = new StringBuilder();
+                            for (javax.lang.model.element.VariableElement p : x.getParameters()) {
+                                shape.append(lastName(types.erasure(p.asType()).toString()))
+                                    .append(',');
+                            }
+                            shapes.add(shape.toString());
+                        }
                     }
                 }
             } catch (RuntimeException ex) {
                 return true; // its members cannot be listed, so nothing rules a rival out
             }
-            return rivals > 1;
+            return shapes.size() > 1;
         }
 
         /** A member javac declared and the source did not: a default constructor, a

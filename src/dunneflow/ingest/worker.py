@@ -329,6 +329,8 @@ class NdjsonWorker:
                                 ("supplies_bindings", m.supplies_bindings),
                                 ("supplies_uses", m.supplies_uses),
                                 ("supplies_macro_callees", m.supplies_macro_callees),
+                                ("supplies_touches", m.supplies_touches),
+                                ("supplies_ways_in", m.supplies_ways_in),
                                 ("reports_literals", m.reports_literals)):
             said = bool(caps.get(field, False))
             if said != declared:

@@ -76,23 +76,6 @@ still untimed.
 
 ---
 
-**45. Java registers by supertype, and the grammar cannot say so.** Spring Data writes a
-repository at run time from an interface that extends `JpaRepository`, so petclinic's every
-`owners.save(…)` is `outside`/`unimplemented` and petclinic reads **0** boundary touches;
-`HttpServlet.doGet` and Netty's `channelRead` are ways in by inheritance. Whether a receiver
-extends a framework type is a whole-program fact and a file's facts may not depend on one
-(rule 95), so this is the edge pass's to say. *Settled by* an `extends:` key in `java.yaml`
-read by the edge pass, measured on petclinic (DATABASE) and traccar (ways in).
-**Tom's decision, 2026-11-07: build it**, as written.
-
-**46. JAX-RS's client is not NETWORK.** `client.target(url).request().get()` is 18 of traccar's
-network calls and is read as calls on a value named `client`; `target` and `request` are far
-too common to match bare (rule 5). *Settled by* the edge pass naming the far end's type
-(`jakarta.ws.rs.client.WebTarget`) where the jars are present, and a frontier-to-boundary rule
-deciding it, or by a stated decision that it stays a residue.
-**Tom's decision, 2026-11-07: type it in the edge pass** where the jars are present, with a
-rule turning the type into NETWORK; with no jars it stays a stated residue.
-
 **47. A Kotlin file in a Java tree is a missing class to javac.** A call from Java into
 Kotlin is `untyped`, and a call from Kotlin into Java has no edge at all (the Kotlin reader
 supplies none). anki-android is all Kotlin and no corpus here mixes them. *Settled by* a
@@ -122,8 +105,10 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
-| **A Java class built by reflection is unreachable** | traccar finds its protocols by scanning a package and has Guice build them, so no call reaches their constructors and 1,968 of its 2,946 unreachable routines are under `protocol/`. A static reading cannot follow a class name held in a string or a scan; UNREACHABLE says *possible* and its blind spot names library code, and this is the same honest limit. 2026-11-02. |
+| **A Java class built by reflection is unreachable** | traccar finds its protocols by scanning a package and has Guice build them, so no call reaches their constructors and 1,968 of its 2,946 unreachable routines were under `protocol/` on 2026-11-02. Since 2026-11-12 Netty's `channelRead` is a way in by inheritance and reach crosses its dispatch into every `decode`, so 1,172 of 4,296 are unreachable; what is left under `protocol/` is the constructors and what only they call. A static reading cannot follow a class name held in a string or a scan; UNREACHABLE says *possible* and its blind spot names library code, and this is the same honest limit. 2026-11-02. |
 | **javac's pick among overloads under an unknown argument is refused** | Where an argument's type is a missing dependency's, javac still chooses one overload and says nothing; `Edges.java` refuses that choice when a rival overload exists, and the call is `untyped`. On traccar without Netty that is about 2,000 calls (`BufferUtil.indexOf(…, buf)`). Its jars on the machine (`Deps.java`) is what settles each one. DEAD_CODE spares a routine an untyped call may name. 2026-11-02. |
+| **JAX-RS's client is NETWORK only with its jar on this machine** | `client.target(url).request().get()` is typed by the edge pass against `jakarta.ws.rs.client.SyncInvoker.get` (`java.yaml`, `Rules.typed`), which needs javac to load `jakarta.ws.rs-api`. traccar's jars are not on this machine, so its 18 such calls are still `untyped`; the behaviour is proved on a compiled jar in a fake repository (`tests/test_java_reader.py`). Tom's decision of 2026-11-07, as built on 2026-11-12 (BACKLOG 46). |
+| **A supertype reached through `import a.b.*` is not read** | With a framework's jars missing, javac cannot type `extends JpaRepository<…>` and the edge pass reads the name the file wrote, through a single-type import or fully qualified. An on-demand import names a package, and choosing which package's `CrudRepository` was meant would be a guess, so such a class is said nothing about: no touch, no way in. A method with no `@Override` is not claimed as a framework's either, for the same reason. The jars on the machine settle both. 2026-11-12 (BACKLOG 45). |
 | **Java's edge pass reads no annotation processor** | `-proc:none`, so a Lombok getter, a Dagger component or a MapStruct mapper is not there to resolve to; a call to one is `untyped`. Running a processor is running somebody's build. 2026-11-02. |
 | **The JDK on the machine bounds the Java syntax read** | javac parses at its own `--release`, so a file using a feature newer than the installed JDK is a parse error, and two machines on two JDKs can read one tree differently. The reader's cache key carries the JDK's version (rule 81); the map's stamp does not, which is Go's stdlib residue in Java's terms. 2026-11-02. |
 | **A Java overload's id is an ordinal, and order-dependent** | `pkg.C.helper` and `pkg.C.helper#2`, as Kotlin's and C++'s overloads are, so inserting an overload above another renumbers it. Putting the parameter types in the qualname would change how every name reads, on every surface, to fix a churn nobody has yet seen. 2026-11-02. |

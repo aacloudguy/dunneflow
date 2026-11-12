@@ -378,6 +378,31 @@ Guice build them, which no static reading follows (`BACKLOG.md`'s residues).
 **Society still reads 7 of 7** against `output/GOLDEN-v2.txt` at 21810a9, and the ordering
 probe passes on traccar's map and its `--api`.
 
+### By type and by supertype (2026-11-12, BACKLOG 45 and 46)
+
+The same two trees, the same commands, JDK 21.0.5, on the Mac. Only the rows that moved:
+
+| | petclinic | traccar |
+|---|---:|---:|
+| boundary touches | **15**, all DATABASE (was 0) | 277 (unchanged) |
+| outside / could not resolve | 54 / 103 (was 63 / 109) | 7,970 / 16,222 (was 7,970 / 16,220) |
+| ways in | 21 (unchanged) | **165** (was 106): 58 Netty and servlet-filter methods, 1 servlet |
+| Java edges supplied | 76 (unchanged) | 28,080 (was 28,077) |
+| several declarations — no edge | 0 | 279 (was 284) |
+| dispatched calls / the bodies they may reach | — | 744 / 2,101 (was 749 / 2,180) |
+| findings | unchanged | 0 broken · 22 suspect · 6 informational (was 23 suspect) |
+| UNREACHABLE | — | **1,172 of 4,296** (was 2,946) |
+
+**Each of petclinic's 15 was read against the source**: they are the 15 calls its
+controllers and its formatter make on `OwnerRepository`, `PetTypeRepository` and
+`VetRepository`, and the nine that left *outside* and six that left *could not resolve* are
+the same 15. **Each of traccar's 59 was read too**, and reading them is what found the two
+defects recorded in `LANGUAGES.md`: `BaseFrameDecoder.decode` was missing and its 69
+subclasses would have been claimed. The SUSPECT that left is the `LOST_EDGE` on
+`BaseFrameDecoder`'s call to its abstract `decode`, which had been "dispatched to one of 71"
+on javac's blind choice of the wrong overload and is `untyped` now. traccar's 18 JAX-RS calls
+did not move: its jars are not on this machine (`BACKLOG.md`'s residues).
+
 ## The screenshot map — what `docs/` and `docs/tutorial/` were photographed against
 
 **Every figure in the user guide and the tutorial is one this map reproduces**, so a retake

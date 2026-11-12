@@ -765,3 +765,236 @@ def test_a_routine_an_untyped_call_may_reach_is_not_called_dead(judged):
     dead = judged["DEAD_CODE"]
     assert "p.Util.never" in dead.detail and "p.Util.width" not in dead.detail
     assert "2 routines are left out because a call the reader could not type" in dead.blind_spot
+
+
+# ------------------------------- what a type says and no spelling does (45, 46) --- #
+
+_TYPED = {
+    # A Spring Data repository, with Spring nowhere on this machine: javac cannot type
+    # `JpaRepository`, and the file's own import names it.
+    "Owners.java": "package p;\n\nimport org.springframework.data.jpa.repository.JpaRepository;\n\n"
+                   "interface Owners extends JpaRepository<String, Integer> {\n"
+                   "    String findByName(String n);\n\n"
+                   "    default int twice() {\n        return 2;\n    }\n}\n",
+    # Two up: nothing in this file says Spring.
+    "Mid.java": "package p;\n\ninterface Mid extends Owners {\n}\n",
+    # `import a.b.*` names a package, never a class, so nothing is said of this one.
+    "Wild.java": "package p;\n\nimport org.springframework.data.repository.*;\n\n"
+                 "interface Wild extends CrudRepository<String, Integer> {\n}\n",
+    "Use.java": "package p;\n\nclass Use {\n"
+                "    void f(Owners owners, Mid mid, Wild wild, String o) {\n"
+                "        owners.save(o);\n"
+                "        owners.findByName(o);\n"
+                "        owners.twice();\n"
+                "        mid.findByName(o);\n"
+                "        wild.save(o);\n"
+                "    }\n}\n",
+    "Hello.java": "package p;\n\nimport jakarta.servlet.http.HttpServlet;\n\n"
+                  "class Hello extends HttpServlet {\n"
+                  "    @Override\n    protected void doGet(Req a, Resp b) {\n    }\n\n"
+                  "    protected void doPost(Req a, Resp b) {\n    }\n}\n",
+    "Sub.java": "package p;\n\nclass Sub extends Hello {\n"
+                "    @Override\n    protected void doGet(Req a, Resp b) {\n    }\n}\n",
+    # traccar's `BaseFrameDecoder`, whole: Netty's slot calls the program's own abstract
+    # one of the same name and the same number of parameters.
+    "Frames.java": "package p;\n\nimport io.netty.handler.codec.ByteToMessageDecoder;\n"
+                   "import java.util.List;\n\n"
+                   "abstract class Frames extends ByteToMessageDecoder {\n"
+                   "    @Override\n"
+                   "    protected void decode(Ctx ctx, Buf in, List<Object> out) {\n"
+                   "        decode(ctx, null, in);\n    }\n\n"
+                   "    protected abstract Object decode(Ctx ctx, Chan channel, Buf buf);\n}\n",
+    "One.java": "package p;\n\nclass One extends Frames {\n"
+                "    @Override\n"
+                "    protected Object decode(Ctx ctx, Chan channel, Buf buf) {\n"
+                "        return null;\n    }\n}\n",
+}
+
+
+@pytest.fixture(scope="module")
+def typed(tmp_path_factory):
+    """The tree above through the host, with no dependency of it on this machine."""
+    if _WHY:
+        pytest.skip(_WHY)
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path_factory.mktemp("typed")
+    (root / "p").mkdir()
+    for name, text in _TYPED.items():
+        (root / "p" / name).write_text(text, encoding="utf-8")
+    store = Store(root.parent / f"{root.name}.db")
+    stats = analyze_tree(root, store)
+    resolve_calls(store)
+    yield store, stats, root
+    store.close()
+
+
+def _touches(store) -> dict[str, tuple[str, str, int]]:
+    return {str(r["evidence"]).split(" — ")[0]: (r["kind"], r["target"], r["expanded"])
+            for r in store.query("SELECT kind, target, evidence, expanded FROM boundaries")}
+
+
+def test_a_call_on_a_class_that_extends_a_declared_type_is_that_touch(typed):
+    """BACKLOG 45. petclinic read **0** touches: every `owners.save(…)` stopped at an
+    interface nothing in the tree implements, because Spring Data writes the class at run
+    time. Inherited (`save`), declared here with no body (`findByName`), and two interfaces
+    up (`mid`) are all the database."""
+    store, _, _ = typed
+    got = _touches(store)
+    assert got == {
+        "owners.save": ("DATABASE", "Owners", 2),
+        "owners.findByName": ("DATABASE", "Owners", 2),
+        "mid.findByName": ("DATABASE", "Mid", 2),
+    }
+    said = store.query("SELECT evidence FROM boundaries WHERE evidence LIKE 'mid.%'")[0]
+    assert "Mid extends org.springframework.data.jpa.repository.JpaRepository" in said["evidence"]
+
+
+def test_a_body_in_the_tree_is_an_edge_and_an_import_of_a_package_names_nothing(typed):
+    """Rule 1 both ways. `owners.twice()` has a body in the tree, so it is a call to that
+    body and no touch. `Wild` extends a `CrudRepository` that `import ….repository.*` does
+    not name: which package's it is would be a choice, so `wild.save` stays untyped."""
+    store, _, _ = typed
+    rows = {r["callee_expr"]: r for r in store.query(
+        "SELECT c.callee_expr, c.at_boundary, c.reason, r.qualname FROM calls c"
+        " LEFT JOIN routines r ON r.id = c.callee_id WHERE c.file LIKE '%Use.java'")}
+    assert (rows["owners.twice"]["qualname"], rows["owners.twice"]["at_boundary"]) == (
+        "p.Owners.twice", 0)
+    assert (rows["wild.save"]["at_boundary"], rows["wild.save"]["reason"]) == (0, "untyped")
+
+
+def test_a_typed_touch_is_never_also_a_call_with_no_edge(typed):
+    """Rule 2, and rule 40: the call is `at_boundary`, the reader sent no edge for it, and
+    so it is counted once, as a touch, and never among the calls nobody could follow."""
+    store, stats, _ = typed
+    at = {r["callee_expr"] for r in store.query(
+        "SELECT callee_expr FROM calls WHERE at_boundary = 1")}
+    assert at == {"owners.save", "owners.findByName", "mid.findByName"}
+    assert store.query(
+        "SELECT COUNT(*) AS n FROM supplied_edges WHERE site_id IN"
+        " (SELECT site_id FROM supplied_touches)")[0]["n"] == 0
+    assert any("3 calls are boundary touches" in n for n in stats.reader_notes)
+
+
+def test_a_method_that_fills_a_framework_s_slot_is_a_way_in(typed):
+    """BACKLOG 45's other half. `doGet` with `@Override` in a class that extends
+    `HttpServlet` is the container's to call, and so is the one in a subclass of that class.
+    `doPost` carries no `@Override` and, with the servlet jar missing, nothing says it
+    overrides anything: not claimed (rule 1)."""
+    store, _, _ = typed
+    ways = {r["name"]: (r["kind"], r["evidence"]) for r in store.query(
+        "SELECT name, kind, evidence FROM entrypoints WHERE id IN"
+        " (SELECT entrypoint_id FROM supplied_ways_in)")}
+    assert set(ways) == {"Hello.doGet", "Sub.doGet", "Frames.decode"}
+    assert ways["Hello.doGet"][0] == "HTTP_ROUTE"
+    assert "Sub extends jakarta.servlet.http.HttpServlet" in ways["Sub.doGet"][1]
+    bound = store.query(
+        "SELECT COUNT(*) AS n FROM entrypoints e JOIN routines r ON r.id = e.routine_id"
+        " WHERE e.id IN (SELECT entrypoint_id FROM supplied_ways_in)")[0]["n"]
+    assert bound == 3, "each is bound to the routine the walk stored"
+
+
+def test_only_the_class_that_fills_netty_s_slot_is_the_way_in(typed):
+    """traccar, 2026-11-12. Its 69 frame decoders each write `decode(ctx, channel, buf)`,
+    which overrides traccar's own abstract method. With Netty missing every parameter is an
+    error type, and javac's `overrides` then says that method overrides Netty's
+    `decode(ctx, in, out)` too. `One.decode` is not a way in."""
+    store, _, _ = typed
+    names = {r["name"] for r in store.query("SELECT name FROM entrypoints")}
+    assert "Frames.decode" in names and "One.decode" not in names
+
+
+def test_an_overload_javac_chose_blind_is_not_drawn_where_a_supertype_is_missing(typed):
+    """The same tree found this. `decode(ctx, null, in)` is a call to the abstract
+    three-argument `decode`; javac, unable to type `ctx` or `in`, chose the method making
+    the call, and `Elements.getAllMembers` lists **no** members of a class whose supertype
+    is missing, so the rival-overload check counted none and the map drew a routine calling
+    itself. Untyped, said, and never an edge."""
+    store, _, _ = typed
+    row = store.query(
+        "SELECT callee_id, reason FROM calls WHERE file LIKE '%Frames.java'"
+        " AND callee_expr = 'decode'")[0]
+    assert (row["callee_id"], row["reason"]) == (None, "untyped")
+
+
+def test_the_edge_pass_s_touches_are_replaced_whole_and_taken_back(typed):
+    """Run again with nothing changed and there are still three; a reader that sends none
+    leaves no touch and no call marked, so nothing outlives the reader saying it."""
+    from dunneflow.walk import analyze_tree
+
+    store, _, root = typed
+    analyze_tree(root, store)
+    assert len(_touches(store)) == 3
+    assert store.query("SELECT COUNT(*) AS n FROM supplied_touches")[0]["n"] == 3
+    before = store.query("SELECT COUNT(*) AS n FROM entrypoints")[0]["n"]
+    with store.batch():
+        store.replace_supplied_touches("java", [])
+        store.replace_supplied_ways_in("java", [])
+    assert _touches(store) == {}
+    assert store.query("SELECT COUNT(*) AS n FROM calls WHERE at_boundary = 1")[0]["n"] == 0
+    assert store.query("SELECT COUNT(*) AS n FROM entrypoints")[0]["n"] == before - 3
+
+
+def _jar_of(tmp: Path, name: str, sources: dict[str, str]) -> bytes:
+    """A real jar of these sources, compiled by this JDK."""
+    import zipfile
+    src, out = tmp / "jarsrc" / name, tmp / "jarout" / name
+    for rel, text in sources.items():
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        (src / rel).write_text(text, encoding="utf-8")
+    argv = ["javac", "-d", str(out), *[str(src / rel) for rel in sorted(sources)]]
+    subprocess.run(argv, check=True, capture_output=True)  # noqa: S603
+    jar = tmp / f"{name}.jar"
+    with zipfile.ZipFile(jar, "w") as z:
+        for f in sorted(out.rglob("*.class")):
+            z.write(f, f.relative_to(out).as_posix())
+    return jar.read_bytes()
+
+
+def test_a_call_javac_types_to_a_declared_method_is_that_touch(tmp_path, monkeypatch):
+    """BACKLOG 46, as Tom decided it on 2026-11-07: typed in the edge pass where the jar is
+    present. `client.target(url).request().get()` is NETWORK because javac says `get` is
+    `jakarta.ws.rs.client.SyncInvoker`'s; `o.get()` on the program's own class is a call."""
+    if _WHY:
+        pytest.skip(_WHY)
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    pkg = "jakarta/ws/rs/client"
+    head = "package jakarta.ws.rs.client;\npublic interface "
+    jar = _jar_of(tmp_path, "rs", {
+        f"{pkg}/SyncInvoker.java": head + "SyncInvoker { Object get(); }\n",
+        f"{pkg}/Invocation.java":
+            head + "Invocation { interface Builder extends SyncInvoker {} }\n",
+        f"{pkg}/WebTarget.java": head + "WebTarget { Invocation.Builder request(); }\n",
+        f"{pkg}/Client.java": head + "Client { WebTarget target(String uri); }\n",
+    })
+    repo = tmp_path / "m2"
+    _m2(repo, "jakarta.ws.rs", "jakarta.ws.rs-api", "3.1.0",
+        _pom("jakarta.ws.rs", "jakarta.ws.rs-api", "3.1.0"), jar)
+    root = tmp_path / "tree"
+    (root / "src" / "main" / "java" / "app").mkdir(parents=True)
+    (root / "pom.xml").write_text(_pom("app", "app", "1", "<dependencies>"
+        + _dep("jakarta.ws.rs", "jakarta.ws.rs-api", "3.1.0") + "</dependencies>"),
+        encoding="utf-8")
+    (root / "src" / "main" / "java" / "app" / "App.java").write_text(
+        "package app;\n\nimport jakarta.ws.rs.client.Client;\n\nclass App {\n"
+        "    Object fetch(Client client, String url) {\n"
+        "        return client.target(url).request().get();\n    }\n\n"
+        "    Object own(Own o) {\n        return o.get();\n    }\n}\n\n"
+        "class Own {\n    Object get() {\n        return null;\n    }\n}\n", encoding="utf-8")
+    monkeypatch.setenv("MAVEN_OPTS", f"-Dmaven.repo.local={repo}")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    touches = store.query("SELECT kind, direction, evidence, expanded FROM boundaries")
+    own = store.query(
+        "SELECT r.qualname FROM calls c JOIN routines r ON r.id = c.callee_id"
+        " WHERE c.callee_expr = 'o.get'")
+    store.close()
+    assert [(t["kind"], t["direction"], t["expanded"]) for t in touches] == [("NETWORK", "OUT", 2)]
+    assert touches[0]["evidence"].endswith("typed jakarta.ws.rs.client.SyncInvoker.get")
+    assert [r["qualname"] for r in own] == ["app.Own.get"]

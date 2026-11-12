@@ -1,7 +1,7 @@
 {
   "lang": "java",
   "display": "Java",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "protocol": 1,
   "schema_version": 20,
   "rule_keys": [
@@ -35,6 +35,8 @@
     "this"
   ],
   "supplies_edges": true,
+  "supplies_touches": true,
+  "supplies_ways_in": true,
   "reports_literals": true,
   "discovery": {
     "suffixes": [

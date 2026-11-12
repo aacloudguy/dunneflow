@@ -48,7 +48,9 @@ from .schema import (
     SuppliedBinding,
     SuppliedEdge,
     SuppliedMacroCallee,
+    SuppliedTouch,
     SuppliedUse,
+    SuppliedWayIn,
     TargetKind,
 )
 
@@ -218,6 +220,23 @@ CREATE TABLE IF NOT EXISTS supplied_bindings (
     answers       TEXT NOT NULL DEFAULT '[]'
 );
 
+-- `schema.SuppliedTouch`: the call sites a reader's edge pass typed as boundary touches.
+-- Whole per language. The touches themselves are in `boundaries` (`expanded = 2`) so that
+-- nothing counting touches has to know where one came from; this table is what lets
+-- `replace_supplied_touches` take back its own, and put `calls.at_boundary` back to what the
+-- file's own facts said.
+CREATE TABLE IF NOT EXISTS supplied_touches (
+    lang    TEXT NOT NULL,
+    site_id TEXT NOT NULL
+);
+
+-- `schema.SuppliedWayIn`: the ways in a reader's edge pass found by inheritance. Whole per
+-- language. The ways in themselves are in `entrypoints`, and these are their ids.
+CREATE TABLE IF NOT EXISTS supplied_ways_in (
+    lang          TEXT NOT NULL,
+    entrypoint_id TEXT NOT NULL
+);
+
 -- The routines a way in with no body of its own may start: any one of them, which is why this
 -- is not `entrypoints.routine_id` and that stays NULL. Written whole by
 -- `resolve/supplied.bind_ways_in`, from `supplied_bindings.answers`.
@@ -294,6 +313,9 @@ CREATE TABLE IF NOT EXISTS boundaries (
     salience   TEXT NOT NULL DEFAULT 'normal',
     through_macro TEXT NOT NULL DEFAULT '',
     -- From the edge pass rather than from this file's own facts, so replaced with it.
+    -- **Whose it is, and not a yes or no** (rule 94): 0 is the file's own, 1 came through a
+    -- macro's expansion (`replace_macro_callees`), 2 is a call the checker typed
+    -- (`replace_supplied_touches`). Each writer takes back its own number and no other.
     expanded   INTEGER NOT NULL DEFAULT 0
 );
 
@@ -1364,6 +1386,76 @@ class Store:
             [(m.file, m.routine_id, b.kind.value, b.direction.value, b.target, b.line,
               b.evidence, b.salience, m.def_id) for m in listed for b in m.hits],
         )
+
+    def replace_supplied_touches(self, lang: str, touches: Iterable[SuppliedTouch]) -> int:
+        """The calls this language's checker typed as boundary touches. Whole, as above.
+
+        Three things move together or the map says two things about one call (rule 40): the
+        touch is a row in `boundaries`, the call is `at_boundary` so that nothing reads it as
+        a call the tool could not resolve (rule 2), and the site is remembered so the next
+        run can undo both. A reader that sends none still clears what it sent last time.
+
+        A touch whose site this map does not hold is dropped and counted by the difference:
+        a call in a file the walk left out has no row to mark, and a boundary with no call
+        behind it is a touch nobody can open.
+        """
+        c = self.conn
+        c.execute(
+            "UPDATE calls SET at_boundary = 0 WHERE site_id IN"
+            " (SELECT site_id FROM supplied_touches WHERE lang = ?)", (lang,))
+        c.execute(
+            "DELETE FROM boundaries WHERE expanded = 2"
+            " AND file IN (SELECT path FROM files WHERE lang = ?)", (lang,))
+        c.execute("DELETE FROM supplied_touches WHERE lang = ?", (lang,))
+        held = {str(r["site_id"]) for r in c.execute(
+            "SELECT c.site_id AS site_id FROM calls c JOIN files f ON f.path = c.file"
+            " WHERE f.lang = ?", (lang,))}
+        seen: set[str] = set()
+        kept: list[SuppliedTouch] = []
+        for t in touches:
+            if t.site_id in held and t.site_id not in seen:
+                seen.add(t.site_id)
+                kept.append(t)
+        c.executemany(
+            "INSERT INTO supplied_touches(lang, site_id) VALUES(?,?)",
+            [(lang, t.site_id) for t in kept])
+        c.executemany(
+            "UPDATE calls SET at_boundary = 1 WHERE site_id = ?",
+            [(t.site_id,) for t in kept])
+        c.executemany(
+            "INSERT INTO boundaries(file,routine_id,kind,direction,target,line,evidence,salience,"
+            "through_macro,expanded) VALUES(?,?,?,?,?,?,?,?,'',2)",
+            [(t.file, t.routine_id, t.kind.value, t.direction.value, t.target, t.line,
+              t.evidence, t.salience) for t in kept])
+        return len(kept)
+
+    def replace_supplied_ways_in(self, lang: str, ways: Iterable[SuppliedWayIn]) -> int:
+        """The ways in this language's checker found by inheritance. Whole, as above.
+
+        Written into `entrypoints` beside the ones a file declares, so every surface that
+        lists ways in lists these, and remembered by id so they can be taken back. One is
+        kept only where the map holds its routine: a way in bound to nothing is what
+        `ENTRYPOINT_NO_TARGET` reports, and this one would be the tool's own doing.
+        """
+        c = self.conn
+        c.execute(
+            "DELETE FROM entrypoints WHERE id IN"
+            " (SELECT entrypoint_id FROM supplied_ways_in WHERE lang = ?)", (lang,))
+        c.execute("DELETE FROM supplied_ways_in WHERE lang = ?", (lang,))
+        held = {str(r["id"]) for r in c.execute(
+            "SELECT id FROM routines WHERE lang = ?", (lang,))}
+        kept = {w.id: w for w in ways if w.routine_id in held}
+        c.executemany(
+            "INSERT INTO supplied_ways_in(lang, entrypoint_id) VALUES(?,?)",
+            [(lang, i) for i in sorted(kept)])
+        c.executemany(
+            "INSERT OR REPLACE INTO entrypoints"
+            "(id,kind,name,routine_id,module,file,evidence,grp,parent_id,target_expr,"
+            "declared,target_kind)"
+            " VALUES(?,?,?,?,?,?,?,'',NULL,'',0,?)",
+            [(w.id, w.kind.value, w.name, w.routine_id, w.module, w.file, w.evidence,
+              TargetKind.NONE.value) for _, w in sorted(kept.items())])
+        return len(kept)
 
     def replace_supplied_bindings(self, lang: str,
                                   bindings: Iterable[SuppliedBinding]) -> int:

@@ -35,7 +35,9 @@ from ..schema import (
     SuppliedBinding,
     SuppliedEdge,
     SuppliedMacroCallee,
+    SuppliedTouch,
     SuppliedUse,
+    SuppliedWayIn,
     hash_source,
     stored_path,
 )
@@ -360,6 +362,8 @@ class OutOfProcessPlugin:
         self.edge_bindings: list[SuppliedBinding] = []
         self.edge_uses: list[SuppliedUse] = []
         self.edge_macros: list[SuppliedMacroCallee] = []
+        self.edge_touches: list[SuppliedTouch] = []
+        self.edge_ways_in: list[SuppliedWayIn] = []
         # Fields an edge carried that this build does not read. Survivable by design — a
         # plugin built against a later schema knows about fields this one does not — but
         # never silent: a file can carry its dropped keys in `FileFacts.errors` and an
@@ -431,6 +435,8 @@ class OutOfProcessPlugin:
         self.edge_bindings = []
         self.edge_uses = []
         self.edge_macros = []
+        self.edge_touches = []
+        self.edge_ways_in = []
         for frame in worker.stream({"t": "edges"}, "edges_done"):
             if frame["t"] == "edges_done":
                 said = frame.get("supplied")
@@ -467,6 +473,14 @@ class OutOfProcessPlugin:
                         f"the {lang} plugin says it sent {macros:,} macro callees and sent "
                         f"{len(self.edge_macros):,}."
                     )
+                for word, sent in (("touches", self.edge_touches),
+                                   ("ways_in", self.edge_ways_in)):
+                    told = frame.get(word)
+                    if isinstance(told, int) and told != len(sent):
+                        raise ProtocolError(
+                            f"the {lang} plugin says it sent {told:,} {word} and sent "
+                            f"{len(sent):,}."
+                        )
                 self.edges_outside = int(frame.get("outside") or 0)
                 self.edges_unknown = int(frame.get("unknown") or 0)
                 self.edges_read_beyond = [str(x) for x in frame.get("read_beyond") or []]
@@ -504,12 +518,31 @@ class OutOfProcessPlugin:
                         f"Refused rather than dropped, as an edge is."
                     ) from exc
                 continue
+            if frame["t"] == "touch" and self.manifest.supplies_touches:
+                try:
+                    self.edge_touches.append(decode(SuppliedTouch, frame.get("touch"), notes))
+                except CodecError as exc:
+                    raise ProtocolError(
+                        f"the {lang} plugin sent a touch this build cannot read: {exc}. "
+                        f"Refused rather than dropped, as an edge is."
+                    ) from exc
+                continue
+            if frame["t"] == "way_in" and self.manifest.supplies_ways_in:
+                try:
+                    self.edge_ways_in.append(decode(SuppliedWayIn, frame.get("way_in"), notes))
+                except CodecError as exc:
+                    raise ProtocolError(
+                        f"the {lang} plugin sent a way in this build cannot read: {exc}. "
+                        f"Refused rather than dropped, as an edge is."
+                    ) from exc
+                continue
             if frame["t"] != "edge":
                 raise ProtocolError(
                     f"the {lang} plugin sent {frame['t']!r} during an `edges` stream; the "
                     f"frames of one are `edge`, `edges_done` and -- from a reader that "
-                    f"declares `supplies_bindings`, `supplies_uses` or "
-                    f"`supplies_macro_callees` -- `binding`, `use` and `macro_callee`."
+                    f"declares `supplies_bindings`, `supplies_uses`, "
+                    f"`supplies_macro_callees`, `supplies_touches` or `supplies_ways_in` -- "
+                    f"`binding`, `use`, `macro_callee`, `touch` and `way_in`."
                 )
             try:
                 edge = decode(SuppliedEdge, frame.get("edge"), notes)

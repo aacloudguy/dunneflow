@@ -1108,6 +1108,13 @@ def analyze_tree(
                     lang, plugin.edge_uses if plugin.manifest.supplies_uses else [])
                 store.replace_macro_callees(
                     lang, plugin.edge_macros if plugin.manifest.supplies_macro_callees else [])
+                # After the edges, whose rows these replace for their sites (rule 2), and
+                # cleared for a reader that sends none. How many there were is the reader's
+                # to say, in its notes, which are relayed below.
+                store.replace_supplied_touches(
+                    lang, plugin.edge_touches if plugin.manifest.supplies_touches else [])
+                store.replace_supplied_ways_in(
+                    lang, plugin.edge_ways_in if plugin.manifest.supplies_ways_in else [])
                 if plugin.edges_outside:
                     stats.edges_outside[lang] = plugin.edges_outside
                 if plugin.edges_unknown:

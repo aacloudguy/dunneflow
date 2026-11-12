@@ -165,7 +165,9 @@ def _literal(value: Any, jtype: str) -> str:
 def generate() -> str:
     records: list[type] = []
     enums: list[type] = []
-    for root in ts.ROOTS:
+    # The Java reader also sends `SuppliedTouch` and `SuppliedWayIn` (`supplies_touches`,
+    # `supplies_ways_in`): what its edge pass decides by a type one file cannot see.
+    for root in (*ts.ROOTS, schema.SuppliedTouch, schema.SuppliedWayIn):
         found, found_enums = ts._reachable(root)  # noqa: SLF001
         records += [c for c in found if c not in records]
         enums += [e for e in found_enums if e not in enums]

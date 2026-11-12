@@ -457,6 +457,37 @@ The batches cost no internals. `JavacTaskImpl.analyze(classes)` would attribute 
 named, but it is `com.sun.tools.javac`, which this reader does not use. Blanking the bodies
 is how the public `JavacTask` is made to do the same.
 
+**What a type says and no spelling does** (2026-11-12, BACKLOG 45 and 46). Two judgements
+a file cannot make of itself, so the edge pass makes them and sends them beside its edges:
+- **`extends:` in `java.yaml`.** A call on a receiver whose class extends a declared type,
+  where the tree holds no body to run, is that touch: petclinic's `owners.save(…)` is
+  DATABASE because `OwnerRepository` extends Spring Data's `JpaRepository`, and it read
+  **0** touches until this. A method that fills a framework's slot, in a class that
+  extends the framework's type, is a way in: traccar's `ExtendedObjectDecoder.channelRead`,
+  and with it every protocol decoder its dispatch reaches.
+- **A boundary's `exact` entry that is a declaring type and a method**
+  (`jakarta.ws.rs.client.SyncInvoker.get`) is matched against the method javac resolved,
+  and only `exact` entries are, as Go's typed methods are. It needs the jar.
+- **A `touch` is sent instead of an edge, never beside one** (rule 2). The host marks the
+  call `at_boundary`, writes the row into `boundaries` with `expanded = 2`, and remembers
+  the site so the next run can take both back (`Store.replace_supplied_touches`). A way in
+  goes into `entrypoints` and is remembered by id.
+
+**A missing dependency makes javac's own answers guesses in three more places, and each
+was found by reading the output of this change against traccar's source:**
+- **An error type has no qualified name.** `extends JpaRepository<Owner, Integer>` with
+  Spring absent is an error type called `JpaRepository`. The file's single-type import says
+  which, and is read; `import a.b.*` names a package and is not.
+- **`Elements.overrides` says yes to anything where a parameter is an error type.** With
+  Netty absent, `decode(ctx, Channel, ByteBuf)` "overrides" `decode(ctx, ByteBuf, List)`.
+  `Edges.sameSlot` refuses the pair unless the untyped parameters are written with the
+  same name. It is used for the overrider index too, which had been counting
+  `BaseFrameDecoder`'s own method among the bodies its call may run.
+- **`Elements.getAllMembers` returns nothing for a class with a missing supertype**, so
+  the rival-overload check counted no rivals in exactly the classes that have untyped
+  arguments, and javac's blind pick was drawn: a routine calling itself. Rivals are counted
+  over the class and its supertypes by hand now.
+
 **Ask the next reader the two Kotlin questions and two more.** Java has expression-bodied
 lambdas and a stream house style, so `.forEach(x -> …)` is a COMPREHENSION span where the
 function is written in place. The third question is Java's: **what does your checker do when

@@ -39,7 +39,7 @@ public final class Main {
     static final long PROTOCOL = 1;
     static final String LANG = "java";
     /** {@code plugin.json}'s. The handshake refuses the language if they differ. */
-    static final String VERSION = "0.1.0";
+    static final String VERSION = "0.2.0";
 
     private final OutputStream out;
     private Path root = Path.of(".").toAbsolutePath();
@@ -69,6 +69,8 @@ public final class Main {
     private Json.Frame hello() {
         Map<String, Object> caps = new LinkedHashMap<>();
         caps.put("supplies_edges", true);
+        caps.put("supplies_touches", true);
+        caps.put("supplies_ways_in", true);
         caps.put("reports_literals", true);
         return new Json.Frame("ready").put("lang", LANG).put("version", VERSION)
             .put("protocol", PROTOCOL).put("schema_version", Facts.SCHEMA_VERSION)
@@ -140,10 +142,18 @@ public final class Main {
             }
             send(new Json.Frame("edge").put("id", id).put("edge", e).finish());
         }
+        for (Facts.SuppliedTouch t : found.touches) {
+            send(new Json.Frame("touch").put("id", id).put("touch", t).finish());
+        }
+        for (Facts.SuppliedWayIn w : found.waysIn) {
+            send(new Json.Frame("way_in").put("id", id).put("way_in", w).finish());
+        }
         for (String n : found.notes) {
             note(n);
         }
         send(new Json.Frame("edges_done").put("id", id).put("supplied", supplied)
+            .put("touches", (long) found.touches.size())
+            .put("ways_in", (long) found.waysIn.size())
             .put("unresolved", found.outside + found.unknown)
             .put("outside", found.outside).put("unknown", found.unknown)
             .put("read_beyond", found.readBeyond).put("not_present", found.notPresent)

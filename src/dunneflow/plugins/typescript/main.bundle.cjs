@@ -25,9 +25,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// ../../../../../../../../../../../Volumes/BackupDrive/Documents2025/Developer/DunneFlow-v2/src/dunneflow/plugins/typescript/node_modules/typescript/lib/typescript.js
+// node_modules/typescript/lib/typescript.js
 var require_typescript = __commonJS({
-  "../../../../../../../../../../../Volumes/BackupDrive/Documents2025/Developer/DunneFlow-v2/src/dunneflow/plugins/typescript/node_modules/typescript/lib/typescript.js"(exports2, module2) {
+  "node_modules/typescript/lib/typescript.js"(exports2, module2) {
     var ts7 = {};
     ((module3) => {
       "use strict";

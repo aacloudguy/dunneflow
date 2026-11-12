@@ -184,7 +184,7 @@
     try {
       d = await fetch("/api/program?name=" + encodeURIComponent(name) + "&unfinished="
                       + window.DunneFlowSettings.unfinishedChoice(),
-                      { method: "POST" }).then(r => r.json());
+                      { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
     } catch (err) {
       OPENING = "";
       say("the server could not be asked: " + err.message);
@@ -308,7 +308,7 @@
     let d;
     try {
       d = await fetch(`/api/root?path=${encodeURIComponent(path)}&move=${carry}`,
-                      { method: "POST" }).then(r => r.json());
+                      { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
     } catch (err) {
       MOVING = false;
       moveEl("moveGo").textContent = "Use it";
@@ -360,7 +360,7 @@
       note.textContent = "closing…";
       let d;
       try {
-        d = await fetch("/api/close", { method: "POST" }).then(r => r.json());
+        d = await fetch("/api/close", { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
       } catch (err) {
         note.textContent = err.message;
         return;
@@ -399,7 +399,7 @@
       btn.disabled = true;
       let d;
       try {
-        d = await fetch("/api/pickdir", { method: "POST" }).then(r => r.json());
+        d = await fetch("/api/pickdir", { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
       } catch (err) {
         showVerdict({ ok: false, refusal: err.message });
         return;
@@ -424,7 +424,7 @@
       let d;
       try {
         d = await fetch("/api/reveal?path=" + encodeURIComponent(ROOT),
-                        { method: "POST" }).then(r => r.json());
+                        { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
       } catch (err) {
         note.textContent = err.message;
         return;

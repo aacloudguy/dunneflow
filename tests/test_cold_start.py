@@ -97,7 +97,8 @@ def _get(url: str) -> tuple[int, str]:
 
 
 def _post(url: str) -> tuple[int, str]:
-    req = urllib.request.Request(url, method="POST")
+    # As the page asks: `X-DunneFlow` is what says a POST came from it (`_Handler._may_ask`).
+    req = urllib.request.Request(url, method="POST", headers={"X-DunneFlow": "1"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:      # noqa: S310 -- localhost
             return r.status, r.read().decode("utf-8")
@@ -226,11 +227,17 @@ def test_opening_a_program_from_cold_makes_the_shell_the_page(cold):
     assert status == 200
     assert json.loads(body)["started"] is True
 
-    for _ in range(200):                         # the build runs on its own thread
-        if live.opened:
-            break
-        _get(base + "/api/base")
-    assert live.opened, "the base was never built"
+    # The build runs on its own thread. **Waited for by the clock, not by a count of
+    # requests**: two hundred polls of a server this fast are over in a fraction of a
+    # second, and on a busy machine the build was not, so this failed one run in three
+    # with nothing wrong (rule 24: it measured how fast the loop was).
+    import time
+    deadline = time.monotonic() + 30
+    last = ""
+    while not live.opened and time.monotonic() < deadline:
+        _, last = _get(base + "/api/base")
+        time.sleep(0.02)
+    assert live.opened, f"the base was never built: {last[:300]}"
 
     _, page = _get(base + "/")
     assert '<script src="/static/shell.js"></script>' in page
@@ -482,3 +489,100 @@ def test_a_symlinked_maps_root_lists_each_program_once_and_marks_the_open_one(tm
         httpd.shutdown()
         httpd.server_close()
         live.close()
+
+
+# --------------------------------------------------------------------------- #
+# Who may ask
+#
+# Each of these was answered in full on 2026-11-12, by `curl`, before `_may_ask` existed.
+
+def _ask(url: str, *, method: str = "GET", headers: dict[str, str] | None = None,
+         ) -> tuple[int, str, dict[str, str]]:
+    req = urllib.request.Request(url, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:      # noqa: S310 -- localhost
+            return r.status, r.read().decode("utf-8"), dict(r.headers)
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8"), dict(exc.headers)
+
+
+def test_a_request_that_names_another_host_is_refused(cold):
+    """DNS rebinding: a page on a name its author controls re-points the name at 127.0.0.1
+    and is then same-origin with this server. The browser still sends the name, and a
+    server that answers only to its own address has nothing to say to it."""
+    url, _, root = cold
+    port = url.rsplit(":", 1)[1]
+    status, body, _ = _ask(url + "/api/programs", headers={"Host": f"evil.example:{port}"})
+    assert status == 403 and str(root) not in body and "alpha" not in body
+    status, body, _ = _ask(url + "/api/programs", headers={"Host": f"localhost:{port}"})
+    assert status == 200 and "alpha" in body, "the reader's own two names for it still work"
+    status, _, _ = _ask(url + "/api/programs", headers={"Host": "127.0.0.1:1"})
+    assert status == 403, "the right address on another port is another server"
+
+
+@pytest.mark.parametrize("headers", [
+    {},                                                         # a form on any page
+    {"X-DunneFlow": "1", "Origin": "http://evil.example"},      # a fetch from another site
+    {"X-DunneFlow": "1", "Sec-Fetch-Site": "cross-site"},
+    {"Origin": "null"},                                          # a sandboxed frame
+])
+def test_a_post_that_did_not_come_from_the_page_does_nothing(cold, headers):
+    """Cross-site request forgery. The POSTs here take their parameters in the query string,
+    so a page on any site could start an analysis of any directory or move the maps root.
+    `/api/root` is the probe because it changes something a second request can see."""
+    url, _, root = cold
+    elsewhere = root.parent / "elsewhere"
+    elsewhere.mkdir()
+    status, body, _ = _ask(url + f"/api/root?path={elsewhere}", method="POST", headers=headers)
+    assert status == 403 and "Nothing was done" in body
+    _, listing, _ = _ask(url + "/api/programs")
+    assert json.loads(listing)["root"] == str(root)
+
+
+def test_the_page_s_own_post_is_still_heard(cold):
+    url, _, _ = cold
+    port = url.rsplit(":", 1)[1]
+    status, _, _ = _ask(url + "/api/program?name=alpha", method="POST", headers={
+        "X-DunneFlow": "1", "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"})
+    assert status == 200
+
+
+def test_every_post_the_page_makes_says_it_is_the_page_s():
+    """Rule 44's shape, the other way round: a control whose request the server now refuses
+    renders and does nothing. Every `fetch` with a method in the three scripts carries it."""
+    import re
+
+    from dunneflow.web.serve import STATIC
+
+    for name in ("shell.js", "start.js", "analyze.js"):
+        js = (STATIC / name).read_text(encoding="utf-8")
+        posts = re.findall(r"\{\s*method:\s*\"POST\"[^}]*\}(?:\s*\})?", js)
+        assert posts, name
+        assert all('"X-DunneFlow": "1"' in p for p in posts), (name, posts)
+
+
+def test_a_body_nobody_asked_for_is_not_read(cold):
+    url, _, _ = cold
+    status, _, _ = _ask(url + "/api/close", method="POST",
+                        headers={"X-DunneFlow": "1", "Content-Length": "notanumber"})
+    assert status == 413
+
+
+def test_every_answer_tells_the_browser_what_this_page_may_do(cold):
+    """Framed by nothing, typed by nobody's guess, and loading script from this server
+    alone. On a refusal too: an error page is a page."""
+    url, _, _ = cold
+    for path, expected in (("/", 200), ("/api/programs", 200), ("/no/such", 404)):
+        status, _, headers = _ask(url + path)
+        assert status == expected
+        assert headers["X-Content-Type-Options"] == "nosniff"
+        assert headers["X-Frame-Options"] == "DENY"
+        assert "script-src 'self'" in headers["Content-Security-Policy"]
+        assert "Python" not in headers.get("Server", "")
+
+
+def test_a_path_that_climbs_out_of_the_static_tree_is_not_served(cold):
+    url, _, _ = cold
+    for path in ("/static/../serve.py", "/static/%2e%2e/serve.py", "/vendor/../../schema.py"):
+        status, body, _ = _ask(url + path)
+        assert status == 404 and "import" not in body, path

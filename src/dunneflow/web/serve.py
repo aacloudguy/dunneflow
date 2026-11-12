@@ -1552,6 +1552,14 @@ def said_residue(stored: str | None) -> dict[str, Any]:
     return {"recorded": True, "lines": lines, "none": not lines}
 
 
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; "
+    "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'none'"
+)
+
+
 class _Handler(BaseHTTPRequestHandler):
     """Static files and the JSON endpoints, routed from a table.
 
@@ -1562,6 +1570,8 @@ class _Handler(BaseHTTPRequestHandler):
     """
 
     server_version = "DunneFlow"
+    # The interpreter's version is nobody's business who has not opened the page.
+    sys_version = ""
 
     def __init__(self, *args: Any, live: _Live, **kw: Any) -> None:
         # The base is not held here. It used to be -- the payload arrived as a
@@ -3813,7 +3823,72 @@ class _Handler(BaseHTTPRequestHandler):
             f"program has been opened yet — so {raw} has nothing to answer about. Open a "
             f"program first.")
 
+    # -- who may ask ------------------------------------------------------- #
+    #
+    # **Bound to loopback is not the same as answering only this machine's reader.** The
+    # reader's browser is on this machine too, and it runs every page they have open. Two
+    # things were confirmed with `curl` on 2026-11-12, against a server that checked neither:
+    #
+    # - a request whose `Host` was `evil.example:8787` was answered in full, which is all
+    #   DNS rebinding needs: a page on a name its author controls re-points that name at
+    #   127.0.0.1 and is then *same-origin* with this server, free to read every route
+    #   (the source of the program, its documents, the maps root's path on this disk);
+    # - a `POST` carrying `Origin: http://evil.example` was acted on, and the POSTs here
+    #   take their parameters in the query string, so any page could start an analysis of
+    #   any directory, move the maps root, or put a folder picker on the screen.
+    #
+    # So every request passes here first (rule 51: one place, not one per route). A `Host`
+    # that is not this server's own address is refused, which is what defeats rebinding: the
+    # browser sends the name the page was loaded by. A `POST` must also say it came from this
+    # page -- no foreign `Origin`, no cross-site `Sec-Fetch-Site`, and the `X-DunneFlow`
+    # header, which a cross-origin page cannot send without a preflight this server never
+    # answers.
+
+    MAX_BODY = 1 << 20
+
+    def _own_hosts(self) -> set[str]:
+        port = self.connection.getsockname()[1]
+        return {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+
+    def _refuse(self, why: str) -> None:
+        self.send_error(403, "refused", why)
+
+    def _may_ask(self, *, acting: bool) -> bool:
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host not in self._own_hosts():
+            self._refuse(
+                "This server answers only as 127.0.0.1 or localhost on its own port, and "
+                "this request named another host. Open the address `dunneflow serve` printed.")
+            return False
+        if not acting:
+            return True
+        origin = (self.headers.get("Origin") or "").strip().lower()
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        own = {f"http://{h}" for h in self._own_hosts()}
+        if (origin and origin not in own) or site in ("cross-site", "same-site") \
+                or self.headers.get("X-DunneFlow") != "1":
+            self._refuse(
+                "This request would change something, and it did not come from the "
+                "DunneFlow page this server served. Nothing was done.")
+            return False
+        return True
+
+    def end_headers(self) -> None:
+        # On every answer, the refusals included: what a browser is told about this page.
+        # Nothing may frame it, nothing may guess a type, nothing leaves in a Referer, and
+        # the page loads script, style and data from this server alone. `wasm-unsafe-eval`
+        # is Graphviz, which is WebAssembly; `unsafe-inline` for style is the `style=`
+        # attributes the views are drawn with. No script is ever inline.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        super().end_headers()
+
     def do_GET(self) -> None:                     # noqa: N802  (stdlib's spelling)
+        if not self._may_ask(acting=False):
+            return
         raw, _, query = self.path.partition("?")
         handler = self.ROUTES.get(raw)
         if handler is not None:
@@ -3842,9 +3917,21 @@ class _Handler(BaseHTTPRequestHandler):
         raw, _, query = self.path.partition("?")
         # Drained whether or not anything is sent. An unread body sits in the socket and
         # the next request on a kept-alive connection starts reading in the middle of it.
-        length = int(self.headers.get("Content-Length") or 0)
+        # **Bounded, and a number**: no route here reads a body, so one that claims to be
+        # larger than `MAX_BODY`, or whose length is not a count, is refused unread and the
+        # connection closed rather than held open reading it (rule 55).
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > self.MAX_BODY:
+            self.close_connection = True
+            self.send_error(413, "too large", "No request to this server carries a body.")
+            return
         if length:
             self.rfile.read(length)
+        if not self._may_ask(acting=True):
+            return
         handler = self.POST_ROUTES.get(raw)
         if handler is None:
             self.send_error(404, f"nothing here takes a POST: {raw}")

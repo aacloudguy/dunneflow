@@ -17,6 +17,17 @@ analyse dialog would ever have found them.
 
 ## The surfaces
 
+**`serve` answers this machine's reader and nobody else, and loopback alone did not make
+that true.** It binds `127.0.0.1` and has no host flag. The reader's browser is on this
+machine too, and runs every page they have open, so every request passes
+`_Handler._may_ask` before a route is looked up (rule 51): a `Host` that is not
+`127.0.0.1`, `localhost` or `[::1]` on the server's own port is refused, which is what
+defeats DNS rebinding; a `POST` must also carry `X-DunneFlow: 1`, no foreign `Origin` and no
+cross-site `Sec-Fetch-Site`, which is what stops another site's page starting an analysis or
+moving the maps root. Both were answered in full until 2026-11-12, confirmed with `curl`.
+Every answer carries a content security policy that loads script from this server alone,
+and no request body over 1 MiB is read. `tests/test_cold_start.py` holds each refusal.
+
 **`mcp` is the second surface over the same stores, and it is `serve`'s shape without a
 browser.** `dunneflow mcp` speaks JSON-RPC 2.0 over stdin and stdout — hand-written against
 the standard library, because the official `mcp` SDK needs `pydantic-core` and there is no

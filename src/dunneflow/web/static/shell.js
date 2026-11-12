@@ -2526,7 +2526,7 @@ async function switchBase(rev) {
   let d;
   try {
     const r = await fetch("/api/base?revision=" + encodeURIComponent(rev) + "&unfinished="
-                          + window.DunneFlowSettings.unfinishedChoice(), { method: "POST" });
+                          + window.DunneFlowSettings.unfinishedChoice(), { method: "POST", headers: { "X-DunneFlow": "1" } });
     d = await r.json();
   } catch (err) {
     REBUILD = { revision: rev, state: "failed",
@@ -18098,7 +18098,7 @@ async function switchProgram(name) {
   let d;
   try {
     const r = await fetch("/api/program?name=" + encodeURIComponent(name) + "&unfinished="
-                          + window.DunneFlowSettings.unfinishedChoice(), { method: "POST" });
+                          + window.DunneFlowSettings.unfinishedChoice(), { method: "POST", headers: { "X-DunneFlow": "1" } });
     d = await r.json();
   } catch (err) {
     REBUILD = { revision: name, state: "failed",
@@ -18484,7 +18484,7 @@ async function closeMap() {
   render();
   let d;
   try {
-    d = await fetch("/api/close", { method: "POST" }).then(r => r.json());
+    d = await fetch("/api/close", { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
   } catch (err) {
     REBUILD = { revision: "", state: "failed",
                 reason: "the server could not be asked: " + err.message };

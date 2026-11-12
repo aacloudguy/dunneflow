@@ -358,7 +358,7 @@
     paintAnalyze();
     let d;
     try {
-      d = await fetch("/api/pickdir", { method: "POST" }).then(r => r.json());
+      d = await fetch("/api/pickdir", { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
     } catch (err) {
       if (!ANALYZE) return;
       ANALYZE.picking = false;
@@ -393,7 +393,7 @@
                       "&inventory=" + encodeURIComponent(ANALYZE.inventory || "full") +
                       "&warn_after=" + encodeURIComponent(String(ANALYZE.warnAfter)) +
                       (confirmed ? "&any_size=1" : ""),
-                      { method: "POST" }).then(r => r.json());
+                      { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
     } catch (err) {
       ANALYZE.busy = false;
       ANALYZE_CHECK = { ok: false, refusal: "the server could not be asked: " + err.message,
@@ -481,7 +481,7 @@
   async function stopAnalysis() {
     let d;
     try {
-      d = await fetch("/api/analyze/stop", { method: "POST" }).then(r => r.json());
+      d = await fetch("/api/analyze/stop", { method: "POST", headers: { "X-DunneFlow": "1" } }).then(r => r.json());
     } catch (err) {
       ANALYSIS = Object.assign({}, ANALYSIS,
         { state: "failed", reason: "the server could not be asked to stop it: " + err.message });

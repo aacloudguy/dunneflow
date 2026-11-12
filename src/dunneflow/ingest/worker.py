@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import subprocess
 import threading
 from collections import deque
@@ -66,6 +67,34 @@ PROTOCOL = 1
 
 class WorkerDied(RuntimeError):
     """The process went away mid-conversation, and this is what it left behind."""
+
+
+def toolchain_env(manifest: PluginManifest) -> dict[str, str]:
+    """The environment every process of this reader runs in: this one's, with the
+    manifest's `build_env` laid over it.
+
+    **One environment for the build, the probe and the run**, because the hazard is the
+    same in all three and was only closed in the first. A toolchain reads the directory it
+    is started in: `go env GOROOT` run inside a tree whose `go.mod` names a newer Go tries
+    to **download that toolchain and run it** (confirmed 2026-11-12, `go: downloading
+    go1.99.0`), and `dunneflow analyze .` from inside a checkout is the ordinary way to
+    start. The Go manifest's `GOTOOLCHAIN=local` was applied to the build alone. A reading
+    tool fetches nothing (design rule 14), so what the manifest says of the build's
+    environment is said of every process the reader starts -- and each is started in the
+    reader's own directory, never in the reader's caller's (`neutral_cwd`).
+    """
+    env = dict(os.environ)
+    for name, value in manifest.build_env:
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
+    return env
+
+
+def neutral_cwd(manifest: PluginManifest) -> str:
+    """Where a reader's processes start: its own directory, which holds no project."""
+    return str(manifest.root)
 
 
 class NdjsonWorker:
@@ -101,7 +130,8 @@ class NdjsonWorker:
             self.proc = subprocess.Popen(  # noqa: S603 — argv is built, never a shell
                 self.argv,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                cwd=str(self.cwd) if self.cwd else None,
+                cwd=str(self.cwd) if self.cwd else neutral_cwd(self.manifest),
+                env=toolchain_env(self.manifest),
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
             )
         except OSError as exc:

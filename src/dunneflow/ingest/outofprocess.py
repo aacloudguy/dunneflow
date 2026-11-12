@@ -51,7 +51,7 @@ from .contract import (
     ToolchainMissing,
     stamp_lang,
 )
-from .worker import NdjsonWorker, WorkerDied
+from .worker import NdjsonWorker, WorkerDied, neutral_cwd, toolchain_env
 
 # A toolchain command meaning **this interpreter**, never whatever `python` PATH resolves
 # to. A plugin written in Python is part of the same world as its host — it imports the
@@ -130,7 +130,7 @@ def built_reader(manifest: PluginManifest) -> Path:
             f"the {manifest.lang} plugin at {manifest.root} declares a `build` and no "
             f"toolchain to run it with. A build is a command, and a command has to be named."
         )
-    said = _toolchain_says(tc.command, tc.probe)
+    said = _toolchain_says(tc.command, tc.probe, manifest)
     key = hashlib.sha256("\0".join(
         [lang_fingerprint(manifest.lang), sys.platform, platform.machine(), said]
     ).encode("utf-8")).hexdigest()[:16]
@@ -156,12 +156,7 @@ def built_reader(manifest: PluginManifest) -> Path:
         if manifest.product else None
     )
     argv = [_placeholder(a, tmp_name, workdir) for a in manifest.build]
-    env = dict(os.environ)
-    for name_, value in manifest.build_env:
-        if value is None:
-            env.pop(name_, None)
-        else:
-            env[name_] = value
+    env = toolchain_env(manifest)
     try:
         out = subprocess.run(  # noqa: S603 — argv is the manifest's, never a shell
             argv, cwd=manifest.root, capture_output=True, text=True, timeout=600,
@@ -249,7 +244,7 @@ def _placeholder(arg: str, output: str, workdir: Path | None) -> str:
     return arg
 
 
-def _toolchain_says(command: str, probe: Sequence[str]) -> str:
+def _toolchain_says(command: str, probe: Sequence[str], manifest: PluginManifest) -> str:
     """What the toolchain says it is, or nothing. Part of a key, never a judgement."""
     found = shutil.which(command)
     if found is None:
@@ -257,6 +252,7 @@ def _toolchain_says(command: str, probe: Sequence[str]) -> str:
     try:
         out = subprocess.run(  # noqa: S603 — argv is built, never a shell
             [found, *probe], capture_output=True, text=True, timeout=30, check=False,
+            cwd=neutral_cwd(manifest), env=toolchain_env(manifest),
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""
@@ -293,6 +289,7 @@ def probe_toolchain(manifest: PluginManifest) -> None:
     try:
         out = subprocess.run(  # noqa: S603 — argv is built, never a shell
             [found, *tc.probe], capture_output=True, text=True, timeout=30, check=False,
+            cwd=neutral_cwd(manifest), env=toolchain_env(manifest),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ToolchainMissing(

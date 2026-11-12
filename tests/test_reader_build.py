@@ -254,3 +254,32 @@ def test_old_builds_of_a_reader_are_pruned_to_the_newest_by_last_use(tmp_path):
     assert sorted(gone) == sorted(dirs[KEEP_BUILDS - 1:5])
     assert other.exists() and stray.exists(), "another language, or a name that is no key"
     assert len([n for n in left if n.startswith("go-") and n != "go-notakey"]) == KEEP_BUILDS
+
+
+def test_a_toolchain_is_never_started_in_the_reader_s_caller_s_directory(tmp_path, monkeypatch):
+    """`dunneflow analyze .` from inside a checkout is the ordinary way to start, and a
+    toolchain reads the directory it is started in. In a tree whose `go.mod` names a newer
+    Go, `go version` and `go env GOROOT` print `go: downloading go1.99.0` and try to fetch
+    and run it (seen 2026-11-12). The manifest's `GOTOOLCHAIN=local` covered the build and
+    nothing else; the probe and the reader's own processes inherited the caller's directory
+    and environment. `GOPROXY=off` here so that a regression fails instead of fetching."""
+    import shutil
+
+    from dunneflow import ingest
+    from dunneflow.ingest import outofprocess
+    from dunneflow.ingest.worker import neutral_cwd, toolchain_env
+
+    plugin = ingest.PLUGINS.get("go")
+    if plugin is None or shutil.which("go") is None:
+        pytest.skip("no Go reader in this build, or no `go` on this machine")
+    (tmp_path / "go.mod").write_text("module x\n\ngo 1.99.0\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GOPROXY", "off")
+    monkeypatch.setenv("GOTOOLCHAIN", "auto")
+    m = plugin.manifest
+    assert toolchain_env(m)["GOTOOLCHAIN"] == "local"
+    assert Path(neutral_cwd(m)) == m.root
+    outofprocess.probe_toolchain(m)                       # raised ToolchainMissing before
+    assert m.toolchain is not None
+    said = outofprocess._toolchain_says(m.toolchain.command, m.toolchain.probe, m)
+    assert said.startswith("go version go"), said

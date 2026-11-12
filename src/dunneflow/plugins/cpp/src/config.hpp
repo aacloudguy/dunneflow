@@ -174,25 +174,153 @@ inline const rules::Preset* match_preset(const fs::path& root, const rules::Rule
     return nullptr;
 }
 
-// Arguments from a compilation database, without the compiler, the output and the input.
-inline std::vector<std::string> database_args(CXCompileCommand cmd) {
+// **What a compilation database may say to clang, and it is a list** (2026-11-12).
+// `compile_commands.json` is a file in the tree being read, so it is somebody else's text
+// (rule 97's neighbour: the tree is input, never configuration). It was passed to libclang
+// with only `-c`, `-o` and three `-M` flags taken out, which left `-fplugin=`, `-Xclang -load`,
+// `-fpass-plugin=`, `@file`, `-fmodules-cache-path=` and `-include /any/file` to whatever the
+// libclang on this machine does with them. Apple's 21 loaded nothing and wrote nothing when
+// it was tried; that is one library's behaviour on one day and not a defence. So an argument
+// reaches clang only if it is one of the kinds a parse needs: where headers are, what is
+// defined, which language and dialect, which target, and warnings. Everything else is left
+// out and **counted by name** (`dropped`), because a filter nobody is told about is a parse
+// that differs from the build with no symptom (design rule 1).
+namespace dbargs {
+
+// Flags whose value is the next argument when it is not joined on.
+inline const std::set<std::string>& takes_value() {
+    static const std::set<std::string> v = {"-I", "-D", "-U", "-F", "-x", "-isystem", "-iquote", "-idirafter",
+                                            "-isysroot", "-include", "-imacros", "-target", "-arch"};
+    return v;
+}
+
+// Flags that take a value and are never passed: the value goes with them.
+inline const std::set<std::string>& dropped_with_value() {
+    static const std::set<std::string> v = {"-o", "-MF", "-MT", "-MQ", "-Xclang", "-Xpreprocessor", "-Xassembler",
+                                            "-Xlinker", "-Xanalyzer", "-mllvm", "-load", "-serialize-diagnostics",
+                                            "--serialize-diagnostics", "-dependency-file", "-working-directory",
+                                            "-imultilib", "-iprefix", "-iwithprefix", "-iwithprefixbefore",
+                                            "-include-pch", "-L", "-l", "-u", "-z", "-T", "-e", "-G"};
+    return v;
+}
+
+inline bool starts(const std::string& a, const char* p) { return a.rfind(p, 0) == 0; }
+
+// The flag's own name, for the note: `-fplugin=/x/y.so` is `-fplugin=`.
+inline std::string name_of(const std::string& a) {
+    if (!a.empty() && a[0] == '@') return "@file";
+    auto eq = a.find('=');
+    return eq == std::string::npos ? a : a.substr(0, eq + 1);
+}
+
+// An `-f` or `-m` flag is a language or target switch, unless it names a file or loads code.
+inline bool switch_ok(const std::string& a) {
+    static const char* never[] = {"-fplugin", "-fpass-plugin", "-fmodule", "-fimplicit-module", "-fcxx-modules",
+                                  "-fbuild-session", "-fprebuilt", "-fprofile", "-fcrash", "-ftime-trace",
+                                  "-fsanitize", "-fno-sanitize", "-fembed", "-fdepfile", "-fdiagnostics-",
+                                  "-foptimization-record", "-fsave-optimization-record", "-fdebug", "-ffile",
+                                  "-fmacro-prefix", "-fcoverage", "-fxray", "-fthinlto", "-flto", "-fuse-ld",
+                                  "-mllvm"};
+    for (const char* n : never)
+        if (starts(a, n)) return false;
+    auto eq = a.find('=');
+    if (eq == std::string::npos) return true;
+    // A value that is a path is a file somebody chose; a word or a number is a setting.
+    return a.find_first_of("/\\", eq) == std::string::npos;
+}
+
+inline bool inside(const fs::path& root, const fs::path& p) {
+    std::string r = root.lexically_normal().generic_string();
+    std::string q = p.lexically_normal().generic_string();
+    if (!r.empty() && r.back() != '/') r += '/';
+    return q.size() > r.size() && q.compare(0, r.size(), r) == 0;
+}
+
+}  // namespace dbargs
+
+// Arguments from a compilation database: the ones on the list above, and no input.
+inline std::vector<std::string> database_args(CXCompileCommand cmd, const fs::path& root,
+                                              std::map<std::string, int>& dropped) {
     auto& c = clang::api();
     std::vector<std::string> out;
     unsigned n = c.clang_CompileCommand_getNumArgs(cmd);
     std::string dir = clang::str(c.clang_CompileCommand_getDirectory(cmd));
+    auto absolute = [&](const std::string& v) {
+        fs::path p(v);
+        return generic(p.is_absolute() ? p : fs::path(dir) / p);
+    };
     for (unsigned i = 1; i < n; i++) {
         std::string a = clang::str(c.clang_CompileCommand_getArg(cmd, i));
-        if (a == "-c") continue;
-        if (a == "-o" || a == "-MF" || a == "-MT" || a == "-MQ") {
+        // `--` is libclang's own, put before the input it names. A response file never gets
+        // here as one: the database expands `@file` itself, so what it held is judged below
+        // like anything written in the command.
+        if (a.empty() || a == "-c" || a == "--") continue;
+        if (a[0] != '-') {
+            // The input file itself, which the reader names; or a response file; or a word
+            // some dropped flag was followed by. None of them is passed.
+            std::string suf = suffix(a);
+            if (!(SOURCE_SUFFIXES.count(suf) || HEADER_SUFFIXES.count(suf))) dropped[dbargs::name_of(a[0] == '@' ? a : "a bare word")]++;
+            continue;
+        }
+        if (dbargs::dropped_with_value().count(a)) {
+            if (a != "-o" && a != "-MF" && a != "-MT" && a != "-MQ") dropped[a]++;
             i++;
             continue;
         }
-        if (a.size() > 2 && (a.rfind("-I", 0) == 0) && !fs::path(a.substr(2)).is_absolute()) {
-            a = "-I" + generic(fs::path(dir) / a.substr(2));
+        // A flag with its value: joined (`-Ifoo`, `-std=c++20`) or the next argument.
+        std::string flag, value;
+        bool joined = true;
+        for (const auto& f : dbargs::takes_value()) {
+            if (a == f) {
+                flag = f;
+                joined = false;
+                if (i + 1 < n) value = clang::str(c.clang_CompileCommand_getArg(cmd, ++i));
+                break;
+            }
+            // No flag here is another's prefix: `-I` and the `-i…` family differ in case.
+            bool joins = f.size() == 2 || f == "-isystem" || f == "-iquote" || f == "-idirafter" || f == "-isysroot";
+            if (joins && a.size() > f.size() && dbargs::starts(a, f.c_str())) {
+                flag = f;
+                value = a.substr(f.size());
+                break;
+            }
         }
-        // The input file itself: the reader names its own.
-        std::string suf = suffix(a);
-        if (!a.empty() && a[0] != '-' && (SOURCE_SUFFIXES.count(suf) || HEADER_SUFFIXES.count(suf))) continue;
+        if (!flag.empty()) {
+            if (value.empty()) continue;
+            if (flag == "-I" || flag == "-F" || flag == "-isystem" || flag == "-iquote" || flag == "-idirafter") {
+                value = absolute(value);
+            } else if (flag == "-include" || flag == "-imacros") {
+                // A forced include is read into every file, so it is one of the tree's own
+                // or it is not read: `-include /home/x/.netrc` is a file nobody listed.
+                value = absolute(value);
+                if (!dbargs::inside(root, fs::path(value))) {
+                    dropped[flag + " outside the tree"]++;
+                    continue;
+                }
+            }
+            if (joined) {
+                out.push_back(flag + value);
+            } else {
+                out.push_back(flag);
+                out.push_back(value);
+            }
+            continue;
+        }
+        bool ok = dbargs::starts(a, "-std=") || dbargs::starts(a, "--std=") || dbargs::starts(a, "--target=") ||
+                  dbargs::starts(a, "-stdlib=") || dbargs::starts(a, "-W") || a == "-w" || a == "-pedantic" ||
+                  a == "-pedantic-errors" || a == "-ansi" || a == "-pthread" || a == "-nostdinc" ||
+                  a == "-nostdinc++" || a == "-nostdlibinc" || a == "-nobuiltininc" || a == "-undef" || a == "-g" ||
+                  dbargs::starts(a, "-O") || dbargs::starts(a, "-g") ||
+                  ((dbargs::starts(a, "-f") || dbargs::starts(a, "-m")) && dbargs::switch_ok(a));
+        if (dbargs::starts(a, "-W") && a.find(',') != std::string::npos) ok = false;  // `-Wl,`, `-Wa,`, `-Wp,`
+        if (dbargs::starts(a, "-MD") || dbargs::starts(a, "-MMD") || dbargs::starts(a, "-MP") ||
+            dbargs::starts(a, "-MF") || dbargs::starts(a, "-MT") || dbargs::starts(a, "-MQ") || a == "-M" ||
+            a == "-MM" || a == "-MG")
+            continue;  // dependency output: never wanted, and too ordinary to be worth a note
+        if (!ok) {
+            dropped[dbargs::name_of(a)]++;
+            continue;
+        }
         out.push_back(a);
     }
     return out;
@@ -278,10 +406,11 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
     CXCompilationDatabase_Error err = CXCompilationDatabase_NoError;
     CXCompilationDatabase db = c.clang_CompilationDatabase_fromDirectory(s.root.c_str(), &err);
     if (db && err == CXCompilationDatabase_NoError) {
+        std::map<std::string, int> db_dropped;
         for (const auto& f : files) {
             CXCompileCommands cmds = c.clang_CompilationDatabase_getCompileCommands(db, f.c_str());
             if (cmds && c.clang_CompileCommands_getSize(cmds) > 0) {
-                s.database[f] = database_args(c.clang_CompileCommands_getCommand(cmds, 0));
+                s.database[f] = database_args(c.clang_CompileCommands_getCommand(cmds, 0), root, db_dropped);
             }
             if (cmds) c.clang_CompileCommands_dispose(cmds);
         }
@@ -290,6 +419,19 @@ inline Session decide(const std::string& root_in, const std::vector<std::string>
         if (s.has_database) {
             s.notes.push_back("compile_commands.json gave the arguments for " + std::to_string(s.database.size()) +
                               " of " + std::to_string(files.size()) + " files; the rest are inferred");
+        }
+        if (!db_dropped.empty()) {
+            int total = 0;
+            std::string names;
+            int shown = 0;
+            for (const auto& [name, count] : db_dropped) {  // a map: name order (rule 66)
+                total += count;
+                if (shown++ < 8) names += (names.empty() ? "" : ", ") + name;
+            }
+            if (db_dropped.size() > 8) names += " and " + std::to_string(db_dropped.size() - 8) + " more";
+            s.notes.push_back("compile_commands.json: " + std::to_string(total) +
+                              " arguments were not passed to clang, because only include paths, defines, the "
+                              "language, the target and warnings are: " + names);
         }
     }
 

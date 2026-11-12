@@ -49,7 +49,7 @@ namespace {
 
 constexpr int PROTOCOL = 1;
 // `plugin.json`'s, and the handshake refuses the language if they differ.
-const char* VERSION = "2.0.0";
+const char* VERSION = "2.1.0";
 
 std::mutex out_mu;
 

@@ -155,7 +155,7 @@ declaration names — and the summary counts each kind.
 
 **And in a C or C++ map.** A compiler normally needs to know how your program is built —
 every include path and defined symbol — and most large trees cannot say without being built
-first. So nothing has to be built. A `compile_commands.json` is used if there is one.
+first. So nothing has to be built. A `compile_commands.json` is used if there is one. Only its include paths, defines, language, target and warning flags are passed to clang; anything else it holds is left out, and the run says which.
 Otherwise include paths are inferred from the tree, a known framework's build settings are
 applied (the map says which), and a file is read on past an include that cannot be found.
 

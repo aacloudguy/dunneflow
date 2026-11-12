@@ -79,7 +79,7 @@ runtime inside a bundle whose whole dependency list is `pyyaml`. So a Kotlin map
 a program touches and every routine, loop and guard in it, but does not claim to know where
 a call goes. The run says so with a count rather than leaving you to notice.
 
-**C and C++ need no build first.** A `compile_commands.json` is used if there is one.
+**C and C++ need no build first.** A `compile_commands.json` is used if there is one. Only its include paths, defines, language, target and warning flags are passed to clang; anything else it holds is left out, and the run says which.
 Otherwise include paths are inferred from the tree and a file is read on past an include
 that cannot be found, and the map counts what that left out.
 

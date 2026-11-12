@@ -582,6 +582,53 @@ def test_an_include_directory_is_never_above_the_root_without_a_preset(tmp_path)
 
 
 @needs_clang
+def test_a_compilation_database_may_say_where_and_what_and_nothing_else(tmp_path):
+    """`compile_commands.json` is a file in the tree being read, so it is somebody else's
+    text. Its include paths and defines are what it is read for, and they are honoured: `on`
+    exists only under `-DWITH`, and `inc/x.h` is found only through `-Iinc`. A plugin, a
+    frontend argument and a forced include of a file outside the tree, written in the
+    command or in a response file, are none of them passed to clang, and the reader says
+    which were left out (design rule 1).
+
+    Asserted on what the reader passes and says, never on a planted library failing to load:
+    Apple's libclang 21 loaded nothing even before this, so that test could not fail
+    (rule 59)."""
+    import json
+
+    root = tmp_path / "t"
+    (root / "inc").mkdir(parents=True)
+    outside = tmp_path / "secret.h"
+    outside.write_text("int leaked(void);\n", encoding="utf-8")
+    (root / "args.rsp").write_text(f"-include\n{outside}\n", encoding="utf-8")
+    (root / "compile_commands.json").write_text(json.dumps([{
+        "directory": str(root), "file": str(root / "a.c"),
+        "arguments": ["cc", "-DWITH=1", "-Iinc", "-fno-builtin", "-fvisibility=hidden",
+                      f"-fplugin={root / 'evil.so'}", "-Xclang", "-load", "-Xclang",
+                      str(root / "evil.so"), f"-fpass-plugin={root / 'evil.so'}",
+                      f"-fmodules-cache-path={tmp_path / 'cache'}", "@args.rsp",
+                      "-include", str(outside), "-c", str(root / "a.c")],
+    }]), encoding="utf-8")
+    facts, _, said = _tree(root, {
+        "inc/x.h": "int x(void);\n",
+        "a.c": '#include "x.h"\n#ifdef WITH\nint on(void) { return x(); }\n#endif\n'
+               "int uses(void) { return leaked(); }\n"})
+    names = {r.name for r in facts["a.c"].routines}
+    assert "on" in names, "the define the database gave was not honoured"
+    assert not facts["a.c"].errors or not any("x.h" in e for e in facts["a.c"].errors)
+    note = next((n for n in said if "were not passed to clang" in n), "")
+    for word in ("-fplugin=", "-fpass-plugin=", "-fmodules-cache-path=", "-Xclang",
+                 "-include outside the tree"):
+        assert word in note, (word, said)
+    # Seven for each of the two files the database answers for (it lends `a.c`'s command to
+    # the header): the plugin, the pass plugin, the module cache, `-Xclang` twice, and the
+    # forced include twice -- once written in the command and once inside `@args.rsp`, which
+    # libclang's database expands before the reader sees it.
+    assert "14 arguments were not passed" in note, note
+    assert "-DWITH" not in note and "-fno-builtin" not in note and "-fvisibility" not in note
+    assert not (tmp_path / "cache").exists()
+
+
+@needs_clang
 def test_unreal_s_preset_compiles_cpp_as_its_build_tool_does(tmp_path):
     """UnrealBuildTool's Apple toolchain compiles every `.cpp` as Objective-C++, and Mac
     sources are written for it; read as C++, a routine after an `@` was lost. Off Apple the

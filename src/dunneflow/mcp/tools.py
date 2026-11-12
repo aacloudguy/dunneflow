@@ -21,6 +21,8 @@ call.
 
 from __future__ import annotations
 
+import sqlite3
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -46,6 +48,8 @@ DEFAULT_LIMIT = 5
 #: so the bound is the *channel's* and the answer says how many it did not send.
 DEFAULT_ROWS = 100
 MAX_ROWS = 2000
+# How long one `query` statement may run before it is interrupted (rule 55).
+QUERY_SECONDS = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,16 +365,38 @@ def _query(session: Session, args: dict[str, Any]) -> dict[str, Any]:
     if rows_wanted > MAX_ROWS:
         raise Refused(f"limit must be at most {MAX_ROWS:,}")
 
-    rows = session.store.query(statement)
-    shown = [dict(r) for r in rows[:rows_wanted]]
+    # **Bounded on the work, not only on the answer (rule 55).** This fetched every row
+    # into a list and then showed a hundred of them, with no clock: a recursive CTE with no
+    # end, or a join of `calls` with itself, held the server for as long as it liked and
+    # every other tool with it. Rows are counted as they come and only the ones shown are
+    # kept, and a statement still running after `QUERY_SECONDS` is interrupted and said so.
+    conn = session.store.conn
+    deadline = time.monotonic() + QUERY_SECONDS
+    conn.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 20_000)
+    shown: list[dict[str, Any]] = []
+    total = 0
+    try:
+        for row in conn.execute(statement):
+            total += 1
+            if len(shown) < rows_wanted:
+                shown.append(dict(row))
+    except sqlite3.OperationalError as exc:
+        if "interrupt" not in str(exc).lower():
+            raise
+        raise Refused(
+            f"that statement was still running after {QUERY_SECONDS} seconds and was "
+            f"stopped; {total:,} rows had come back. Narrow it with a WHERE or a LIMIT"
+        ) from exc
+    finally:
+        conn.set_progress_handler(None, 0)
     return {
         "sql": parsed.sql,
         "operation": parsed.operation,
         "tables": parsed.tables,
         # A count that says what it counts: how many there were, and how many crossed.
-        "rows": len(rows),
+        "rows": total,
         "returned": len(shown),
-        "truncated": len(rows) > len(shown),
+        "truncated": total > len(shown),
         "results": shown,
     }
 

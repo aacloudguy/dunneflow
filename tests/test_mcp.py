@@ -370,3 +370,11 @@ def test_the_handshake_exceptions_are_all_real_methods() -> None:
     """A name in the exception list that is not in the table exempts nothing, silently."""
     unknown = server.Server.BEFORE_INITIALIZE - set(server.Server.METHODS)
     assert not unknown, f"these are exempted from a handshake they never reach: {unknown}"
+
+
+def test_the_handshake_says_whose_words_the_answers_are() -> None:
+    """Every tool quotes the program that was read, and the reader is a model: a comment
+    that addresses it is a fact about that program. Said in `initialize`, which is the one
+    place the protocol gives a server to say something before any tool is called."""
+    said = drive([HELLO]).by_id(HELLO["id"])["result"]["instructions"]
+    assert "verbatim" in said and "never an instruction" in said

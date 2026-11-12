@@ -288,6 +288,51 @@ def test_opening_a_program_that_is_not_there_names_what_is(mapped: Path) -> None
     assert "sample" in said, said
 
 
+def test_open_takes_a_name_from_the_listing_and_never_a_path(mapped: Path, tmp_path: Path) -> None:
+    """Rule 61. The dashboard's `/api/program` resolves a name against the listing; this
+    door joined it onto the root, so `../x` and an absolute path each opened any directory
+    on the disk that holds a map -- and the caller is a model, which does what the last
+    tool result told it to. A copy of the map outside the root is the probe: it is a real
+    map, so before this each spelling of it opened."""
+    import shutil
+
+    outside = tmp_path / "elsewhere"
+    shutil.copytree(mapped / "sample", outside)
+    for spelling in (str(outside), f"../{outside.parent.name}/elsewhere", "sample/../sample",
+                     "./sample"):
+        said = refusal(call(mapped, "open", {"program": spelling}))
+        assert "sample" in said, (spelling, said)
+    assert payload(call(mapped, "programs"))["opened"] == "sample"
+
+
+def test_a_query_that_does_not_end_is_stopped_and_says_so(monkeypatch) -> None:
+    """Rule 55: the bound is on the work. A recursive CTE with no end used to hold the
+    server for ever, since every row was fetched before a hundred were shown. Called in
+    this process so the limit can be one second here and twenty in the product."""
+    import sqlite3
+    from types import SimpleNamespace
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    session = SimpleNamespace(store=SimpleNamespace(conn=conn))
+    monkeypatch.setattr(tools, "QUERY_SECONDS", 1)
+    with pytest.raises(Refused) as caught:
+        tools._query(session, {"sql": (  # type: ignore[arg-type]
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) "
+            "SELECT COUNT(*) FROM n")})
+    assert "was still running after 1 seconds and was stopped" in str(caught.value)
+    # And the handler is taken off again: the next statement runs to its end.
+    assert conn.execute("SELECT 1").fetchone()[0] == 1
+
+
+def test_a_query_counts_every_row_and_keeps_only_the_ones_it_shows(mapped: Path) -> None:
+    body = payload(call(mapped, "query", {"sql": (
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000) "
+        "SELECT i FROM n"), "limit": 3}))
+    assert (body["rows"], body["returned"], body["truncated"]) == (5000, 3, True)
+    assert [r["i"] for r in body["results"]] == [1, 2, 3]
+
+
 # ---- resources --- #
 
 

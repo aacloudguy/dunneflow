@@ -152,7 +152,21 @@ class Session:
         if not program and not revision:
             raise Refused("name a program, a revision, or both — this changes nothing")
 
-        out_dir = (self.out_root / program) if program else self.live.out_dir
+        # **Chosen from the listing, never joined onto the root** (rule 61: the dashboard's
+        # `/api/program` was taught this and this door was not). `out_root / program` takes
+        # `../elsewhere`, and an absolute path whole, to any directory on the disk that
+        # holds a map -- and the caller here is a model, which reads what the last tool
+        # result told it to. A name that is not one of this root's programs is refused with
+        # the list of the ones that are.
+        if program:
+            listed = {d.name: d for d in revisions.program_dirs(self.out_root)}
+            if program not in listed:
+                raise FileNotFoundError(no_map_here(
+                    self.out_root / (Path(program).name or "?"), self.out_root,
+                    revision or None))
+            out_dir = listed[program]
+        else:
+            out_dir = self.live.out_dir
         if program and not revisions.holds_a_map(out_dir):
             # Refused by name, and the sentence lists what is here: a refusal has to name
             # something the reader can act on, and a program name is not guessable (rule 89).

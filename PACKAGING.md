@@ -315,8 +315,8 @@ only the profile name.
 
 ## Readers on the far side of a pipe, and what the bundle carries for them
 
-**Three of the six readers are other programs, and neither is inside the interpreter the spec
-freezes.** What the bundle carries for each is `plugin.json` and the files it names in
+**Five of the seven readers are other programs, and none of them is inside the interpreter
+the spec freezes.** What the bundle carries for each is `plugin.json` and the files it names in
 `fingerprint`, which `_plugin_files` copies off the manifests, so a reader's shipped bytes
 are exactly the bytes its stamp is computed from (rule 12). Nothing else of a plugin
 directory ships: not `node_modules`, not a test file, not a build product.
@@ -364,6 +364,18 @@ directory ships: not `node_modules`, not a test file, not a build product.
 
   The reader's cache key carries what `java -version` says, so a JDK upgrade builds a new
   reader rather than running one compiled against another JDK's compiler.
+
+- **C and C++ ship as source, and the compiler they are built with is the one they read
+  with.** `plugins/cpp/` is `reader.cpp`, its headers under `src/`, and LLVM's libclang C
+  API headers under `vendor/clang-c/` (declarations only, 22.1.0, with LLVM's licence
+  beside them). The build is one command, `clang++ -std=c++17 -O2 -pthread -Ivendor`, and
+  links nothing of LLVM's: **libclang is not shipped and is not linked.** The reader finds
+  the library at run time beside the `clang++` on `PATH` (`clang++ -print-resource-dir`),
+  or where `DUNNEFLOW_LIBCLANG` says, and loads it by name. So the bundle carries no native
+  library for it, there is nothing of LLVM's to sign, and the libclang that parses a tree
+  is the one that machine's own compiler would have used. The reader's cache key carries
+  what `clang++ --version` says. What that library is asked to do with a tree's
+  `compile_commands.json` is bounded in the reader (`src/config.hpp`, and `SECURITY.md`).
 
 **A machine without the toolchain still runs the application.** The walk asks each language
 with files whether its reader can start, and one that cannot is reported as *not read, no

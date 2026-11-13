@@ -229,6 +229,12 @@ step_tar() {
     # directory rather than over whatever the reader was standing in.
     tar -czf "$out" -C "$DIST" dunneflow
     echo "   $(du -sh "$out" | cut -f1)  $out"
+    # **Its SHA-256, beside it.** This build is unsigned and says so, which leaves a reader
+    # nothing to check a download against; the digest is published with the archive
+    # (`SECURITY.md`). Written with the bare file name, so `sha256sum -c` works wherever
+    # the two files are put together.
+    ( cd "$(dirname "$out")" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
+    echo "   $(cut -c1-64 "$out.sha256")  SHA-256"
 }
 
 # --- install ---------------------------------------------------------------------------

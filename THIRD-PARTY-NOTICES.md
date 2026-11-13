@@ -2,7 +2,8 @@
 
 DunneFlow itself is released under the [MIT licence](LICENSE). It also carries other people's
 work, each under its own licence, and this file says which. The full text of every licence
-named here is in [`licenses/`](licenses/), copied verbatim from the version that ships.
+named here is in [`licenses/`](licenses/), copied verbatim from the version that ships, or
+beside the vendored source where the table says so.
 
 ## In this repository
 
@@ -14,10 +15,23 @@ named here is in [`licenses/`](licenses/), copied verbatim from the version that
 | [@hpcc-js/wasm](https://github.com/hpcc-systems/hpcc-js-wasm) | 2.35.0 | `src/dunneflow/web/vendor/graphviz.umd.js` | Apache-2.0 | HPCC Systems |
 | [Graphviz](https://graphviz.org), compiled to WebAssembly inside the file above | 15.1.0 | `src/dunneflow/web/vendor/graphviz.umd.js` | EPL-1.0 | AT&T and the Graphviz contributors |
 | [TypeScript](https://www.typescriptlang.org) | 5.9.3 | `src/dunneflow/plugins/typescript/main.bundle.cjs` | Apache-2.0 | Microsoft Corporation |
+| [syn](https://github.com/dtolnay/syn) | 2.0.119 | `src/dunneflow/plugins/rust/vendor/syn/` | MIT (offered as MIT or Apache-2.0) | its authors, named in the crate |
+| [proc-macro2](https://github.com/dtolnay/proc-macro2) | 1.0.107 | `src/dunneflow/plugins/rust/vendor/proc-macro2/` | MIT (offered as MIT or Apache-2.0) | its authors, named in the crate |
+| [quote](https://github.com/dtolnay/quote) | 1.0.47 | `src/dunneflow/plugins/rust/vendor/quote/` | MIT (offered as MIT or Apache-2.0) | its authors, named in the crate |
+| [unicode-ident](https://github.com/dtolnay/unicode-ident) | 1.0.26 | `src/dunneflow/plugins/rust/vendor/unicode-ident/` | MIT (offered as MIT or Apache-2.0), and Unicode-3.0 for the tables it carries | its authors, named in the crate; Unicode, Inc. |
+| [LLVM](https://llvm.org)'s libclang C API headers | 22.1.0 | `src/dunneflow/plugins/cpp/vendor/clang-c/` | Apache-2.0 with LLVM Exceptions | the LLVM Project |
 
 Mermaid's minified file includes its own dependencies. Their licence headers are kept inside
 the file. Among them is DOMPurify, which is offered under Apache-2.0 or MPL-2.0, and is used
 here under Apache-2.0.
+
+The four Rust crates are the Rust reader's dependencies, vendored whole and unmodified so
+that building it fetches nothing. Each keeps its own `LICENSE-MIT` and `LICENSE-APACHE`
+beside its source, and `unicode-ident` its `LICENSE-UNICODE`; those files are the licence
+texts for them and travel with the source wherever it goes, the packaged applications
+included. The libclang headers are copied unmodified, declarations only, with LLVM's
+`LICENSE.TXT` beside them in `src/dunneflow/plugins/cpp/vendor/`. libclang itself is not
+distributed: the C and C++ reader loads the one already on the machine.
 
 TypeScript's own third-party notices are reproduced in
 [`licenses/typescript-third-party-notices.txt`](licenses/typescript-third-party-notices.txt).

@@ -249,8 +249,13 @@ A disk image built around an un-notarised app is a notarised wrapper on a refuse
     xcrun notarytool submit "$dmg" --keychain-profile "$PROFILE" --wait
     xcrun stapler staple "$dmg"
     xcrun stapler validate "$dmg"
+    # Its SHA-256, beside it, in the format the other two platforms' archives use. The
+    # image is signed and notarised, which is the stronger check; this is so that all three
+    # downloads can be checked the same way. After stapling, which changes the file.
+    ( cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256" )
     echo
     echo "$(du -sh "$dmg" | cut -f1)  $dmg"
+    echo "$(cut -c1-64 "$dmg.sha256")  SHA-256"
 }
 
 # --- verify ----------------------------------------------------------------------------------

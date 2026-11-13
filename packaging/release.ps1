@@ -155,6 +155,13 @@ function Invoke-Zip {
     if (Test-Path $out) { Remove-Item -Force $out }
     Compress-Archive -Path $Build -DestinationPath $out -CompressionLevel Optimal
     Note ('{0}  ({1:N1} MB)' -f $out, ((Get-Item $out).Length / 1MB))
+    # Its SHA-256, beside it: this build is unsigned, so the digest published with the
+    # archive is what a reader checks a download against (SECURITY.md). In `sha256sum`'s
+    # format, with the bare file name, so one tool checks all three platforms' files.
+    $digest = (Get-FileHash -Algorithm SHA256 -Path $out).Hash.ToLower()
+    $leaf = Split-Path -Leaf $out
+    [System.IO.File]::WriteAllText("$out.sha256", "$digest  $leaf`n")
+    Note "$digest  SHA-256"
     Note 'This is a local file. Nothing here uploads it anywhere.'
 }
 

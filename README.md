@@ -281,10 +281,15 @@ the dashboard's are in [`DESIGN-RULES.md`](DESIGN-RULES.md). What each module ow
 
 ## Status
 
-**0.2.0**, the second line of DunneFlow. It is the same tool as 0.1.0, rebuilt so that
-reading is modular. It adds TypeScript, C++ and Kotlin beside Python, the MCP server, and
-reading very large trees in parts. It is verified at scale: its own source, a 628-file Python
-application read identically by both lines, a TypeScript monorepo, and Unreal Engine.
+**0.3.0**, on the second line of DunneFlow, which began at 0.2.0: the same tool as 0.1.0,
+rebuilt so that reading is modular. 0.3.0 adds readers for Go, Rust and Java, moves C and
+C++ onto libclang, tells a Unix-domain socket from the network (`LOCAL_IPC`), and is the
+first release whose handling of somebody else's tree, of the browser and of an agent was
+reviewed as such ([`SECURITY.md`](SECURITY.md)). What changed is in
+[`CHANGELOG.md`](CHANGELOG.md), and **a map made by 0.2.0 has to be analysed again**. It is
+verified at scale: its own source, a 628-file Python application read identically by both
+lines, a TypeScript monorepo, two Go and two Java servers, a Tauri application, and Unreal
+Engine.
 
 All three platforms run it. macOS is signed and notarised; Windows and Linux are built and run
 at the keyboard and are unsigned. Every build stamps the same reader fingerprints, so a map

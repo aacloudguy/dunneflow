@@ -1099,6 +1099,10 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
             # of a corpus -- two stale worktrees were 335 of Mensores' 2,381 documents
             # -- and a reader comparing two points in time would otherwise read their
             # absence as the project having deleted them.
+            if doc_stats.not_files:
+                listed = ", ".join(f"{n:,} {why}"
+                                   for why, n in sorted(doc_stats.not_files.items()))
+                _emit(f"  not read, not a file of this tree: {listed}")
             for d in doc_stats.nested:
                 where = Path(d)
                 shown = (where.relative_to(docs_root)
@@ -1174,6 +1178,9 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
             std_read += st.parsed
             # Design rule 1 again, and it matters more here than for the corpus: a reader
             # who named this directory is owed the news that part of it was skipped.
+            if st.not_files:
+                listed = ", ".join(f"{n:,} {why}" for why, n in sorted(st.not_files.items()))
+                _emit(f"  not read, not a file of this standard: {listed}")
             for d in st.nested:
                 where = Path(d)
                 shown = where.relative_to(root) if where.is_relative_to(root) else where

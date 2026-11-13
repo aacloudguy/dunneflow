@@ -947,3 +947,61 @@ def test_a_heading_over_a_paragraph_is_still_a_definition(tmp_path):
     facts = _extract(tmp_path, "docs/glossary.md", body)
     defs = {d.term: d.definition for d in facts.definitions}
     assert defs.get("Sprocket", "").startswith("A toothed wheel"), defs
+
+
+# ---- a name in somebody else's tree is not a promise about what is behind it --- #
+
+def _hostile(tmp_path):
+    import os
+    import sys
+
+    import pytest
+
+    if sys.platform == "win32":
+        pytest.skip("needs symbolic links and named pipes, which this account cannot make")
+    tree, outside = tmp_path / "tree", tmp_path / "outside"
+    (tree / "sub").mkdir(parents=True)
+    outside.mkdir()
+    (outside / "secret.py").write_text('KEY = "outside-secret"\n', encoding="utf-8")
+    (outside / "notes.md").write_text("# Outside\n\noutside-doc\n", encoding="utf-8")
+    (tree / "ok.py").write_text("def inside():\n    return 1\n", encoding="utf-8")
+    (tree / "README.md").write_text("# Inside\n", encoding="utf-8")
+    os.symlink(outside / "secret.py", tree / "leak.py")
+    os.symlink(outside / "notes.md", tree / "NOTES.md")
+    os.symlink(outside / "secret.py", tree / "pyproject.toml")
+    os.symlink(tree / "ok.py", tree / "sub" / "same.py")      # inside: an ordinary layout
+    os.symlink(tree / "gone.py", tree / "dangling.py")
+    os.mkfifo(tree / "pipe.py")
+    os.mkfifo(tree / "PIPE.md")
+    return tree
+
+
+def test_the_code_walk_reads_only_files_of_the_tree_and_says_what_it_passed(tmp_path):
+    """Both happened on 2026-11-12. A link to a file outside the tree was read like any
+    other, and its constants were in the rendered map; a named pipe called `pipe.py` was
+    opened and the analysis waited on it for ever. A link to a file *inside* the tree is
+    an ordinary layout and is still read. A linked manifest is not offered either."""
+    from dunneflow.walk import WalkStats, discover
+
+    tree = _hostile(tmp_path)
+    stats = WalkStats()
+    found = sorted(p.relative_to(tree).as_posix() for p in discover(tree, stats=stats))
+    assert found == ["ok.py", "sub/same.py"]
+    assert stats.manifests == []
+    assert stats.not_files == {
+        "links to a file outside the tree": 2,          # leak.py and the manifest
+        "links to nothing": 1,
+        "that are a pipe, a socket or a device": 1,
+    }
+
+
+def test_the_document_walk_obeys_the_same_rule(tmp_path):
+    """Rule 61: a second way into the store, taught what the first was."""
+    from dunneflow.walk import discover_docs
+
+    tree = _hostile(tmp_path)
+    passed: dict[str, int] = {}
+    found = sorted(p.name for p in discover_docs(tree, not_files=passed))
+    assert found == ["README.md"]
+    assert passed == {"links to a file outside the tree": 1,
+                      "that are a pipe, a socket or a device": 1}

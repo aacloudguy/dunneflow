@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -131,6 +132,9 @@ class WalkStats:
     # said who owns them. Python's list is wholly covered by `SKIP_DIRS` today, so this
     # cannot fire yet; it is the counter for the half of the asymmetry above that can.
     lang_skipped: dict[str, int] = field(default_factory=dict)
+    # Why -> how many: names in the tree that a reader would have claimed and that are not
+    # files of this tree (`not_a_tree_file`). Said, like everything else left out.
+    not_files: dict[str, int] = field(default_factory=dict)
     # Language -> files admitted. Not derivable from `found`, which is one number for
     # every reader at once: *628 files* says nothing about whether the TypeScript half of
     # a tree was read at all, and a count must say what it counts (rule 32).
@@ -309,6 +313,11 @@ def walk_residue(stats: WalkStats) -> list[str]:
                            for lang, n in sorted(stats.tests_dropped.items()))
         out.append(f"test code inside source files left out: {listed} — items the reader "
                    f"marks as tests; --include-tests reads test files, not these")
+    if stats.not_files:
+        listed = ", ".join(f"{n:,} {why}" for why, n in sorted(stats.not_files.items()))
+        out.append(f"not read, not a file of this tree: {listed} — a link is followed "
+                   f"only to a file inside the tree, and a pipe, a socket or a device is "
+                   f"never opened")
     if stats.lang_skipped:
         listed = ", ".join(f"{n:,} {lang}"
                            for lang, n in sorted(stats.lang_skipped.items()))
@@ -361,6 +370,41 @@ def walk_residue(stats: WalkStats) -> list[str]:
 
 def _tally(counter: dict[str, int], key: str) -> None:
     counter[key] = counter.get(key, 0) + 1
+
+
+def not_a_tree_file(p: Path, root: Path) -> str:
+    """Why this name is not read, or `""` when it is an ordinary file of the tree.
+
+    **A tree being read is somebody else's, and a name in it is not a promise about what is
+    behind the name.** Two things were tried on 2026-11-12 and both happened. `leak.py`, a
+    symbolic link to a file outside the tree, was read like any other: its constants were in
+    the rendered map, so analysing a checkout could copy `~/.netrc` or a key into a map
+    somebody then shares. And `pipe.py`, a named pipe, was opened for reading and the
+    analysis waited on it for ever, with nothing on the screen to say why.
+
+    `os.walk` already declines to follow a link to a *directory*; this is the same refusal
+    for files, asked in the one place both walks admit a name (rule 51). A link to a file
+    **inside** the tree is still read, because that is an ordinary way to lay a tree out and
+    nothing outside it is disclosed. `root` must already be resolved.
+    """
+    try:
+        mode = os.lstat(p).st_mode
+    except OSError:
+        return "that could not be examined"
+    if stat.S_ISREG(mode):
+        return ""
+    if not stat.S_ISLNK(mode):
+        return "that are a pipe, a socket or a device"
+    try:
+        target = p.resolve(strict=True)
+        if not stat.S_ISREG(target.stat().st_mode):
+            return "links to something that is not a file"
+        target.relative_to(root)
+    except ValueError:
+        return "links to a file outside the tree"
+    except OSError:
+        return "links to nothing"
+    return ""
 
 
 def discover(root: Path, include_tests: bool = False,
@@ -462,6 +506,11 @@ def discover(root: Path, include_tests: bool = False,
             # a manifest is never source -- it is the walk answering the one question
             # `resolve/manifests` cannot answer for itself: which directories in this
             # tree are the program's.
+            if (lang is not None or fn in MANIFEST_FILES) and (
+                    why := not_a_tree_file(p, root)):
+                if stats is not None:
+                    _tally(stats.not_files, why)
+                continue
             if stats is not None and fn in MANIFEST_FILES:
                 stats.manifests.append(p)
             if lang is None:
@@ -630,7 +679,8 @@ def parts_under(root: Path, bound: int = TOO_BIG,
 def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
                   nested: list[str] | None = None,
                   exclude: frozenset[Path] = frozenset(),
-                  maps: list[str] | None = None) -> Iterator[Path]:
+                  maps: list[str] | None = None,
+                  not_files: dict[str, int] | None = None) -> Iterator[Path]:
     """Every document under `root` that is plausibly about the program.
 
     Nested checkouts are pruned and, when `nested` is given, named -- see `VCS_MARKERS`.
@@ -690,6 +740,10 @@ def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
         for fn in filenames:
             p = here / fn
             if p.suffix.lower() in suffixes:
+                if (why := not_a_tree_file(p, root)):
+                    if not_files is not None:
+                        _tally(not_files, why)
+                    continue
                 yield p
 
 
@@ -716,7 +770,7 @@ def analyze_docs_tree(
     stats = WalkStats()
 
     docs = sorted(discover_docs(root, nested=stats.nested, exclude=exclude,
-                                maps=stats.maps))
+                                maps=stats.maps, not_files=stats.not_files))
     stats.found = len(docs)
 
     known = store.known_hashes()

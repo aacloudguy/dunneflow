@@ -57,6 +57,15 @@ repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
   untyped. A few true edges are lost with the false ones; see Known limits.
 - **Code mode kept saying "reading what behaves differently…"** when the comparison
   answered after the file had been drawn. It now repaints when the answer arrives.
+- **A C or C++ program's own function was counted as the library's when it shared its
+  name.** A call to `send(frame)` in a program that defines `send` was drawn as a call to
+  that routine and also listed as a NETWORK touch. This tool's own map said NETWORK 17
+  where three are real. A bare name whose body the compiler has in the same translation
+  unit is now the program's and nothing else. A body in another file is left as it was,
+  because that is how a compatibility shim for another platform looks; see Known limits.
+- **Two controls in the Analyse dialog were drawn by the browser** and not by the
+  dashboard: the list under *Under each flow diagram* and the minutes box, white in the
+  dark theme.
 
 ### Security
 
@@ -84,8 +93,9 @@ In [`BACKLOG.md`](BACKLOG.md), each with what would settle it: Go dependencies r
 test items (37); four rules files hold a common method name that needs measuring (38); a
 Kotlin file in a Java tree is a missing class to javac (47). A Python method that shares a
 name with one of Python's own, called on a value nothing types, reads as untyped (stated
-residues). The Windows and Linux builds are unsigned, and each archive is published with
-its SHA-256.
+residues). A C function the tree defines in one file and calls from another under a
+library's name reads as both (stated residues). The Windows and Linux builds are unsigned,
+and each archive is published with its SHA-256.
 
 ## 0.2.0
 

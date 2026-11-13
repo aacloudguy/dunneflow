@@ -3100,12 +3100,21 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .analyze-field { display: block; margin: 0 0 .7rem; }
 .analyze-field > span { display: block; font-size: .75rem; font-weight: 600;
                         margin-bottom: .2rem; }
-.analyze-field input[type=text] {
-  width: 100%; box-sizing: border-box; padding: .35rem .5rem;
-  font: inherit; font-size: .85rem;
+/* **Every control in the form, and not only the two it began with.** The rule named
+ * `input[type=text]`, so the list and the minutes box added on 2026-11-07 were drawn by the
+ * browser: its own face at its own size, white in the dark theme, beside two fields that
+ * were neither. Nothing failed and nothing warned; it was seen in a screenshot five days
+ * later. A selector that lists the cases it knows leaves the next one out (rule 36), so a
+ * test now holds every `data-anfield` control to this rule. Width stays per kind: a path
+ * wants the row, a list wants its longest option, and `.analyze-warnrow` sizes the number. */
+.analyze-field input[type=text], .analyze-field input[type=number], .analyze-field select {
+  box-sizing: border-box; padding: .35rem .5rem;
+  font: inherit; font-size: .85rem; font-weight: 400;
   background: var(--sunken); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: .25rem;
 }
+.analyze-field input[type=text] { width: 100%; }
+.analyze-field select { max-width: 100%; }
 /* `.hint` has **no base rule** in this stylesheet — only nine descendant overrides, each
  * scoped to a container. So a hint in a new surface is unstyled prose unless it is styled
  * here, and adding a global `.hint` would restyle all nine (rule 71: a class name is
@@ -3173,7 +3182,11 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .analyze-blocked .hint { font-size: .72rem; color: var(--text-muted); }
 /* The threshold sits on one line with its unit, and the number field is sized for four
    digits rather than stretched to the dialog's width like the path above it. */
-.analyze-warnrow { display: flex; gap: .4rem; align-items: center; font-size: .82rem; }
+/* Named through its parent, because `.analyze-field > span` is the label's rule and outranks a
+ * bare class: without it this row was the label's size, the label's weight and a block (rule 29's
+ * neighbour: the more specific selector wins wherever it is written). */
+.analyze-field > .analyze-warnrow { display: flex; gap: .4rem; align-items: center;
+                                    font-size: .82rem; font-weight: 400; }
 .analyze-warnrow input { width: 5rem; }
 
 /* == about this map == */

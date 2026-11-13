@@ -14210,3 +14210,30 @@ def test_the_legend_says_what_the_colours_count_and_what_they_include() -> None:
         "after the reader has drawn them"
     )
     assert "which is not drawn" in key, "the legend does not state what it is counting"
+
+
+def test_every_control_in_the_analyse_dialog_is_drawn_by_the_stylesheet() -> None:
+    """Rule 36, in a selector: the form's rule named `input[type=text]` and nothing else.
+
+    The list under *Under each flow diagram* and the minutes box were added later and
+    matched no appearance rule at all, so the browser drew them: Arial at its own size on
+    white, in a dialog whose other two fields were neither, and in the dark theme as well.
+    Every kind of control the dialog builds with a `data-anfield` must be named by the rule
+    that gives a field its face. A checkbox is the exception, and is the browser's on purpose.
+    """
+    js = _read("analyze.js")
+    kinds = set()
+    for tag, attrs in re.findall(r"<(input|select)\b([^>]*data-anfield=[^>]*)>", js, flags=re.S):
+        kind = re.search(r'type="(\w+)"', attrs)
+        kinds.add("select" if tag == "select"
+                  else f"input[type={kind.group(1) if kind else 'text'}]")
+    kinds.discard("input[type=checkbox]")
+    assert {"select", "input[type=number]", "input[type=text]"} <= kinds, (
+        f"the dialog's controls were not found where this test looks: {sorted(kinds)}")
+    css = _css_code(_read("tokens.css"))
+    rule = re.search(r"([^{}]*)\{[^{}]*background: var\(--sunken\)[^{}]*\}",
+                     css[css.index(".analyze-field"):])
+    assert rule, "no rule gives an analyse field its face"
+    named = {part.strip().removeprefix(".analyze-field ") for part in rule.group(1).split(",")}
+    assert kinds <= named, (
+        f"drawn by the browser and not by the stylesheet: {sorted(kinds - named)}")

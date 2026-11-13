@@ -517,6 +517,15 @@ from those same graphs after the fix. git, nmap and tmux were read again at the 
 findings are unchanged. **Core, Runtime and OpenUSD have not been read since eb21b9a**, which
 changes the C++ reader, so their maps refuse to open until they are.
 
+**A bare name the tree defines is the tree's (2026-11-12, reader 2.1.1).** Found on this tool's
+own map, where NETWORK read 17 and 14 of them were `plugins/cpp`: 13 calls to the `send` that
+`reader.cpp:56` defines, each already a CERTAIN edge to it (rule 2), and one call to a parameter
+named `bind`. With the fix the same tree reads **NETWORK 3, FILE 218, 658 touches** against 17,
+219 and 673, routines and internal calls unchanged at 2,550 and 6,146. Only where clang has the
+body in the same translation unit: on the maps of 2026-11-03 that is 1 row in git, 4 in nmap, 20
+in Runtime and none in tmux, Core or OpenUSD, counted by query and not by a rerun. What it
+leaves, and why, is `BACKLOG.md`'s residue.
+
 **Every BROKEN left was read against the source, and each is the program's.** OpenUSD's two are
 `test_ListAPI` and `test_ComputeAllDependencies`, each defined twice in one test class, so the
 first never runs. nmap's is `test_default_executable`, likewise, at `NmapOptions.py:920` and

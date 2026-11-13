@@ -2238,7 +2238,13 @@ private:
             if (p.macro_written) {
                 if (const auto* m = x_.macro_at(p.off)) through = def_of(m->first);
             }
-            bool touched = !no_call && !shadowed && boundaries(owner, s, *s.callee_expr, through);
+            // **A bare name this tree gave to a thing of its own is that thing** (rules 2 and 5).
+            // `send(frame)` in a program that defines `void send(const std::string&)` is the
+            // program's routine: clang says so, the edge pass draws the edge, and a rule that
+            // spells libc's `send` has not met it. The same for `bind(out)` where `bind` is a
+            // parameter. This reader's own map carried 14 NETWORK touches that were those two.
+            bool own = !p.construction && !p.macro_written && p.resolved && own_bare_name(p);
+            bool touched = !no_call && !shadowed && !own && boundaries(owner, s, *s.callee_expr, through);
 
             Site e;
             e.site_id = s.site_id;
@@ -2390,6 +2396,52 @@ private:
         if (!rule.note.empty()) e += " \xE2\x80\x94 " + rule.note;
         if (!blind.empty()) e += " \xE2\x80\x94 blind spot: " + blind;
         return e;
+    }
+
+    // Whether a call written as one bare word names something **this file can see the tree
+    // define**: a function whose body clang has in this translation unit and whose body is
+    // under the root, or a variable, parameter or field that is being called. Only a bare
+    // word, because a qualified name is an API a rule may mean whoever defines it
+    // (`FHttpModule.Get.CreateRequest` read inside the engine is still the network). And a
+    // definition, never a declaration: `void *dlopen(const char *, int);` written out by
+    // hand in a C file is still the loader's, and half the fixtures here are written so.
+    // **A body in another translation unit is left alone, and on purpose.** Measured on the
+    // maps of 2026-11-03 before this was written: git has 102 such calls and they are to
+    // `opendir`, `readdir`, `rmdir`, `symlink`, which `compat/` defines for a platform this
+    // one is not; tmux's 13 are `compat/setenv.c`; nmap's 31 its own `getaddrinfo` for a
+    // machine without one. There the library is what runs and the boundary is the true
+    // half. A body clang has in hand for this very call is the only one that proves whose
+    // the name is (rule 1).
+    bool own_bare_name(const Pending& p) const {
+        if (p.expr.empty() || p.expr.find('.') != std::string::npos) return false;
+        std::pair<bool, CXCursor> named{false, p.ref};
+        C().clang_visitChildren(
+            p.call,
+            [](CXCursor k, CXCursor, CXClientData d) {
+                auto* out = static_cast<std::pair<bool, CXCursor>*>(d);
+                out->second = C().clang_getCursorReferenced(k);
+                out->first = true;
+                return CXChildVisit_Break;  // the callee is the first child
+            },
+            &named);
+        if (named.first && !C().clang_Cursor_isNull(named.second)) {
+            CXCursorKind k = C().clang_getCursorKind(named.second);
+            if (k == CXCursor_VarDecl || k == CXCursor_ParmDecl || k == CXCursor_FieldDecl)
+                return inside_tree(named.second);
+        }
+        if (C().clang_Cursor_isNull(p.ref) || !is_function_kind(C().clang_getCursorKind(p.ref))) return false;
+        CXCursor body = C().clang_getCursorDefinition(p.ref);
+        return !C().clang_Cursor_isNull(body) && inside_tree(body);
+    }
+
+    // `outside_tree` answers false when it cannot tell, which is right for its callers and
+    // wrong for this one: here "not known to be outside" would withdraw a boundary.
+    bool inside_tree(CXCursor ref) const {
+        CXFile f = nullptr;
+        C().clang_getExpansionLocation(C().clang_getCursorLocation(ref), &f, nullptr, nullptr, nullptr);
+        if (!f || x_.root.empty()) return false;
+        std::string g = std::filesystem::path(clang::str(C().clang_getFileName(f))).lexically_normal().generic_string();
+        return g.rfind(x_.root, 0) == 0;
     }
 
     bool outside_tree(CXCursor ref) const {

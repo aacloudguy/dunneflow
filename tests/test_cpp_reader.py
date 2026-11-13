@@ -426,6 +426,37 @@ def _tree(root: Path, files: dict[str, str]):
 
 
 @needs_clang
+def test_a_bare_name_the_tree_defines_is_not_the_library_s(tmp_path):
+    """Rules 2 and 5. This reader's own map carried 14 NETWORK touches that were its own code:
+    13 calls to the `send` it defines to write a frame, each already an edge to that routine,
+    and one call to a parameter named `bind`. A rule that spells libc's `send` has not met a
+    program's own, and clang is the one that knows which it is.
+
+    The other half is what must not move: a prototype written out by hand is a declaration,
+    the body is still the library's, and a call through it still touches."""
+    f = tmp_path / "frames.cpp"
+    f.write_text(
+        "#include <functional>\n"
+        "#include <string>\n"
+        "int connect(int, const void *, unsigned);\n"
+        "void send(const std::string &frame) { (void)frame; }\n"
+        "int listen(int fd, int n) { return fd + n; }\n"
+        "void run(int fd, const std::function<void(const std::string &)> &bind) {\n"
+        '    send("hello");\n'
+        "    listen(fd, 1);\n"
+        '    bind("out");\n'
+        "    connect(fd, 0, 0);\n"
+        "}\n"
+    )
+    facts, _ = _read(tmp_path, [f])
+    ff = facts["frames.cpp"]
+    hits = {(b.evidence, b.kind.value, b.line) for b in ff.boundaries}
+    assert hits == {("connect", "NETWORK", 10)}, hits
+    assert {c.callee_expr for c in ff.calls} >= {"send", "listen", "bind", "connect"}, (
+        "the calls are still calls: only the claim that they leave the program went")
+
+
+@needs_clang
 def test_an_inactive_arm_and_a_directive_line_are_not_code(tmp_path):
     """`clang_tokenize` lexes the raw text, so both were in the token scan: an inactive arm's
     calls were recorded beside the active one's, and nmap's `#if !defined(LINUX)` was a

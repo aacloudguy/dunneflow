@@ -46,7 +46,9 @@ set -euo pipefail
 # the two spellings agree -- two places that can drift is one place too many.
 APP_NAME="DunneFlow.app"
 VOLUME_NAME="DunneFlow"
-IDENTITY="${DUNNEFLOW_IDENTITY:-Developer ID Application: Thomas Williams (G3RLJWV327)}"
+# **No default.** This script is published, and a default here was one person's name and
+# Apple team id in every clone. Whoever signs says who they are (`require_identity`).
+IDENTITY="${DUNNEFLOW_IDENTITY:-}"
 PROFILE="${DUNNEFLOW_NOTARY_PROFILE:-dunneflow}"
 FRAMEWORK_PYTHON="${DUNNEFLOW_UNIVERSAL_PYTHON:-/Library/Frameworks/Python.framework/Versions/3.12/bin/python3}"
 
@@ -158,24 +160,23 @@ Run '$0 build', which builds for arm64 and x86_64. A DUNNEFLOW_ARCH=host build i
 verification gate and for nothing that leaves this machine."
 }
 
-# **The default identity is the maintainer's, and on anybody else's Mac it is not there.** A
-# contributor building their own release has a certificate of their own, and the script
-# cannot guess its name -- so it says which variable carries it and how to read that name off
-# the keychain, rather than failing inside `codesign` with an error about a string they did
-# not choose. Asked by both steps that sign, and before either does any work: `dmg` used to
-# build the whole image first and only then reach `codesign`.
+# **Whoever signs names their own certificate, and the script cannot guess it.** So it says
+# which variable carries it and reads the candidates off the keychain, rather than failing
+# inside `codesign` with an error about a string nobody chose. Asked by both steps that sign,
+# and before either does any work: `dmg` used to build the whole image first and only then
+# reach `codesign`.
 require_identity() {
     local have
     have="$(security find-identity -v -p codesigning 2>/dev/null)"
-    printf '%s\n' "$have" | grep -qF "\"$IDENTITY\"" && return 0
+    [ -n "$IDENTITY" ] && printf '%s\n' "$have" | grep -qF "\"$IDENTITY\"" && return 0
     local yours
     yours="$(printf '%s\n' "$have" | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/      \1/p')"
-    local whose="That is the default, and it is the maintainer's certificate."
-    [ -n "${DUNNEFLOW_IDENTITY:-}" ] && whose="That is what DUNNEFLOW_IDENTITY names."
-    die "no codesigning identity named
+    local what="DUNNEFLOW_IDENTITY is not set, so there is nothing to sign as."
+    [ -n "$IDENTITY" ] && what="no codesigning identity named
       $IDENTITY
-is in this keychain. $whose
-To sign with your own, set DUNNEFLOW_IDENTITY to its name:
+is in this keychain. That is what DUNNEFLOW_IDENTITY names."
+    die "$what
+Set DUNNEFLOW_IDENTITY to the name of your certificate:
       DUNNEFLOW_IDENTITY='Developer ID Application: Your Name (TEAMID)' $0 ${1:-sign}
 ${yours:+The Developer ID identities this keychain does hold:
 $yours

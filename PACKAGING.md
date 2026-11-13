@@ -294,7 +294,8 @@ rules in the checked lane, the research paper yielding **zero** naming rules, an
 conformance verdicts at **4 checked · 1 no population · 10 not checkable**.
 
 **Signed, notarised and shipping on all three platforms.** The identity is
-`Developer ID Application: Thomas Williams (G3RLJWV327)`, and a released build reports
+whatever `DUNNEFLOW_IDENTITY` names — a `Developer ID Application: Name (TEAMID)`, which
+`release.sh` has no default for and refuses without — and a released build reports
 `flags=0x10000(runtime)`, the full Apple authority chain and a secure timestamp; the `.app`
 and the `.dmg` are each notarised and stapled in their own right. The two once-only steps
 below have been done on this machine and are kept here because they are once-only *per

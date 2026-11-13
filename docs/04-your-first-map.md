@@ -40,7 +40,7 @@ only want the code, and the analysis is quicker.
 DunneFlow checks what you typed as you type it, and **Analyse** stays disabled until it
 is satisfied.
 
-![The dialog with /Volumes/BackupDrive/Documents2025/Developer/requests typed in, "Call it" now showing requests, the directory's own name, and the Analyse button enabled](images/04-analyse-preflight.jpg)
+![The dialog with /Volumes/YourDisk/code/requests typed in, "Call it" now showing requests, the directory's own name, and the Analyse button enabled](images/04-analyse-preflight.jpg)
 
 When it refuses, it says which refusal it is. Each is different problem and each has
 its own sentence. The most common one on your first run:
@@ -56,7 +56,7 @@ nested inside the tree, each of these get their own sentence too. See
 Analysing into a name that **already exists** is allowed, and the dialog says plainly
 that it rewrites that program's working snapshot:
 
-![The dialog with /Volumes/BackupDrive/Documents2025/Developer/OpenUSD typed in and "Call it" showing OpenUSD, and a note: "There is already a program called OpenUSD. Analysing into it rewrites its working snapshot rather than adding a second point in time — seal it first if you want to keep both." Analyse is enabled.](images/04-already-exists.png)
+![The dialog with /Volumes/YourDisk/code/OpenUSD typed in and "Call it" showing OpenUSD, and a note: "There is already a program called OpenUSD. Analysing into it rewrites its working snapshot rather than adding a second point in time — seal it first if you want to keep both." Analyse is enabled.](images/04-already-exists.png)
 
 That is a note and not a refusal, so **Analyse** stays enabled.
 

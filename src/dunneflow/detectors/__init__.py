@@ -325,6 +325,10 @@ class RuleSet:
     # fact about the **analysing machine's** version and it is an input to what a call
     # means -- which put it outside every fingerprint. See `builtins` in the YAML.
     builtins: frozenset[str] = field(default_factory=frozenset)
+    # Method names of the language's own types, which the name-uniqueness tier may never
+    # claim (rule 5): `rows.append(x)` is `list.append` however many routines the program
+    # has called `append`. Declared for `builtins`' reason. See `builtin_methods` in the YAML.
+    builtin_methods: frozenset[str] = field(default_factory=frozenset)
     # **What it means to create an async call and throw the result away**, declared
     # because it is a fact about the language and not about the call. Python's coroutine
     # is *inert*: never awaited, it never runs, and the work simply does not happen --
@@ -719,6 +723,7 @@ def load_rules(lang: str) -> RuleSet:
             (data.get("type_aliases", {}) or {}).get("factories", [])
         ),
         builtins=_builtins(data.get("builtins", []) or [], lang, path),
+        builtin_methods=_builtins(data.get("builtin_methods", []) or [], lang, path),
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
         macro_expansion=_macro_expansion(data.get("macro_expansion", ""), lang, path),
         private_means=_private_means(data.get("private_means", ""), lang, path),

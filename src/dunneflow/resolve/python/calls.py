@@ -10,6 +10,9 @@ dynamically, a module imported at runtime. So every edge carries how much to tru
                 enclosing class. Wrong only if something rebinds the name at runtime.
     INFERRED -- exactly one routine in the whole program has that name, so it is
                 very probably the target, but nothing proves it.
+                **Never where the name is a method of Python's own types**
+                (`python.yaml`'s `builtin_methods`): the program having one routine
+                called `append` says nothing about what `rows.append(x)` calls.
 
 Anything with no match at all is marked external and dropped from the graph, which is
 usually correct: it is a standard-library or third-party call, and those are recorded
@@ -311,6 +314,9 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
     ix = _build_index(store)
     imports = _import_maps(store)
     builtins_ = load_rules(LANG).builtins
+    # Names a call may be resolved by evidence but never by being the only routine so
+    # called: `append`, `get`, `update` (rule 5; `python.yaml`'s `builtin_methods`).
+    own_types_ = load_rules(LANG).builtin_methods
     receivers = _receiver_words()
 
     for row in rows:
@@ -387,8 +393,10 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
                     if target:
                         conf = Confidence.CERTAIN
                         inherited = True
-            if not target:
+            if not target and last not in own_types_:
                 target = _pick(ix.by_name.get(last, []), caller_id)
+            elif not target:
+                suppressed = True
 
         else:
             prefix = ".".join(parts[:-1])
@@ -424,8 +432,12 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
             if not target and not cls:
                 # An attribute call on something local. Name uniqueness is all we have.
                 target = _method_through_bases(ix, parts[-2], last, caller_id)
-                if not target:
+                if not target and last not in own_types_:
                     target = _pick(ix.by_name.get(last, []), caller_id)
+                elif not target:
+                    # `rows.append(x)`: the language has a method of that name, so the
+                    # program having exactly one is no argument at all. Untyped, said.
+                    suppressed = True
 
         if target:
             yield Edge(target, conf, inherited=inherited)
@@ -452,6 +464,9 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
             # visible instead of invisible -- which is the whole point when the
             # program under study may itself be broken.
             yield NoEdge(
-                candidates=_candidates(ix.by_name.get(last, []), caller_id),
+                # A name ruled out on purpose had no rivals to count: the lone `append`
+                # was never a candidate, and saying "1" would send a reader to look at it.
+                candidates=0 if suppressed else _candidates(ix.by_name.get(last, []),
+                                                            caller_id),
                 suppressed=suppressed, frontier=frontier, reason=reason,
             )

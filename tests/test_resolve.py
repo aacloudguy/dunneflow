@@ -175,3 +175,81 @@ def test_argparse_commands_are_counted_even_with_no_app_object(tmp_path):
         "SELECT name FROM entrypoints WHERE kind = 'CLI'"
     )]
     assert "go" in names, "the subcommand itself was lost, not merely uncounted"
+
+
+def _resolved(tmp_path: Path, files: dict[str, str]):
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    store = Store(tmp_path / "g.db")
+    analyze_tree(tmp_path, store)
+    resolve_calls(store)
+    return store
+
+
+_STREAM = (
+    "class Stream:\n"
+    "    def append(self, text):\n"
+    "        return text\n\n"
+    "    def emit_row(self, text):\n"
+    "        self.append(text)\n\n\n"
+    "class Loud(Stream):\n"
+    "    def shout(self, text):\n"
+    "        self.append(text.upper())\n"
+)
+
+
+def test_a_name_python_s_own_types_use_is_never_resolved_by_being_the_only_one(tmp_path):
+    """Rule 5, in the one tier that argues from a name. Found on DunneFlow's own map on
+    2026-11-12: one `_Stream.append` had gathered **893 of its 1,146** inferred edges,
+    every `rows.append(x)` in the program, and on djangoproject.com one view's `get` held
+    189 `request.GET.get(...)`s. The program having one routine called `append` says
+    nothing about what `rows.append(x)` calls; the language has `list.append`."""
+    store = _resolved(tmp_path, {
+        "pkg/__init__.py": "",
+        "pkg/stream.py": _STREAM,
+        "pkg/use.py": (
+            "def collect(items, lookup, s):\n"
+            "    rows = []\n"
+            "    for i in items:\n"
+            "        rows.append(lookup.get(i))\n"
+            "    s.emit_row(rows)\n"
+            "    return rows\n"),
+    })
+    got = {r["callee_expr"]: r for r in store.query(
+        "SELECT c.callee_expr, c.callee_id, c.confidence, c.reason, c.ambiguous,"
+        "       r.qualname FROM calls c LEFT JOIN routines r ON r.id = c.callee_id"
+        " WHERE c.file = 'pkg/use.py'")}
+    store.close()
+    assert got["rows.append"]["callee_id"] is None, "list.append drawn as the program's own"
+    assert (got["rows.append"]["reason"], got["rows.append"]["ambiguous"]) == ("untyped", 0)
+    assert got["lookup.get"]["callee_id"] is None
+    # A name the language has no claim on is still inferred, and still says so.
+    assert got["s.emit_row"]["qualname"].endswith("Stream.emit_row")
+    assert got["s.emit_row"]["confidence"] == Confidence.INFERRED.value
+
+
+def test_evidence_still_resolves_such_a_name(tmp_path):
+    """What is refused is the argument from a name alone. `self.append` in the class that
+    defines it, and in a subclass of that class, is pinned by the class and is CERTAIN."""
+    store = _resolved(tmp_path, {"pkg/__init__.py": "", "pkg/stream.py": _STREAM})
+    got = {r["caller"]: r for r in store.query(
+        "SELECT r1.name AS caller, r2.qualname AS callee, c.confidence FROM calls c"
+        " JOIN routines r1 ON r1.id = c.caller_id JOIN routines r2 ON r2.id = c.callee_id"
+        " WHERE c.callee_expr = 'self.append'")}
+    store.close()
+    assert set(got) == {"emit_row", "shout"}
+    assert all(r["callee"].endswith("Stream.append") for r in got.values())
+    assert all(r["confidence"] == Confidence.CERTAIN.value for r in got.values())
+
+
+def test_the_declared_names_are_the_language_s_and_are_text():
+    """`python.yaml` declares them, for `builtins`' reason: what a call means may not
+    depend on the analysing machine's Python. Every public method of `list` and `dict` on
+    this interpreter is there, and none of the program-shaped names is."""
+    from dunneflow.detectors import load_rules
+
+    declared = load_rules("python").builtin_methods
+    here = {n for t in (list, dict, set, str) for n in dir(t) if not n.startswith("_")}
+    assert here <= declared, sorted(here - declared)
+    assert not declared & {"write_file_facts", "resolve", "analyze", "emit_row"}

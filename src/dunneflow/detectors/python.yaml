@@ -479,6 +479,41 @@ builtins: [
   "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type",
   "vars", "zip"]
 
+# **Method names of Python's own types, which a name alone may never claim** (rule 5, in
+# the one tier that argues from a name). `rows.append(x)` on a value this resolver cannot
+# type is resolved, where nothing better is known, to *the only routine in the program
+# called `append`* and marked INFERRED. That argument is sound for `store.write_file_facts`
+# and worthless for `append`: the program has one routine of that name and the language has
+# `list.append`, which is what nearly every such call means. Found on DunneFlow's own map on
+# 2026-11-12, where one `_Stream.append` had gathered **893 of 1,146** inferred edges; on
+# djangoproject.com one view's `get` held 189, every `request.GET.get(...)` in the tree.
+#
+# So a call whose last name is in this list is never resolved by name uniqueness. It is
+# still resolved by anything that is *evidence*: `self.append` to the enclosing class's
+# own method or a base's, a module the file imported, a class the spelling names. What is
+# left is `untyped`, which is the truth, and DEAD_CODE spares a routine an untyped call
+# may name.
+#
+# The public methods of `list`, `dict`, `set`, `frozenset`, `str`, `bytes`, `bytearray`,
+# `tuple`, `int`, `float` and `complex`, taken from 3.12 and declared here rather than read
+# off the interpreter for `builtins`' reason above: what a call means may not depend on the
+# analysing machine's Python. Quoted, for the reason `builtins` is.
+builtin_methods: [
+  "add", "append", "as_integer_ratio", "bit_count", "bit_length", "capitalize", "casefold",
+  "center", "clear", "conjugate", "copy", "count", "decode", "denominator", "difference",
+  "difference_update", "discard", "encode", "endswith", "expandtabs", "extend", "find",
+  "format", "format_map", "from_bytes", "fromhex", "fromkeys", "get", "hex", "imag",
+  "index", "insert", "intersection", "intersection_update", "is_integer", "isalnum",
+  "isalpha", "isascii", "isdecimal", "isdigit", "isdisjoint", "isidentifier", "islower",
+  "isnumeric", "isprintable", "isspace", "issubset", "issuperset", "istitle", "isupper",
+  "items", "join", "keys", "ljust", "lower", "lstrip", "maketrans", "numerator",
+  "partition", "pop", "popitem", "real", "remove", "removeprefix", "removesuffix",
+  "replace", "reverse", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip",
+  "setdefault", "sort", "split", "splitlines", "startswith", "strip", "swapcase",
+  "symmetric_difference", "symmetric_difference_update", "title", "to_bytes", "translate",
+  "union", "update", "upper", "values", "zfill"
+]
+
 # A second `def foo` at one scope replaces the first: the earlier definition is
 # unreachable and every call resolves to the later one. `NAME_COLLISION` and
 # `REDEFINITION` are right to say so — of *this* language. See `redefinition` in

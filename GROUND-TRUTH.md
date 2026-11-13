@@ -203,6 +203,37 @@ Ground truth for code: the four executables declared in its
 `lictores-praeco` — must all appear in "Where to start" with plausible reach. If one
 collapses to a reach of 1 or 2, a registration idiom is being missed.
 
+**The golden is `output/GOLDEN-v2.txt`, and it was re-adopted on 2026-11-12.** Row counts,
+distributions and seven identity digests over Comitia at 03ebbd93, taken and compared by
+`tools/golden.py`:
+
+```bash
+uv run python tools/golden.py output/lictores/graph@*.db --against output/GOLDEN-v2.txt
+```
+
+It must read **7 of 7**. The baseline moved once on the way to 0.3.0, on purpose: the Python
+resolver's name-uniqueness tier stopped claiming a call whose last name is a method of
+Python's own types (`python.yaml`'s `builtin_methods`, rule 5), because `rows.append(x)`
+was being drawn INFERRED to the only routine in the program called `append`. Against the
+report of 2026-11-01, kept unedited as `output/GOLDEN-v2-2026-11-01.txt`:
+
+| | 2026-11-01 | 2026-11-12 |
+|---|---:|---:|
+| digests that moved | | **1 of 7**, `calls.resolved` |
+| internal calls | 7,032 | **6,976** |
+| CERTAIN | 6,142 | 6,142 |
+| INFERRED | 890 | **834** |
+
+**Fifty-six INFERRED edges lost, none gained and none retargeted**: 35 `update`, 13
+`discard`, 8 `count`. Every one was read. About 45 were plainly Python's own —
+`h.update`, `digest.update`, `env.update`, `text.count` — and about 10 were probably true
+(`allocator.discard`, `store.update`) and read *untyped* now, which is `BACKLOG.md`'s
+residue and rule 1's price. The same defect was **893 of 1,146** inferred edges on
+DunneFlow's own map, all to one `append`, and 189 `.get` on one view of djangoproject.com.
+The boundary rows differ between the two reports as well, and that is `LOCAL_IPC` and the
+work of 2026-11-07, which no digest covers; `output/` is not tracked, so both reports are
+the maintainer's.
+
 ## Go: two public trees, and what each reproduces (2026-11-01)
 
 **Neither is Comitia, and neither is the pair.** They are what the Go reader was measured on,

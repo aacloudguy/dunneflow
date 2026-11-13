@@ -1226,7 +1226,8 @@ def test_a_plugins_nested_files_ship_to_their_own_directories(tmp_path):
     (plugin / "plugin.json").write_text(json_.dumps(
         {"fingerprint": ["own.rs", "vendor/a/src/lib.rs", "vendor/b/src/lib.rs"]}))
     scope: dict = {"PKG": pkg, "Path": Path, "json": json_}
-    exec(compile(ast.Module(body=[func], type_ignores=[]), str(SPEC), "exec"), scope)
+    # This repository's own spec, one function of it: not a tree being read.
+    exec(compile(ast.Module(body=[func], type_ignores=[]), str(SPEC), "exec"), scope)  # noqa: S102
     shipped = {Path(src).relative_to(plugin).as_posix(): dest
                for src, dest in scope["_plugin_files"]()}
     assert shipped == {

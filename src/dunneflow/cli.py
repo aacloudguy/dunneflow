@@ -1959,7 +1959,15 @@ def cmd_query(args: argparse.Namespace) -> int:
             _emit(f"error: no document store at {docs_path}")
             store.close()
             return 2
-        store.conn.execute("ATTACH DATABASE ? AS docs", (str(docs_path),))
+        # **Read-only, as the graph beside it is** (rule 20: a read may refuse, never
+        # repair). This was a plain path, and `query --docs --sql "DELETE FROM
+        # docs.documents"` emptied the document store while the same statement against
+        # the graph was refused (tried 2026-11-12). The store's connection is opened with
+        # `uri=True`, so the attachment can carry `mode=ro` exactly as the store does.
+        from urllib.parse import quote
+        store.conn.execute(
+            "ATTACH DATABASE ? AS docs",
+            (f"file:{quote(str(docs_path.resolve()))}?mode=ro",))
     try:
         rows = store.query(args.sql)
     except Exception as exc:

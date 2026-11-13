@@ -762,6 +762,30 @@ def test_query_reads_an_unfinished_map_and_says_so(tmp_path: Path, capsys: Any) 
     )
 
 
+def test_query_cannot_write_to_the_document_store_it_attaches(tmp_path: Path,
+                                                               capsys: Any) -> None:
+    """Rule 20: a read may refuse, never repair. `--docs` attached the document store by a
+    plain path, so `DELETE FROM docs.documents` emptied it while the same statement against
+    the graph was refused (tried 2026-11-12). It is attached `mode=ro`, as the graph is."""
+    import sqlite3
+
+    out = tmp_path / "out"
+    _graph_with(out / "half", complete="", step="reading the documents")
+    docs = out / "half" / "docs.db"
+    conn = sqlite3.connect(docs)
+    conn.execute("CREATE TABLE documents (path TEXT)")
+    conn.execute("INSERT INTO documents VALUES ('README.md')")
+    conn.commit()
+    conn.close()
+    base = ["query", str(tmp_path / "anything"), "--name", "half", "--output", str(out),
+            "--docs", "--docs-db", str(docs), "--sql"]
+    assert cmd_query(build_parser().parse_args([*base, "DELETE FROM docs.documents"])) != 0
+    assert "readonly" in capsys.readouterr().err.lower()
+    assert cmd_query(build_parser().parse_args(
+        [*base, "SELECT COUNT(*) AS n FROM docs.documents"])) == 0
+    assert capsys.readouterr().out.split()[-1] == "1"
+
+
 class _Unreachable:
     """A child that cannot be signalled, however it is asked."""
 

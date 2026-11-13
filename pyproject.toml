@@ -33,7 +33,18 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+# The `S` rules below are the ones that name a construct this tool must never contain when
+# it reads somebody else's tree: `exec`, `pickle` and `marshal`, an XML parser that expands
+# entities, an unsafe YAML load, a weak hash, a shell. Selected by number rather than as
+# `S`, and the rest were looked at on 2026-11-12 rather than skipped: `S608` flags 65
+# statements in `src/` that interpolate a table name, a column list, a row of `?` or
+# `mirror.key_of`'s `[a-z0-9]` and no value from a request or a tree; `S603` and `S607` flag
+# every toolchain started by name, which is what a reader does (`ingest/worker.py` says in
+# what directory and environment); `S101` is every test. The `# noqa: S603` comments
+# already in the tree are kept as the note each one is.
+select = ["E", "F", "I", "UP", "B", "SIM",
+          "S102", "S103", "S113", "S201", "S202", "S301", "S302", "S306", "S307", "S314",
+          "S324", "S501", "S506", "S602", "S604", "S605", "S609", "S612", "S701"]
 
 [tool.mypy]
 python_version = "3.12"

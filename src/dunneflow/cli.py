@@ -1168,7 +1168,11 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
         standards_store.set_meta("program", program)
         # What was read, so the store can say whose standard it holds rather than only
         # what it says. A reader looking at a rule has to be able to ask where it came from.
-        standards_store.set_meta("roots", "\n".join(str(r) for r in standards_roots))
+        # **By name, never by path** (rule 60, and `source_root` above is not recorded for
+        # the same reason). This held each root's absolute path until 2026-11-12, in a value
+        # nothing reads: a map handed to somebody else carried the layout of the disk it
+        # was made on. A standard is told apart by what its directory is called.
+        standards_store.set_meta("roots", "\n".join(r.name for r in standards_roots))
         std_found = std_read = 0
         for root in standards_roots:
             st = analyze_docs_tree(

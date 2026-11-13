@@ -52,6 +52,17 @@ not, and how to report a problem. `ARCHITECTURE.md` says how each surface works;
 - **Windows and Linux builds are not signed.** The macOS application is signed and
   notarised. Check a download against the SHA-256 published beside it.
 
+## Before you share a map
+
+A program's output directory is made to be read on the machine that wrote it. Its stores
+hold paths relative to the tree that was read, and its sidecars hold that tree's source
+and documents in full: sharing the directory is sharing the program.
+
+One file in it names this machine: **`analysis.json`**, the record of the last run, holds
+the absolute path of the tree and the command line that read it, because *Analyse it
+again* fills its dialog from them. It is written `0600`. Leave it out of anything you
+hand on.
+
 ## Reporting a problem
 
 Open a private security advisory on the repository

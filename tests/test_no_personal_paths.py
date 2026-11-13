@@ -118,3 +118,36 @@ def test_nothing_tracked_names_a_person_s_disk_identity_or_address():
                     if what.startswith(("a volume", "a home directory", "a Windows"))]
         found += [f"{rel}: {what}: {said}" for what, said in hits]
     assert not found, "\n".join(sorted(set(found))[:40])
+
+
+def test_a_map_does_not_name_the_disk_it_was_made_on(tmp_path):
+    """Rule 60, asked of everything an analysis writes. A program's output directory is
+    handed on -- to a colleague, to a bug report -- and until 2026-11-12 the standards store
+    carried each `--standards` root's absolute path, in a value nothing read.
+
+    Every file the run wrote is searched for the directory the trees were in, as bytes.
+    `analysis.json` is the one exception and it is deliberate: *Analyse it again* fills its
+    dialog from the path there, and `SECURITY.md` says to leave that file out."""
+    from dunneflow.runtime import self_argv
+
+    here = tmp_path / "a-directory-only-this-machine-has"
+    tree, std, out = here / "tree", here / "standards", tmp_path / "out"
+    (tree / "pkg").mkdir(parents=True)
+    std.mkdir()
+    (tree / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (tree / "pkg" / "a.py").write_text(
+        'import os\n\n\ndef f():\n    """Reads a setting."""\n    return os.environ["X"]\n',
+        encoding="utf-8")
+    (tree / "README.md").write_text("# A program\n\nIt reads a setting.\n", encoding="utf-8")
+    (std / "naming.md").write_text(
+        "# Naming\n\nA function name MUST be a verb.\n", encoding="utf-8")
+    done = subprocess.run(  # noqa: S603
+        self_argv("analyze", str(tree), "--name", "p", "--output", str(out),
+                  "--standards", str(std)),
+        capture_output=True, text=True, timeout=600, check=False)
+    assert done.returncode == 0, done.stderr[-2000:]
+    needle = here.name.encode()
+    named = sorted(
+        p.relative_to(out).as_posix() for p in out.rglob("*")
+        if p.is_file() and needle in p.read_bytes())
+    assert named == ["p/analysis.json"], named

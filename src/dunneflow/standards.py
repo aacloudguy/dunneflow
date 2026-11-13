@@ -15,7 +15,7 @@ was minted from. A separate file means no existing consumer changes and nothing 
 It is `docsource.db`'s argument exactly: the same store, a different subject, its own file.
 
 **Rule 57, one directory further out.** That rule was paid for by two stale worktrees under
-`.claude/` putting 335 of Mensores' 2,381 documents into the map -- a second copy of the
+`.claude/` putting 335 of Lictores' 2,381 documents into the map -- a second copy of the
 project's governance documents, from before a rename the ground truth rests on. The walk
 learned to refuse a nested checkout. Admitting a root the reader *names* opens three more
 ways for a program to read itself as its own standard, and each is refused with its own

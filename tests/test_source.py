@@ -375,10 +375,10 @@ def test_a_revision_records_the_leaf_of_the_tree_it_was_read_from(tmp_path):
     travels with the map, and it survives a move.
     """
     s = SourceStore(tmp_path / "source.db")
-    rev = s.open_working(tree="society-2026-08-26")
+    rev = s.open_working(tree="comitia-2026-08-26")
     s.commit()
     rows = {r["revision"]: r for r in s.revisions()}
-    assert rows[rev]["tree"] == "society-2026-08-26"
+    assert rows[rev]["tree"] == "comitia-2026-08-26"
     s.close()
 
 
@@ -650,7 +650,7 @@ def test_analyze_lands_the_document_bodies_under_the_graphs_own_revision() -> No
 
     Without the adopt call the capture still writes every path row, under the right revision,
     and `revisions` stays empty; `resolve_revision(None)` then falls through to
-    `LEGACY_REVISION` and no read resolves. On Mensores that read *"2,056 bodies for 0
+    `LEGACY_REVISION` and no read resolves. On Lictores that read *"2,056 bodies for 0
     paths"* with all 2,064 rows present.
     """
     import re

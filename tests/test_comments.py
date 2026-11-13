@@ -1,7 +1,7 @@
 """Every comment reaches the store, and lands on something.
 
 Comments were collected per function -- the block above a definition, and everything
-inside its line span. Everything else was dropped: **9,659 of Mensores' 18,208 comments,
+inside its line span. Everything else was dropped: **9,659 of Lictores' 18,208 comments,
 53%**, because the synthetic `<module>` routine is created on demand and was never
 handed any. Whole files lost every comment they had, the `*_extras_schemas.py` modules
 worst of all, which are almost entirely module-level commentary.
@@ -186,7 +186,7 @@ def test_a_comment_is_not_mined_twice(facts):
 
     The triple, not the pair: one marker legitimately matches two detectors, because
     `ADR-0042` satisfies both the ADR rule and the general TICKET rule. That is known
-    and deliberate -- 574 such rows on Mensores -- and the traceability report
+    and deliberate -- 574 such rows on Lictores -- and the traceability report
     deduplicates on exactly the triple its shipped query selects. Asserting on
     `(value, line)` alone fails on that and says nothing about this fix.
     """
@@ -283,7 +283,7 @@ def test_a_tests_directory_is_still_excluded():
 def test_sphinx_doc_comment_marker_is_stripped_but_an_rst_role_is_not():
     """`#:` is syntax; `# :mod:` is text. The difference is whether it touches the hash.
 
-    Both shapes are live in Mensores -- 1,698 comments carry the marker and some of the
+    Both shapes are live in Lictores -- 1,698 comments carry the marker and some of the
     rest open with a reStructuredText role. A stripper that took any leading colon would
     read `:mod:` as a marker and shorten a value at ingest, which is rule 12's `<role>`
     lesson and rule 5's "a marker must sit at an edge".
@@ -292,7 +292,7 @@ def test_sphinx_doc_comment_marker_is_stripped_but_an_rst_role_is_not():
 
     src = (
         "#: Keychain service name. Matches the operator's item.\n"
-        "# :mod:`mensores._internal._sanitize`. The previous definition is gone.\n"
+        "# :mod:`lictores._internal._sanitize`. The previous definition is gone.\n"
         "#:\n"
         "#\n"
         "### banner ###\n"
@@ -300,7 +300,7 @@ def test_sphinx_doc_comment_marker_is_stripped_but_an_rst_role_is_not():
     )
     got = collect_comments(src)
     assert got[1] == "Keychain service name. Matches the operator's item."
-    assert got[2] == ":mod:`mensores._internal._sanitize`. The previous definition is gone."
+    assert got[2] == ":mod:`lictores._internal._sanitize`. The previous definition is gone."
     assert got[3] == ""          # a bare `#:` is an empty line, not a colon
     assert got[4] == ""
     assert got[5] == "banner ###"

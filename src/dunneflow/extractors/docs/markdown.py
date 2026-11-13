@@ -83,7 +83,7 @@ BACKTICK = re.compile(r"`([^`\n]{1,120})`")
 PATHLIKE = re.compile(
     r"\b[\w][\w./-]*\.(?:py|pyi|ts|tsx|js|jsx|md|rst|ya?ml|toml|json|sql|sh|rs|go|java|swift|c|h|cpp)\b"
 )
-# Only real HTML tags are markup. `<role>` in `mensores-<role>` is a placeholder in
+# Only real HTML tags are markup. `<role>` in `lictores-<role>` is a placeholder in
 # prose, and stripping it shortens a value before it reaches the store -- the one loss
 # rule 8 calls unrecoverable. The tag names are the ones documentation actually uses.
 _HTML_TAGS = (
@@ -108,8 +108,8 @@ def _text(raw: str) -> str:
 def _clean_term(cell: str) -> str:
     """The term a cell names.
 
-    When a cell bolds part of itself, the bold part is the term: `**signator** /
-    signatores` names `signator`, and `**disceptator** ✓ LOCKED` names `disceptator`.
+    When a cell bolds part of itself, the bold part is the term: `**cantator** /
+    cantatores` names `cantator`, and `**conciliator** ✓ LOCKED` names `conciliator`.
     """
     bold = re.search(r"\*\*([^*]+)\*\*", cell)
     term = bold.group(1) if bold else cell
@@ -310,7 +310,7 @@ class _Scanner:
                 # A heading is prose too, and it is where a plan document states which
                 # plan it is. Skipping it made the most canonical governance document
                 # of all -- one titled by its id and never repeating it in the body --
-                # contribute nothing to the traceability join. 58 real ids on Mensores
+                # contribute nothing to the traceability join. 58 real ids on Lictores
                 # were invisible for this reason. The detector is unchanged; only the
                 # lines it is offered are.
                 if has_annotation(head.text):
@@ -417,7 +417,7 @@ class _Scanner:
 
         **A naming standard is usually a table**, and nothing here could read one: `_table`
         consumes a table whole and the loop `continue`s, so the prose rule detector is never
-        offered its lines. Mensores states 5 rules in prose and **zero** in the FORM lane in
+        offered its lines. Lictores states 5 rules in prose and **zero** in the FORM lane in
         consequence -- while `harness/rules/style.md:30` states seven conventions as
         `Type | Convention | Example`, every row a class of identifier and the spelling it
         must have. `checkable` has therefore never once been true, and the whole point of
@@ -496,7 +496,7 @@ class _Scanner:
             return
         m = BOLD_ALONE.match(line)
         if m:
-            # `**mensor** *(noun)*` on its own line: the definition is what follows.
+            # `**lictor** *(noun)*` on its own line: the definition is what follows.
             para: list[str] = []
             k = lineno
             while k < len(self.lines) and self.lines[k].strip() and not self.mask[k]:

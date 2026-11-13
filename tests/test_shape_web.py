@@ -104,7 +104,7 @@ def test_every_lane_is_served_in_its_declared_order(body):
 
 
 def test_a_lane_with_nothing_in_it_is_still_a_lane(body):
-    """Society has no `match` at all, and this program has none either.
+    """Comitia has no `match` at all, and this program has none either.
 
     Design rule 21: absent and empty are different answers, and the empty one has a
     denominator to state — *these many decisions were measured and not one is a match*.
@@ -236,7 +236,7 @@ def test_a_moving_thing_is_drawn_once_and_at_its_innermost_span(store):
     Repeating it at every enclosing level would draw one act four times, and make a rate
     look like a rate of four. Drawing the boundary row and the SQL row as two acts does
     the same thing on one line -- an `INSERT` is a `DATABASE` row and a `SQL` row, the
-    same statement described at two altitudes, and 569 of Society's 991 SQL operations
+    same statement described at two altitudes, and 569 of Comitia's 991 SQL operations
     are one of these pairs.
     """
     body = webshape.outline_for(store, _rid(store, "nested"))

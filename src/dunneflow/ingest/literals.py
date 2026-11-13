@@ -41,7 +41,7 @@ bound and stays inside `_sql`, where a three-character artefact name cannot trip
 filter that runs in a process the host cannot look inside is exactly the silent one design
 rule 1 forbids.
 
-*Measured on Society before the floor was set, because the obvious reason for it is not the
+*Measured on Comitia before the floor was set, because the obvious reason for it is not the
 true one.* 46,524 strings; the floor at three drops **4,022** of them and the payload is
 26.5 MB. Taking six instead -- the bound `_scan_sql` has always applied, and the number the
 plan named -- would drop a further 6,861 and save **0.43 MB, 1.6%**. So the floor is not
@@ -78,7 +78,7 @@ _ARTEFACT_NAME = re.compile(r"^[A-Za-z0-9_*?\[\]][A-Za-z0-9_.*?\[\]-]*\.[A-Za-z0
 # at all -- `x.y`, a one-character stem and a one-character extension, both of which a
 # `detectors/<lang>.yaml` may legitimately declare. Six is `_sql`'s and is applied in
 # `_sql`. Taking six for both would be a bound written for one question quietly deciding
-# another, which is how a filter hides (rule 49): on Society it happens to cost nothing,
+# another, which is how a filter hides (rule 49): on Comitia it happens to cost nothing,
 # because the shortest artefact literal there is seven characters -- and "it costs nothing
 # on this corpus" is not the same claim as "it cannot cost anything". The difference
 # between three and six is 6,861 strings and 1.6% of the payload; see the docstring.
@@ -133,7 +133,7 @@ class _Judge:
         this split that was true by accident: whichever fact asked the reader who owned it
         did the minting, so a file with nothing at module level got no such routine because
         nothing had asked. A string has to name an owner *before* anybody knows whether it
-        is a fact, so asking there minted 65 of Society's 628 -- routines owning nothing,
+        is a fact, so asking there minted 65 of Comitia's 628 -- routines owning nothing,
         inflating every routine count in the map by 1.3%, decided by whether a string
         cleared a bound that exists to save wire (rule 96, and rule 49: the filter that hides
         is the one whose effect looks like an ordinary number).
@@ -155,11 +155,11 @@ class _Judge:
 
         Precision is bought entirely by the extension list in `detectors/*.yaml`
         (rule 5): a trailing dotted part is not a file extension, or `"1.2.3"`,
-        `"utf-8"` and `"mensores.cli"` would all read as named files. Everything
+        `"utf-8"` and `"lictores.cli"` would all read as named files. Everything
         else here is a guard against reading prose as a path.
 
         The literal is recorded whole (rule 8). The basename is what gets matched,
-        because `.mensores/tabularium.db` and `tabularium.db` name the same file.
+        because `.lictores/vestiarium.db` and `vestiarium.db` name the same file.
         """
         raw = lit.text.strip()
         if not raw or len(raw) > _ARTEFACT_MAX or any(ch.isspace() for ch in raw):

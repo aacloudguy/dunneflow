@@ -45,7 +45,7 @@ def _esc(text: str | None) -> str:
 # every one of them had nothing left to strip.
 #
 # They were removed rather than left as harmless no-ops, because they were not harmless:
-# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# `Path("lictores/cli.py").resolve()` resolves against the *working directory*, so run from
 # anywhere inside the analysed tree the strip would succeed and silently prepend the
 # intervening directories to every path on the page.
 
@@ -255,7 +255,7 @@ def _headlines(t: Traceability) -> list[str]:
     # crashed here rather than saying so. A program that cites no governance id in any
     # comment is not exotic: it is every program that has not adopted this discipline, which
     # is most of them. Found by pointing the tool at a four-file fixture, which is the first
-    # thing it has ever been given that had none; Mensores has 593 and could never reach it.
+    # thing it has ever been given that had none; Lictores has 593 and could never reach it.
     #
     # Stated as an absence rather than filled with a plausible 0% (rule 49): "no ids are
     # cited in code" and "none of the ids cited in code are documented" are opposite

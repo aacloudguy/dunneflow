@@ -1,13 +1,13 @@
 """Which documents have anything to do with the thing on screen.
 
-Tom selected `signator.__main__`, pressed Document, and got a document about PAUL style
+Tom selected `cantator.__main__`, pressed Document, and got a document about PAUL style
 rules — opened twenty minutes earlier from a naming citation and never put away. Document
 mode was a *place*, and the mode toggle's own sentence is *"five ways of reading one
 selection"*.
 
 Two properties matter, and the second is the one measurement forced.
 
-**A node with nothing to relate says so.** 59% of Mensores' routines carry no governance id
+**A node with nothing to relate says so.** 59% of Lictores' routines carry no governance id
 at all, so it is the common case; an empty list with no sentence reads as *"nothing was
 found"* rather than *"there is nothing to find"* (design rule 21).
 

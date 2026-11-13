@@ -6,8 +6,8 @@ calls it and what the project says the word means. What none of them can find is
 `emit` inside a comment, inside a string literal, or on a line that carries neither. That
 is what this is for, and it is why it cannot be assembled out of the existing queries.
 
-**Files first, then lines, and that decides everything else here.** A search for `quaestor`
-on Mensores matches 782 lines in 166 files; a search for `e` matches 133,454 lines in all
+**Files first, then lines, and that decides everything else here.** A search for `tribunus`
+on Lictores matches 782 lines in 166 files; a search for `e` matches 133,454 lines in all
 626. One flat list of hits is the haystack again -- rule 45's second half, which says the
 bound is a better *answer* and not only a cheaper one. So there are two endpoints:
 
@@ -26,7 +26,7 @@ Both are built from `web/code.py` as it stands -- `_link_spans`, `_margin`,
 agrees with the first until the day one of them is edited, and a margin that disagreed with
 the code browser's for the same line would be two answers to one question.
 
-**Cost, measured on Mensores before any of this was designed.** Inflating all 626 blobs is
+**Cost, measured on Lictores before any of this was designed.** Inflating all 626 blobs is
 86 ms and happens once per session; a case-insensitive scan of all 184,722 lines is 20-30
 ms, and a regex is 83 ms. Rule 45's fear does not land on the scan -- the whole program is
 7.8 MB of text, and reading it is cheap. It lands entirely on what is done with the answer.
@@ -155,7 +155,7 @@ def search_files(store: Store, source: SourceStore | None, q: str, *,
         })
 
     # Most matches first, then by path. A reader searching a word wants the file that is
-    # *about* it, and on Mensores that is the file the count puts at the top -- the same
+    # *about* it, and on Lictores that is the file the count puts at the top -- the same
     # ranking the routine list gives packages, and for the same reason.
     rows.sort(key=lambda r: (-int(r["n"]), str(r["path"])))
 

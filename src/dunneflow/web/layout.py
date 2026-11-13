@@ -32,7 +32,7 @@ being true (rule 51).
 
 **What is left over is the measurement.** A crossing that stays diagonal is one two plates
 each want somewhere different, and no arrangement satisfies both -- the worst-aligned entity
-on Mensores has *two* shadows, not thirty-nine, so it is tension rather than fan-out. The
+on Lictores has *two* shadows, not thirty-nine, so it is tension rather than fan-out. The
 count is stated above the picture and the per-node case on the hover card. Numbers, and the
 trade against within-plate crossings, in `PERFORMANCE.md`.
 
@@ -66,7 +66,7 @@ equal quality. WGSL may fuse a multiply-add where the source says two operations
 force layout is chaotic enough that one last-bit difference is a visibly different picture
 a hundred iterations later -- this was tried, with every JS operation forced through
 `Math.fround`, and 1.15% of coordinates matched. So what is asserted is equivalence, and
-it holds tightly: measured over Mensores, the two backends land every plate within 0.07%
+it holds tightly: measured over Lictores, the two backends land every plate within 0.07%
 of the same radius and cut edge crossings by the same 91.7%. The page says which one drew
 it (design rule 1).
 """
@@ -90,7 +90,7 @@ GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
 # note is rewritten rather than left standing beside code that contradicts it. At one width
 # a plate of 991 and a plate of 6 are a solid mass and a sparse ring, so a reader has to
 # compare two textures to learn a number the picture could simply have shown them; on
-# Mensores 25 of 53 plates hold under a hundred things and every one of them wasted the
+# Lictores 25 of 53 plates hold under a hundred things and every one of them wasted the
 # full footprint of the largest. Area says it, and it is the channel that was going spare.
 #
 # The sizing itself is **not here**, and that is deliberate. `phyllotaxis` is radially
@@ -158,7 +158,7 @@ def structural(model: GraphModel) -> dict[tuple[str, str], tuple[float, float, f
     nodes and shadows in a single spiral ordered by degree, which sounds even and is not:
     the two kinds segregate by degree, so the drawn nodes come out in contiguous runs and
     inherit the spacing of *all* the placed points rather than their own. Measured on
-    Society, `ext:<small outside>` drew its six nodes from slots 0-2 and 32-34 of 42 -- two
+    Comitia, `ext:<small outside>` drew its six nodes from slots 0-2 and 32-34 of 42 -- two
     blobs, not six dots -- and `ext:FILE` drew 151 in one unbroken block of 788. A plate
     sized for what it draws and packed with five times that many points cannot separate its
     dots at any node size, which is the whole of why they overlapped.

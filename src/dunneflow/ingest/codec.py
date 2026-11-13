@@ -187,7 +187,7 @@ def _refuse_unsupported(hint: Any, where: str) -> None:
 def encode(obj: Any) -> dict[str, Any]:
     """One dataclass as a JSON-ready dict, omitting every field left at its default.
 
-    The omission is not a micro-optimisation: Society yields 43,926 `CallArg`s, and each
+    The omission is not a micro-optimisation: Comitia yields 43,926 `CallArg`s, and each
     one carrying `"splat": false` and `"keyword": null` is most of the payload. It is also
     what makes the wire readable when somebody has to look at it.
     """

@@ -46,7 +46,7 @@ boundaries:
     salience: high
     # **Not `replace`**, which is rule 5's own example: `str.replace` is everywhere and
     # `Path.replace` almost nowhere. As a bare method it made 175 FILE boundaries in
-    # Society, most of them `datetime.now().isoformat().replace(...)` and `text.replace`.
+    # Comitia, most of them `datetime.now().isoformat().replace(...)` and `text.replace`.
     # `Path(p).replace(q)` is still seen, through the fold (`ingest/dotted.py` clause 2);
     # `tmp.replace(target)` on a name holding a Path is not, and that is rule 1's price.
     method: [write_text, write_bytes, mkdir, touch, unlink, rmdir, rename, chmod]
@@ -356,14 +356,14 @@ cli:
 
 # -- named artefacts ---------------------------------------------------------- #
 #
-# A file the program names in a string literal: `"tabularium.db"`, `"groma.json"`,
+# A file the program names in a string literal: `"vestiarium.db"`, `"groma.json"`,
 # `"STATUSQUO.md"`. These are naming acts -- a person chose that word -- and they are
 # vocabulary as much as a package name is, but they reach no other detector: a path
-# assembled as `root / ".mensores" / "tabularium.db"` is not a boundary target, not a
+# assembled as `root / ".lictores" / "vestiarium.db"` is not a boundary target, not a
 # table, and not a module.
 #
 # Only an extension listed here admits a literal, which is what keeps this precise
-# (rule 5). `"1.2.3"`, `"utf-8"` and `"mensores.cli"` all have a trailing dotted part
+# (rule 5). `"1.2.3"`, `"utf-8"` and `"lictores.cli"` all have a trailing dotted part
 # and none of them is a file; requiring a known extension is the whole defence.
 # Adding a language or a format is an edit here, not a code change.
 #
@@ -387,7 +387,7 @@ artefacts:
 # `QueueState = Literal["pending", "adjudicating", "emitted", "rejected", "skipped"]`
 # is an enumerated vocabulary declared without the word `enum`. `StructureKind.TYPE_ALIAS`
 # existed in the schema from the start and nothing ever produced one, because only a
-# `class` statement became a structure. 83 of these on Mensores, 67 of them `Literal`.
+# `class` statement became a structure. 83 of these on Lictores, 67 of them `Literal`.
 #
 # A module-level assignment is a type alias only when its value is subscripted from a
 # constructor named here, or is a call to one of the factories. That list is the whole

@@ -14,7 +14,7 @@ longer the ceiling, and a reader who has to open the source to see the number th
 here for was not helped.
 
 **The comment beside a constant is its WHY, and it leads.** A named value without its
-reason is a number. `MENSORES_DIRNAME: Final[str] = ".mensores"` says what; the comment
+reason is a number. `LICTORES_DIRNAME: Final[str] = ".lictores"` says what; the comment
 above it says why it may not change. Those comments belong to the module scope too --
 they are shown in both places, because a comment belongs against the thing it explains.
 """
@@ -42,7 +42,7 @@ def _esc(text: str | None) -> str:
 # every one of them had nothing left to strip.
 #
 # They were removed rather than left as harmless no-ops, because they were not harmless:
-# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# `Path("lictores/cli.py").resolve()` resolves against the *working directory*, so run from
 # anywhere inside the analysed tree the strip would succeed and silently prepend the
 # intervening directories to every path on the page.
 

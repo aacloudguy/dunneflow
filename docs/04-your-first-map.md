@@ -182,7 +182,7 @@ finished map of a program with no internal calls in it. So DunneFlow records whe
 own analysis finished, and every reader that vouches for a map checks:
 
 ```
-error: society was never finished: an analysis stopped while reading the documents.
+error: comitia was never finished: an analysis stopped while reading the documents.
 What it holds is part of a program, not a program. Analysing it again completes it —
 the extraction is cached, so it takes seconds rather than the whole run.
 ```

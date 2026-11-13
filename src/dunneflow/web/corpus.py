@@ -3,7 +3,7 @@
 **Lane 1 of Document mode, and `documents.py` is lane 2 -- a close name for a different
 subject, so it is worth being blunt about which is which.** This reads the documents
 *somebody wrote* and the scan found beside the source: 2,064 Markdown and text files on
-Mensores, mined into `docs.db` for 29,980 headings and 230 definitions and, until this
+Lictores, mined into `docs.db` for 29,980 headings and 230 definitions and, until this
 module, readable nowhere in the tool. `documents.py` builds **the map's** eight documents
 out of the graph -- prose this tool generates about the program. Neither is the other's
 renderer, and neither can be built from the other's rows.
@@ -83,7 +83,7 @@ def serving(bodies: SourceStore | None, revision: str | None, *,
     **The whole of this function is one `None` that means two things.** `_sidecar_revision`
     returns `None` for "this sidecar cannot serve the version on screen"; every store here
     reads `revision=None` as "the current one" and resolves it to the newest snapshot. The
-    two met, and the newer meaning won: serving Mensores' 2026-08-26 graph, whose document
+    two met, and the newer meaning won: serving Lictores' 2026-08-26 graph, whose document
     bodies were never captured, listed all 2,041 of its documents as openable and served
     the **2026-08-29** prose under them -- every heading's line number landing wherever the
     text had since moved. Rule 70, one corpus over from where it was first paid for, and

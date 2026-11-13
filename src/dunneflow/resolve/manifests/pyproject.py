@@ -61,7 +61,7 @@ def read(text: str, path: Path, where: str) -> ManifestReading | None:
         version = ProgramVersion(raw.strip(), Provenance.DECLARED_CODE, where)
     elif isinstance(project.get("dynamic"), list) and "version" in project["dynamic"]:
         # **A declared absence, and it earns its own sentence.** `dynamic = ["version"]`
-        # says the version is computed at build time -- by `hatch-vcs`, in Society's case,
+        # says the version is computed at build time -- by `hatch-vcs`, in Comitia's case,
         # out of a git tag this tool will never ask for. Falling silently through to the
         # directory-name guess is the right *answer* and the wrong *silence*: the reader
         # then sees an INFERRED version with no hint that the program did state something

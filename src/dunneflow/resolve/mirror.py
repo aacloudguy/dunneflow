@@ -10,15 +10,15 @@ and neither is visible from either store alone.
 Two things had to be got right before the query was worth running, and both were found
 by checking the first finding rather than reporting it.
 
-**`tabularium` was not drift.** It is glossed in Mensores' pantheon table and appeared
+**`vestiarium` was not drift.** It is glossed in Lictores' rollcall table and appeared
 in the glossary nowhere, which read as a term the program had abandoned. It is in fact
-the most-named artefact in the program -- `tabularium.db`, 52 references across 25
+the most-named artefact in the program -- `vestiarium.db`, 52 references across 25
 files -- and DunneFlow could not see it because it recorded no file the program names.
-A path assembled as `root / ".mensores" / "tabularium.db"` is not a module, not a
+A path assembled as `root / ".lictores" / "vestiarium.db"` is not a module, not a
 table, and not a boundary target: only the parts are literals. `schema.Artefact` exists
 because of this one word, and the answer to "is this term used?" is now a fifth surface.
 
-**A term is not used or unused; it has a standing.** `tabularium` names a database.
+**A term is not used or unused; it has a standing.** `vestiarium` names a database.
 `term_name` is a parameter and nothing else. `SARIF` appears only in a sentence about a
 format the program does not emit. `Frozenset discipline` appears nowhere at all. Four
 bands, each stating what would make a placement in it wrong -- the same register as the
@@ -26,10 +26,10 @@ traceability report, for the same reason.
 
 **And the admission rule is the report.** Run forwards, the join to code filtered the
 definition extractor's over-reach for free: a heading admitted as a term simply matched
-nothing and was never seen. Run backwards there is no such filter, and 87 of Mensores'
+nothing and was never seen. Run backwards there is no such filter, and 87 of Lictores'
 213 definitions are not terms -- test names, code fragments, numbered headings,
 sentences. Reporting them as vocabulary the program ignores would be a finding about
-DunneFlow wearing a finding about Mensores. So they are excluded here, by a rule stated
+DunneFlow wearing a finding about Lictores. So they are excluded here, by a rule stated
 on the page, counted, and listed whole (rule 8): the reader can see exactly what was
 set aside and argue with the line.
 
@@ -56,9 +56,9 @@ from . import languages
 # Admission: what counts as a term at all
 # --------------------------------------------------------------------------- #
 
-# A term is at most this many words. `Society of Mensores` is vocabulary; `Files likely
+# A term is at most this many words. `Comitia of Lictores` is vocabulary; `Files likely
 # modified` is a heading that the definition extractor read as one. Three is where the
-# corpus separates -- every 4-or-more-word entry on Mensores is a sentence, and the
+# corpus separates -- every 4-or-more-word entry on Lictores is a sentence, and the
 # 2-and-3-word entries include `Audit event`, `Decision graph` and `Reader tier`, all of
 # which the program genuinely does or does not use.
 MAX_TERM_WORDS = 3
@@ -140,7 +140,7 @@ def name_keys(name: str) -> set[str]:
 
     Contiguous runs only, and still identity rather than containment -- `aggregate` has
     no word boundary in it and yields one key, never `gate`. Measured before it was
-    added: on Mensores it moves exactly one term, `tool_status`, onto three constants
+    added: on Lictores it moves exactly one term, `tool_status`, onto three constants
     that genuinely name it, and produces no false placement at all.
     """
     parts = [p for p in _WORDS.split(name) if p]
@@ -422,7 +422,7 @@ def _index_code(store: Store) -> dict[str, list[Sighting]]:
     """Every word the program uses as a name, keyed by identity.
 
     Five naming surfaces and three bearing ones. The artefact surface is the one this
-    report was built for: without it `tabularium` reads as a word Mensores defined and
+    report was built for: without it `vestiarium` reads as a word Lictores defined and
     abandoned, when it is the name of the database the whole program writes to.
     """
     index: dict[str, list[Sighting]] = defaultdict(list)
@@ -435,7 +435,7 @@ def _index_code(store: Store) -> dict[str, list[Sighting]]:
             return
         # A one-word stem is indexed as the whole stem and as its only word, and a
         # module part can equal its module. The same code name sighted twice on the
-        # same surface is one sighting; two files naming `tabularium.db` are two.
+        # same surface is one sighting; two files naming `vestiarium.db` are two.
         if (k, surface, name, where) in seen:
             return
         seen.add((k, surface, name, where))
@@ -444,7 +444,7 @@ def _index_code(store: Store) -> dict[str, list[Sighting]]:
     def note_words(word: str, surface: str, name: str, where: str) -> None:
         """A compound name, indexed under every word-run a person joined to make it.
 
-        `disceptator_handle` carries `disceptator` as surely as `bootstrap-config.json`
+        `conciliator_handle` carries `conciliator` as surely as `bootstrap-config.json`
         carries `config`, and `TOOL_STATUS_RAN` carries `tool status`. Splitting a name
         someone wrote is not substring matching: `aggregate` has no boundary in it and
         yields only itself, never `gate`, which is what keeps rule 5 intact.

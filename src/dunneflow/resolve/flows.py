@@ -267,7 +267,7 @@ def app_command_routines(store: Store, app_id: str, seen: set[str] | None = None
     # and a readable one. Neither query had one, and the map never showed it: `ways_in`
     # takes `len(roots)` and `reachable_from_many` takes a set, so the list's order reached
     # no document — the *dashboard* sends the list itself, as `nodes` on every row of the
-    # cover, and Society's 107 ids came back arranged differently between two readings of
+    # cover, and Comitia's 107 ids came back arranged differently between two readings of
     # one map. `routine_id` and `child_id` last, because two commands can share a name.
     out = [
         r["routine_id"]
@@ -364,7 +364,7 @@ def ways_in(store: Store) -> list[dict]:
                         "" if roots else binding_note(store, e.id).sentence),
                 "overriders": bool(overriders),
                 # **The app object, when this way in is a command tree rather than a
-                # routine.** `mensores` names `mensores.cli:app` -- a Typer object, which
+                # routine.** `lictores` names `lictores.cli:app` -- a Typer object, which
                 # is not a routine and has no file to open -- and expands here to the 107
                 # commands hung off it. Carried rather than left to be guessed from
                 # `len(roots) > 1`, because "this is a tree" and "this happens to start
@@ -381,7 +381,7 @@ def ways_in(store: Store) -> list[dict]:
 
     # Ranked by reach, **and ties broken by name and kind** (rule 66). Two ways in
     # commanding the same number of routines is the ordinary case, not the exotic one:
-    # Society has two `main` entries reaching 17 and 2, and a `README.md` that listed them
+    # Comitia has two `main` entries reaching 17 and 2, and a `README.md` that listed them
     # in a different order every run was how this whole defect first showed itself.
     out = sorted(best.values(), key=lambda d: (-d["reach"], d["name"], d["kind"],
                                                d["evidence"]))

@@ -33,7 +33,7 @@
  * finding's position in the served list while both of its declarations said `finding id ->`,
  * and findings are served sorted by count -- so a count that moved, a detector that was
  * added, or a base switch landed every saved decision on a different finding. Measured on
- * Mensores' pair: a decision filed against `siq__rebuild_87_02h` read back after a switch as
+ * Lictores' pair: a decision filed against `siq__rebuild_87_02h` read back after a switch as
  * an acknowledgement of `tags`, silently. An index-keyed blob read as ident-keyed is a
  * *wrong* answer, not an absent one, so it may not merge.
  *
@@ -99,14 +99,14 @@ const DEFAULTS = {
   /* Which altitude the stack is drawn at, and how small a plate may be before it is
    * merged into `<small>`.
    *
-   * `routine` is every thing the program declares -- 10,015 nodes on Mensores. `module`
+   * `routine` is every thing the program declares -- 10,015 nodes on Lictores. `module`
    * folds each file into one node and each boundary kind into one: 578. It is a second way
    * to look at the same facts and not a filter, so nothing is dropped and every folded
    * node says what it stands for.
    *
    * `minDisk` is per level for the same reason the server's default is (design rule 2, and
    * `graph.py` states the arithmetic): what a plate *holds* changes with the level, so 8
-   * is right for routines and folds 21 of Mensores' 45 packages away at module level. Null
+   * is right for routines and folds 21 of Lictores' 45 packages away at module level. Null
    * means "whatever the server's default for this level is", which is a third state and
    * not a number -- a stored 8 would silently become an explicit choice about a level the
    * reader had never visited. */
@@ -146,7 +146,7 @@ const DEFAULTS = {
    * a plate of 6 nodes and a plate of 991 at one width are a sparse ring and a solid
    * mass, and the reader has to compare two textures to learn a number. Area says it.
    *
-   * **Per level**, because it is a question about two pictures. Mensores' routine level
+   * **Per level**, because it is a question about two pictures. Lictores' routine level
    * spans 12.85x from largest plate to smallest and its module level 5.32x, so full
    * strength is a far more dramatic silhouette at one altitude than at the other and the
    * judgment does not carry across. The same argument `minDisk` and `diskOrder` make. */
@@ -158,7 +158,7 @@ const DEFAULTS = {
    * which nodes are connected, so edges cross it at every angle. `force` runs
    * Fruchterman–Reingold over each plate until connected things sit near each other,
    * shadows pulling for the plates they stand in for, which is the reason a shadow exists
-   * (rule 23). Measured on Mensores' busiest plate: 328,531 crossings down to 27,291,
+   * (rule 23). Measured on Lictores' busiest plate: 328,531 crossings down to 27,291,
    * **91.7% fewer**.
    *
    * `structural` is the default because it is the one that costs nothing and because
@@ -238,7 +238,7 @@ const DEFAULTS = {
    * because the two boxes answer different questions and a reader hunting a name literally
    * while grepping the source by pattern is an ordinary thing to be doing. One switch
    * governing both would make that unreachable (design rule 2's reasoning, inverted). */
-  navCase: false,            // `Quaestor` and `quaestor` are different names
+  navCase: false,            // `Tribunus` and `tribunus` are different names
   navWord: false,            // `emit`, not `_emit_all`
   navRegex: false,           // and then whole-word is off: a pattern writes its own \b
   diagramCursor: 'arrow',    // 'arrow' | 'crosshair' | 'hand'
@@ -322,7 +322,7 @@ const DEFAULTS = {
   /* How many routines a package lists before the rest are left to the table.
    *
    * 200 was a judgment about `render()`, which rebuilds the navigator on every keystroke,
-   * and it turned out to be a tease: most of Mensores' packages hold 200-400, so the notice
+   * and it turned out to be a tease: most of Lictores' packages hold 200-400, so the notice
    * read `200 of 377` and `200 of 357` over lists that were nearly whole. The reader's
    * machine and the reader's patience are theirs to spend, so this is a Setting, and `0`
    * means all of them -- a long pane being a thing someone may legitimately want.
@@ -379,7 +379,7 @@ const DEFAULTS = {
   docPath: '',
   /* Whether a document's author comments -- HTML comments, hidden by whoever wrote them --
      are shown. Off: `html:false` escapes them into visible prose, and 7,317 of them across
-     505 of Mensores' documents would read as body text. Folded, never dropped, and counted
+     505 of Lictores' documents would read as body text. Folded, never dropped, and counted
      on the page (design rule 1). */
   docComments: false,
   /* The same question asked of the routine list and the table: do these rows say what the
@@ -421,7 +421,7 @@ const DEFAULTS = {
    * On, because a bar is how a ranked list says *how far ahead* the top one is, which the
    * numbers alone make a reader compute. Off reclaims the column for the **name**, and on a
    * narrow centre pane that is not a small difference: measured at a 315px row, the bar took
-   * **104px of it** and the name was left 29px -- `mensores-signator` drawn as `me...r`.
+   * **104px of it** and the name was left 29px -- `lictores-cantator` drawn as `me...r`.
    * Design rule 2: two genuinely different readings of one list, so both exist. */
   coverBars: true,
   /* Whether a way-in row drops its tags to a second line **when the name will not fit
@@ -691,9 +691,9 @@ const DEFAULTS = {
    * unaffected: it scopes egress, and there is now none to scope. */
   triage: {},             // finding id -> 'ack' | 'notbug' | 'tooldefect'
   /* Words the reader put back into the glossary's worklist by hand, lowercased.
-     889 of Society's words occur only inside a compound constant name -- `CHARS` is the
+     889 of Comitia's words occur only inside a compound constant name -- `CHARS` is the
      unit on somebody else's constant -- and holding them back is what makes the worklist
-     readable. But the split cannot tell `MENSORES_MAX_LEN`'s subject from its unit, and
+     readable. But the split cannot tell `LICTORES_MAX_LEN`'s subject from its unit, and
      that word may occur nowhere else in the program: only a person can say which is
      which, so the judgement is offered back rather than kept. Tom, 2026-09-08.
 
@@ -724,7 +724,7 @@ function freshDefaults() {
  * evidence it read -- rule 20 exactly, and the cost of being wrong is asymmetric: the
  * saving is a few kilobytes, and the loss is every arrangement a reader has made, gone the
  * moment they run an older build. Orphaned blobs are the cheaper mistake, and they are why
- * `dunneflow:mensores:v1` through `v3` are still readable on a machine that has had this
+ * `dunneflow:lictores:v1` through `v3` are still readable on a machine that has had this
  * dashboard since the first bump.
  *
  * Only the version immediately below, and only when it is named: a v2 blob is not

@@ -8,7 +8,7 @@ three of them are about a program directory being a thing someone can *hand over
 * it breaks outright when a program directory is copied to another machine;
 * and -- worst here -- two revisions read from two different trees give the same file two
   unrelated keys, so nothing can pair a file with itself across two points in time. On
-  Mensores that read as **0 identical, 628 added, 625 removed** where the truth is 613
+  Lictores that read as **0 identical, 628 added, 625 removed** where the truth is 613
   identical, 12 modified, 3 added, 0 removed. The one question two revisions exist to ask
   could not be asked.
 
@@ -153,7 +153,7 @@ def migration_speaks_for(conn: sqlite3.Connection, previous: str) -> bool:
     standing where the real one should be, and it cost nothing until somebody kept an old
     map. Three of the four program directories in this project's own `output/` were in
     exactly that state on 2026-09-08: `beads` (extractor unrecorded, schema 1),
-    `dunneflow` and `mensores@2026-08-29T19-43-39Z` (both `5:...`, neither the gated
+    `dunneflow` and `lictores@2026-08-29T19-43-39Z` (both `5:...`, neither the gated
     value). Every one of them was told to migrate; every one of them, run, was refused.
 
     **The fingerprint and not the root.** `_migrate_one` has a second refusal -- a store
@@ -218,7 +218,7 @@ def _strip(conn: sqlite3.Connection, tbl: str, col: str, root: str) -> tuple[int
     defect -- a number that does not say what it counted.
 
     A path that is already relative is left untouched: this migration runs once, and a
-    second pass must not treat `mensores/cli.py` as something to make relative again.
+    second pass must not treat `lictores/cli.py` as something to make relative again.
 
     The **absolute** test is `LIKE '/%'` and stays that way. Every store this migration is
     allowed to speak for was written by one named build, on macOS, and holds POSIX absolute

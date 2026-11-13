@@ -1,6 +1,6 @@
 """Resolving the command tree.
 
-A console script names an object, not a function: `mensores = "mensores.cli:app"`. That
+A console script names an object, not a function: `lictores = "lictores.cli:app"`. That
 object is a Typer application, usually re-exported through a package `__init__`, with
 commands attached by decorator and whole sub-applications mounted onto it.
 
@@ -178,7 +178,7 @@ def resolve_cli(store: Store) -> CliStats:
     # `evidence.rsplit("= ", 1)[-1]` -- parsing a sentence written for a person to get
     # back a value that was in hand when the sentence was built, out of the one string
     # `web/waysin.py` renders verbatim (rule 30). `declared` says which rows these are
-    # and `target_expr` carries `mensores.cli:app` as itself.
+    # and `target_expr` carries `lictores.cli:app` as itself.
     #
     # `target_expr <> ''` is not redundant with `declared`: a Cargo `[[bin]]` and a
     # `package.json` `bin` are declared too, and neither names a Python app object.
@@ -218,7 +218,7 @@ def resolve_cli(store: Store) -> CliStats:
     # eight. That is the same collapsed-tree misreading the note above was written to
     # prevent, and it cost this session its first finding, which was wrong.
     #
-    # Console-script declarations are excluded from both: `mensores = "...:app"` is the
+    # Console-script declarations are excluded from both: `lictores = "...:app"` is the
     # executable, not one of its commands, and counting it inflates the total by one
     # per entry point.
     counted = (

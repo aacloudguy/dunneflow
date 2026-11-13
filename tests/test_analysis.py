@@ -479,7 +479,7 @@ def test_a_report_that_says_nothing_new_does_not_reset_the_silence() -> None:
 
     A `moved` bumped on every identical report would say a run was moving because somebody
     was watching it -- and *silent for 4 minutes* is the only thing that separates a wedged
-    child from a long step. Resolution on the Society tree is legitimately quiet for tens of
+    child from a long step. Resolution on the Comitia tree is legitimately quiet for tens of
     seconds, which is why this is stated to the reader rather than acted on by the server.
     """
     lv = serve_mod._Live.__new__(serve_mod._Live)
@@ -560,7 +560,7 @@ def test_the_pre_flight_is_one_function_for_the_field_and_the_button() -> None:
 #
 # **Rule 80**, and the finding that reframed this whole chunk. A killed `analyze` leaves a
 # graph that **opens
-# perfectly and lies**: one stopped twelve seconds into the Society tree reported 628 files,
+# perfectly and lies**: one stopped twelve seconds into the Comitia tree reported 628 files,
 # 4,786 routines and `resolved_calls = 0` -- a program that calls nothing -- over a
 # timestamp, a tool version and chunk 2's determinism guarantee. Reachable with no stop
 # button anywhere: Ctrl-C, a laptop that slept, an OOM kill, a full disk.

@@ -6,7 +6,7 @@ with the routines it lands on. `resolve/flows.py` finds them; this says what the
 
 **Two questions the cover could not answer, and Tom asked both.**
 
-*"Are these packages, modules, or applications?"* Mensores' fourteen are four different
+*"Are these packages, modules, or applications?"* Lictores' fourteen are four different
 kinds under two different authorities: four **declared executables** read out of
 `pyproject.toml [project.scripts]`, one **HTTP route** started by a request, and nine
 **guesses** -- a module-level function DunneFlow recognised by its name, or a `__main__`
@@ -17,11 +17,11 @@ tool's own extractor and it *is* the answer, and parsing it into a tidier field 
 promote a sentence to a contract for no gain (rule 30).
 
 *"When I click on them and select Code, I would expect to see the file."* For a way in that
-starts one routine, that already worked. For `mensores` it could not: the name means
-`mensores.cli:app`, which is a **Typer object** -- not a routine, with no file to open -- and
+starts one routine, that already worked. For `lictores` it could not: the name means
+`lictores.cli:app`, which is a **Typer object** -- not a routine, with no file to open -- and
 it expands to **107 commands across 44 files**. Clicking selected all 107 and the pane opened
-whichever the query returned first: `mensores.cli.examples.list_cmd` from one query,
-`mensores/cli/_root.py` from another. Not wrong so much as arbitrary, and unexplained.
+whichever the query returned first: `lictores.cli.examples.list_cmd` from one query,
+`lictores/cli/_root.py` from another. Not wrong so much as arbitrary, and unexplained.
 
 So a way in with an `app_id` is a **command tree**, and `describe` returns the tree: the
 sub-applications mounted on it and the commands hung off it, each one an ordinary selection.
@@ -118,8 +118,8 @@ def listing(store: Store) -> list[dict[str, Any]]:
             # Drawing them the same way is what made fourteen rows unreadable.
             "declared": bool(w["declared"]),
             # Verbatim, and unparsed on purpose. It is this tool's own sentence and it says
-            # exactly what was found -- `pyproject.toml [project.scripts] mensores =
-            # mensores.cli:app`, or `conventional name 'run' at module level`.
+            # exactly what was found -- `pyproject.toml [project.scripts] lictores =
+            # lictores.cli:app`, or `conventional name 'run' at module level`.
             "evidence": w["evidence"],
             # **Bound, and why not** -- the third state a way in has (design rule 21).
             # A declared way in whose target this build cannot read is a real front door
@@ -166,7 +166,7 @@ def _descendants(store: Store, app_id: str) -> set[str]:
 
 
 def _mount_name(store: Store, child_id: str) -> str:
-    """The name a sub-application is mounted under -- `quaestor`, not its object id.
+    """The name a sub-application is mounted under -- `tribunus`, not its object id.
 
     **The earliest mount, taken rather than assumed unique**, which is exactly what
     `_app_site` two functions up already says about the same table: a first mount is a
@@ -210,7 +210,7 @@ def describe(store: Store, name: str, inside: str = "") -> dict[str, Any]:
     w["found"] = True
 
     # **Opening a sub-application is the same question one level down**, which is the whole
-    # of chasing a command tree: `quaestor` says it holds 34 and a row that states a number
+    # of chasing a command tree: `tribunus` says it holds 34 and a row that states a number
     # nobody can open is a dead end in a pane built to be followed.
     #
     # The id is **verified to be a descendant, never trusted**. It arrives from the page, and
@@ -225,7 +225,7 @@ def describe(store: Store, name: str, inside: str = "") -> dict[str, Any]:
             return {"found": False,
                     "reason": f"{name!r} has no sub-application by that id"}
         # **Every count on the pane is recomputed for the sub-tree**, or the page says
-        # `quaestor` and means `mensores`. Left as they were, `starts`, `files` and the
+        # `tribunus` and means `lictores`. Left as they were, `starts`, `files` and the
         # remainder read 107, 44 and 73 over a heading naming a group of 34 -- three numbers
         # that are each true of something the reader is not looking at (rule 24: a
         # measurement must measure the thing it names).
@@ -247,7 +247,7 @@ def describe(store: Store, name: str, inside: str = "") -> dict[str, Any]:
     if w["app_id"]:
         app_id = str(w["app_id"])
         # **Where execution begins**, which is a different question from what the tree can
-        # run and the one Tom actually asked. `mensores-mcp = mensores.mcp.__main__:main`
+        # run and the one Tom actually asked. `lictores-mcp = lictores.mcp.__main__:main`
         # names a routine; the commands hang off the app object beside it. These are the
         # `grp = ''` children the filter below excludes from the command list, and counting
         # them as *unnamed* would have reported the program's own front door as "a

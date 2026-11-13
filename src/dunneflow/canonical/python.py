@@ -10,7 +10,7 @@ rather than identical -- `d["k"]` comes back `d['k']`, a wrapped argument comes 
 line. That is exactly the wrong answer for *display*.
 
 It is exactly the right answer for a **comparison**, which asks a different question: are
-these two the same expression. Mensores' pair has a `typer.echo` whose message was re-wrapped
+these two the same expression. Lictores' pair has a `typer.echo` whose message was re-wrapped
 across two lines with not one character of its content changed, and comparing what was
 written puts it in *behaves differently* -- the band that promises what a routine **does**
 moved, sitting beside one that says *edited only, and nothing it does changed*. A false
@@ -32,7 +32,7 @@ def canonical_expr(expr: str) -> str:
     when there is nothing better to ask. Substituting anything else would be rule 49's
     defect -- a plausible value standing where a measurement belongs.
 
-    Every one of the 49 arguments on Mensores that lands here is a splat fragment
+    Every one of the 49 arguments on Lictores that lands here is a splat fragment
     (`**kwargs`, `**_CANONICAL_JSON_KWARGS`). A splat is not an expression on its own, it
     is a call-site form, and comparing those as written is correct.
 

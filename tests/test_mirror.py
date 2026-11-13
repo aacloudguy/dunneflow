@@ -4,7 +4,7 @@ The interesting failures here are not "did the join work". They are the four way
 report could confidently mislead:
 
 * missing the artefact surface, which is the defect that motivated the whole feature --
-  `tabularium` is glossed in Mensores' pantheon and read as abandoned vocabulary until
+  `vestiarium` is glossed in Lictores' rollcall and read as abandoned vocabulary until
   DunneFlow learned to see the database the program writes to;
 * admitting a heading as a term, which turns the definition extractor's over-reach into
   a finding about the program being read;
@@ -53,13 +53,13 @@ documentation is never code (rule 9), in this direction as in the other.
 """
 from pathlib import Path
 
-MENSORES_DIRNAME = ".mensores"
+LICTORES_DIRNAME = ".lictores"
 
 
 def open_ledger(root: Path):
     """Open the ledger. The docstring names phantom.db, which is not a fact."""
-    # tabularium.db is also named in this comment, and comments are not code either.
-    db = root / MENSORES_DIRNAME / "tabularium.db"
+    # vestiarium.db is also named in this comment, and comments are not code either.
+    db = root / LICTORES_DIRNAME / "vestiarium.db"
     config = f"{root}/groma.json"
     return db, config
 
@@ -67,7 +67,7 @@ def open_ledger(root: Path):
 def near_misses(root: Path):
     version = "1.2.3"
     encoding = "utf-8"
-    module = "mensores.cli"
+    module = "lictores.cli"
     host = "freetsa.org"
     endpoint = "https://example.invalid/thing.json"
     prose = "see config.yaml for details"
@@ -79,27 +79,27 @@ def patterns(root: Path):
     return sorted(root.glob("chaos_*.py"))
 
 
-def carries_the_word(disceptator_handle: str) -> None:
+def carries_the_word(conciliator_handle: str) -> None:
     """A parameter bears the word and nothing is named for it."""
-    print(disceptator_handle)
+    print(conciliator_handle)
 
 
 def talks_about_it() -> None:
     # An aggregate is not what this means, and delegating is not it either.
-    # The scriba writes the record.
+    # The praeco writes the record.
     print("done")
 '''
 
-# `tabularium` is defined and the program names a file after it -> NAMED.
-# `disceptator` is defined and only a parameter carries it -> BORNE.
-# `scriba` is defined and only a comment says it -> SPOKEN.
+# `vestiarium` is defined and the program names a file after it -> NAMED.
+# `conciliator` is defined and only a parameter carries it -> BORNE.
+# `praeco` is defined and only a comment says it -> SPOKEN.
 # `quaesitor` is defined and appears nowhere -> ABSENT.
 # `Gate` is defined and appears only inside `aggregate` and `delegating` -> ABSENT.
 GLOSSARY_DOC = """# Glossary
 
-- **tabularium** — the Roman state records office, where the ledger lives.
-- **disceptator** — one who argues out a contested point.
-- **scriba** — the clerk who writes the record.
+- **vestiarium** — the Roman state records office, where the ledger lives.
+- **conciliator** — one who argues out a contested point.
+- **praeco** — the clerk who writes the record.
 - **quaesitor** — the investigating magistrate, never built.
 - **Gate** — a quality check between phases.
 """
@@ -163,13 +163,13 @@ def _artefacts(tmp_path: Path, source: str):
 def test_a_path_assembled_from_parts_still_names_its_file(tmp_path):
     """The defect that motivated the feature.
 
-    `root / ".mensores" / "tabularium.db"` is not a module, not a table and not a
+    `root / ".lictores" / "vestiarium.db"` is not a module, not a table and not a
     boundary target, because only the parts are literals. If this stops working, the
     most-named thing in a program becomes invisible again.
     """
-    found = _artefacts(tmp_path, 'p = root / ".mensores" / "tabularium.db"\n')
+    found = _artefacts(tmp_path, 'p = root / ".lictores" / "vestiarium.db"\n')
     assert [(a.name, a.stem, a.kind) for a in found] == [
-        ("tabularium.db", "tabularium", "DATABASE")
+        ("vestiarium.db", "vestiarium", "DATABASE")
     ]
 
 
@@ -191,7 +191,7 @@ def test_an_interpolated_basename_names_nothing(tmp_path):
     [
         '"1.2.3"',                       # a version
         '"utf-8"',                       # an encoding
-        '"mensores.cli"',                # a dotted module path
+        '"lictores.cli"',                # a dotted module path
         '"freetsa.org"',                 # a hostname: `.org` is a TLD, not org-mode
         '"https://example.invalid/a.json"',   # a URL is a network boundary
         '"see config.yaml for details"',      # prose that contains a filename
@@ -227,7 +227,7 @@ def test_the_same_file_named_twice_on_one_line_counts_once(tmp_path):
 def test_artefacts_reach_the_store_and_survive_re_extraction(mirrored):
     store, _, _ = mirrored
     rows = {str(r["name"]): int(r["refs"]) for r in store.query(ARTEFACT_NAMES_SQL)}
-    assert rows["tabularium.db"] == 1
+    assert rows["vestiarium.db"] == 1
     assert rows["groma.json"] == 1
     assert "freetsa.org" not in rows
 
@@ -242,7 +242,7 @@ def test_artefacts_reach_the_store_and_survive_re_extraction(mirrored):
     [
         ("test_adr_0012_has_carve_out_criteria_section", "TEST_NAME"),
         ("read_all() -> dict", "CODE_SHAPED"),
-        ("src/society/cli/_root.py (lines 110-115)", "CODE_SHAPED"),
+        ("src/comitia/cli/_root.py (lines 110-115)", "CODE_SHAPED"),
         ("class _AbAssignment", "CODE_SHAPED"),
         ("1.1 Term identity model", "HEADING_SHAPED"),
         ("A3. GLOSSARY.md conventions", "HEADING_SHAPED"),
@@ -258,7 +258,7 @@ def test_the_admission_rule_sets_aside_what_is_not_a_word(term, reason):
 
 @pytest.mark.parametrize(
     "term",
-    ["tabularium", "Audit event", "Society of Mensores", "Decision graph", "SARIF"],
+    ["vestiarium", "Audit event", "Comitia of Lictores", "Decision graph", "SARIF"],
 )
 def test_the_admission_rule_keeps_real_vocabulary(term):
     assert admit(term) is None
@@ -280,20 +280,20 @@ def test_everything_set_aside_is_listed_whole(report):
 
 
 def test_a_word_a_file_is_named_for_is_named(report):
-    """`tabularium` names no module, class or table -- only the database.
+    """`vestiarium` names no module, class or table -- only the database.
 
     This is the assertion the whole feature exists to make pass. Before the artefact
     surface it was ABSENT, and reading that as drift was wrong.
     """
-    assert band_of(report, "tabularium") == "NAMED"
+    assert band_of(report, "vestiarium") == "NAMED"
 
 
 def test_a_word_only_a_parameter_carries_is_borne(report):
-    assert band_of(report, "disceptator") == "BORNE"
+    assert band_of(report, "conciliator") == "BORNE"
 
 
 def test_a_word_only_a_comment_says_is_spoken(report):
-    assert band_of(report, "scriba") == "SPOKEN"
+    assert band_of(report, "praeco") == "SPOKEN"
 
 
 def test_a_word_nothing_uses_is_absent(report):

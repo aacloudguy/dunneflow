@@ -126,7 +126,7 @@ def describe(store: Store, payload: dict[str, Any], plate_id: str,
         # reading whether or not the browser has drawn it.
         #
         # Never bounded (rule 8), and it is not a diagram: 926 ids is the largest plate on
-        # Mensores, beside a routine list the client already holds 4,786 rows of.
+        # Lictores, beside a routine list the client already holds 4,786 rows of.
         "members": members,
         # Which plates it stands for, and nothing else claims to be one of them (rule 74).
         # Empty for every plate that is not a fold, which is a different answer from "this
@@ -231,7 +231,7 @@ def _neighbours(store: Store, payload: dict[str, Any], members: list[str],
            for p, w in sorted(weights.items(), key=lambda kv: (-kv[1], kv[0]))]
     if unplaced:
         # Stated as a row of its own rather than folded into a total, because "12 calls to
-        # something this map does not draw" and "12 calls to `mensores.cli`" are different
+        # something this map does not draw" and "12 calls to `lictores.cli`" are different
         # facts (rule 32). It has no plate, so it carries no id to select.
         out.append({"plate": "", "name": "not on any plate", "weight": unplaced,
                     "unplaced": True})
@@ -246,7 +246,7 @@ def _reached_by(store: Store, payload: dict[str, Any], members: list[str],
     is `bnd:<kind>:<target>` and an artefact's is `art:<name>`; neither is a routine id, so
     `FOLD_CALLS_IN` -- which joins `calls.callee_id` against the set -- matched nothing at
     all. Measured before it was noticed: `ext:STDIO` holds 991 nodes and reported **0 in,
-    0 out, 0 touches**, which on screen is the claim that nothing in Mensores writes to
+    0 out, 0 touches**, which on screen is the claim that nothing in Lictores writes to
     standard output. An empty section is the most confident kind of wrong answer this tool
     can produce, and it produced four of them per external plate.
 
@@ -319,9 +319,9 @@ def _ways_in(ways: list[dict[str, Any]], members: list[str]) -> list[dict[str, A
 
     **This was a query of its own for one draft, and the measurement is why it is not.**
     `SELECT … FROM entrypoints WHERE parent_id IS NULL` looked like the obvious way to
-    keep a command tree's root and drop its 107 subcommands. Against Mensores it dropped
+    keep a command tree's root and drop its 107 subcommands. Against Lictores it dropped
     **all 32 MCP_TOOL entrypoints**, every one of which has a parent, and **two of the
-    four executables `CLAUDE.md` names as ground truth** -- `mensores` and `mensores-mcp`
+    four executables `CLAUDE.md` names as ground truth** -- `lictores` and `lictores-mcp`
     never appeared. A silent filter (design rule 1) reached by writing a second opinion
     about what a way in is, in a file whose own docstring cites rule 51.
 
@@ -331,8 +331,8 @@ def _ways_in(ways: list[dict[str, Any]], members: list[str]) -> list[dict[str, A
     subcommand problem solved by rule 74 rather than by a `WHERE` clause -- a tree is not
     one of the things it holds, and its own pane lists them.
 
-    Membership is *any* root on this plate, not all of them. `mensores` is
-    `mensores.cli:app` expanding to 107 commands across 44 files and therefore across
+    Membership is *any* root on this plate, not all of them. `lictores` is
+    `lictores.cli:app` expanding to 107 commands across 44 files and therefore across
     several plates; a plate holding one of them is a plate that way in enters, which is
     what `_compartments` already means by the same test.
     """

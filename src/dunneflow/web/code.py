@@ -192,7 +192,7 @@ def build_file(store: Store, source: SourceStore | None,
     the map never analysed.
 
     `revision` names which version's bytes to lay the map over, and getting it wrong is
-    not a subtle failure. Serving Mensores' older graph while the sidecar defaulted to its
+    not a subtle failure. Serving Lictores' older graph while the sidecar defaulted to its
     newest snapshot returned `_queue.py` at **674 lines with the 595-line version's marks
     on it** -- every link past the first divergence underlining the wrong characters, and
     a footer naming the revision the bytes came from while the margin came from another.
@@ -276,7 +276,7 @@ def _margin(store: Store, full: str) -> list[dict[str, Any]]:
     """What each line *is*, for the gutter beside it.
 
     **Rule 40 is enforced here.** A boundary already named by a more specific record on the
-    same line is not counted again: 991 of Mensores' 1,316 DATABASE boundaries sit on a line
+    same line is not counted again: 991 of Lictores' 1,316 DATABASE boundaries sit on a line
     with a `sql_ops` row, and all twenty NETWORK ones sit on a `net_calls` row. Two correct
     numbers about one act, neither saying what it counted. The tolerance is one line and is
     a judgment: the detectors disagree by a line on a multi-line statement, one recording

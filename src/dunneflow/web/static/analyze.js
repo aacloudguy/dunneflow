@@ -652,7 +652,7 @@
         </div>`;
     } else {
       /* **The silence is stated, and nothing acts on it.** A run is legitimately quiet for
-         tens of seconds -- resolving the Society tree says nothing at all for a while -- so a
+         tens of seconds -- resolving the Comitia tree says nothing at all for a while -- so a
          server that decided for itself when a run had hung would kill healthy work. What the
          reader gets is the fact and the button; the judgement is theirs. */
       const quiet = Number(a.silent_for) || 0;

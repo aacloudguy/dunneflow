@@ -107,8 +107,8 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
 10. **Documentation is evidence, even though it is never code.** Rule 9 keeps docstrings
     out of *code-shaped* detectors, because a sentence about a statement is not a
     statement. It does not mean prose is worthless -- for a glossary, being prose is the
-    qualification. A program's vocabulary is almost never defined in its code: Mensores
-    states its entire Latin naming scheme in `NAMING.md` and defines `mensor` in
+    qualification. A program's vocabulary is almost never defined in its code: Lictores
+    states its entire Latin naming scheme in `NAMING.md` and defines `lictor` in
     `PROJECT.md`, and DunneFlow saw neither. Look for the definition before generating
     one, and prefer a quotation with a file and line over anything a model writes.
 
@@ -285,7 +285,7 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     devices share the disc. It is a *strength* between the uniform stack (0) and area
     proportional to content (1), interpolated so that 0 comes home to exactly the
     arrangement the server placed, and it is **per level** for the same reason `MIN_DISK`
-    is: Mensores spans 12.85x across its routine plates and 5.32x across its module ones,
+    is: Lictores spans 12.85x across its routine plates and 5.32x across its module ones,
     which is a different judgment about a different picture.
 
     Two things fall out that are worth keeping. **Where a proportional scale is anchored is
@@ -314,7 +314,7 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     Sized in **pixels**, like the dots and the labels, which is what makes the overflow answer
     work: boxes are placed busiest-first and only where they do not overlap at the current
     zoom, everything else stays a dot (rule 19 — nothing leaves the picture), and the number
-    still a dot is stated with the way to get more (design rule 1). Measured on Mensores at a
+    still a dot is stated with the way to get more (design rule 1). Measured on Lictores at a
     1280×760 pane: `pkg:mcp` lights 360 and draws **102** boxes; the worst plate lights 1,319
     and draws 86, placed in **2.3 ms**.
 

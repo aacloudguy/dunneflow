@@ -26,7 +26,7 @@ class Found:
 
     The rows alone were the defect. `find_routine` matched a qualname or a name exactly
     and, on no hit, fell back to a substring search -- silently -- so
-    `touches --routine mensores.cli.app` answered about **`mensores.cli.apply.apply`** and
+    `touches --routine lictores.cli.app` answered about **`lictores.cli.apply.apply`** and
     reported a reach of 1. `app` is a Typer object rather than a routine, so nothing could
     match it and the fallback returned something plausible instead: rule 49's shape (a
     fallback that yields a plausible value has hidden the failure it was written for)
@@ -88,7 +88,7 @@ def find_routine(store: Store, needle: str) -> Found:
         head = needle.rsplit(".", 1)[0]
         # **`files`, not `routines`** -- and that is the whole of why this fires. A package
         # module declares no routines of its own, so asking `routines.module` says "not a
-        # module here" about `mensores.cli`, which is a file this analysis read. `files`
+        # module here" about `lictores.cli`, which is a file this analysis read. `files`
         # is where a module is recorded as having been read at all; how many routines it
         # holds is the *next* question and often the answer (rule 32).
         seen = store.query("SELECT path FROM files WHERE module = ? LIMIT 1", (head,))

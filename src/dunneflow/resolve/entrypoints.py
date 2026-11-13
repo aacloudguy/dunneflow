@@ -286,7 +286,7 @@ def _mint(entry: ManifestEntry, reading: ManifestReading) -> str:
     each declare `serve` and `INSERT OR REPLACE` would keep whichever was walked last --
     a way in disappearing with no error anywhere (rule 35's shape).
 
-    Keeping the root form unqualified is also what holds the golden: Society's `src/`
+    Keeping the root form unqualified is also what holds the golden: Comitia's `src/`
     holds no nested manifest at all, so its four script ids are byte-identical to v1's.
     """
     return (make_id("script", entry.name) if reading.at_root

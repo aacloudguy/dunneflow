@@ -13,7 +13,7 @@ a reader is shown unparsed. That is also why this is six small modules rather th
 reader with six branches: the sentence and the rule that produced it live together.
 
 **Two manifests at one level is the ordinary polyglot repository, not an error.** DunneNote
-carries a `package.json` and a `Cargo.toml` side by side and both declare `0.9.0`; Society
+carries a `package.json` and a `Cargo.toml` side by side and both declare `0.9.0`; Comitia
 carries a `package.json` beside its `pyproject.toml` and the JavaScript one declares
 nothing at all. Both are read, both are recorded, and **nothing is picked** when they
 disagree -- two declared versions is the honest answer and also a signal, because a tree
@@ -123,7 +123,7 @@ def find_package_root(target: Path, ceiling: Path | None = None) -> tuple[Path, 
     327-minute run.
 
     `None` keeps the unbounded climb, which is what a whole-program analysis wants and
-    what rule 64 was minted on: `.../society-2026-08-26/src` really does belong to the
+    what rule 64 was minted on: `.../comitia-2026-08-26/src` really does belong to the
     `pyproject.toml` one level up. **`analyze --part-of <tree>` supplies the ceiling**,
     because a part of a tree cannot belong to a package above that tree -- that is what
     being a part means. The general case, an `analyze` of a bare subdirectory with no

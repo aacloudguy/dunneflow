@@ -104,7 +104,7 @@ def test_a_dunder_inside_a_function_is_not_the_modules_version(tmp_path):
 def test_a_directory_name_can_supply_a_version_and_is_marked_as_a_guess(tmp_path):
     """Tom's rule: we may infer from a directory name or a date, provided we say we did."""
     root = _tree(tmp_path, {"thing/__init__.py": ""})
-    got = v.detect(root, leaf="society-2026-08-26")
+    got = v.detect(root, leaf="comitia-2026-08-26")
     assert got is not None
     assert got.value == "2026-08-26"
     assert got.provenance is Provenance.INFERRED
@@ -127,7 +127,7 @@ def test_a_directory_with_no_version_in_its_name_yields_nothing(tmp_path):
     project's name, a hash, or today's date as a version.
     """
     root = _tree(tmp_path, {"thing/__init__.py": ""})
-    assert v.detect(root, leaf="mensores") is None
+    assert v.detect(root, leaf="lictores") is None
 
 
 def test_a_version_marker_must_sit_at_the_end_of_the_name():
@@ -147,7 +147,7 @@ def test_a_version_marker_must_sit_at_the_end_of_the_name():
 def test_the_real_corpus_answers_are_the_ones_recorded():
     """Verified against the two trees this project is checked against, not invented.
 
-    Society states no `version` in `[project]` and no module-scope `__version__` — checked
+    Comitia states no `version` in `[project]` and no module-scope `__version__` — checked
     by reading its `pyproject.toml`, not assumed — so both of its versions fall to the
     inferred tier and must say so. DunneFlow itself states one and must not.
     """
@@ -213,14 +213,14 @@ def test_nothing_shaped_like_a_version_orders_nothing():
 
 
 def test_the_two_corpus_trees_order_correctly():
-    """The pair this is actually for: `society-2026-08-26` against `society-2026-08-29`.
+    """The pair this is actually for: `comitia-2026-08-26` against `comitia-2026-08-29`.
 
     Both versions are inferred from their directory names, and an inferred version is
     still more obvious evidence than no evidence — so it decides the default, and says
     that it was inferred wherever it appears.
     """
-    older = v.from_directory_name("society-2026-08-26")
-    newer = v.from_directory_name("society-2026-08-29")
+    older = v.from_directory_name("comitia-2026-08-26")
+    newer = v.from_directory_name("comitia-2026-08-29")
     assert older.inferred and newer.inferred
     ko, kn = v.order_key(older.value), v.order_key(newer.value)
     assert ko[0] == kn[0] and kn[1] > ko[1]

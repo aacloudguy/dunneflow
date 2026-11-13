@@ -14,7 +14,7 @@ Three disciplines, and every one of them was a defect first.
 
 * **A thread must lead somewhere.** Every thread carries a `subject` -- an identity the
   router can act on -- and never a bare label. The shell's previous threads panel was six
-  hand-written rows for one Mensores routine, and clicking any of them set
+  hand-written rows for one Lictores routine, and clicking any of them set
   `state.view = "curiosities"` and landed on a page that says it has nothing computed.
   It rendered, it highlighted, it was entirely dead. Rule 30.
 
@@ -243,7 +243,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
 def _package_of(module: str, root: str) -> str:
     """The segment just under the program root -- the plate the reader is standing on.
 
-    Taken from the data rather than assumed: `mensores.cli` and `dunneflow.cli` are both
+    Taken from the data rather than assumed: `lictores.cli` and `dunneflow.cli` are both
     one segment deep, so a hard-coded prefix length works on exactly one program.
     """
     if not module or not root:
@@ -318,7 +318,7 @@ def _outliers(store: Store, node_id: str, module: str, root: str) -> list[dict[s
 # Vocabulary and kin by name
 #
 # The two lanes of the naming standard, read as adjacency. A routine ending `_cmd`
-# has 98 relatives it never calls; a routine whose module is `disceptator` is using
+# has 98 relatives it never calls; a routine whose module is `conciliator` is using
 # a word the project defines in a document, with a file and a line.
 #
 # This is the only thread kind that ties the graph to the glossary and naming
@@ -326,7 +326,7 @@ def _outliers(store: Store, node_id: str, module: str, root: str) -> list[dict[s
 # in the shell, had never been served at all.
 #
 # It reads precomputed reports rather than the store, because both passes cost more
-# than a per-selection request may (2.5 s together on Mensores). They are handed in
+# than a per-selection request may (2.5 s together on Lictores). They are handed in
 # rather than fetched here, so this module stays a set of queries and the decision
 # about *when* to pay for them stays at the server, where it belongs.
 # --------------------------------------------------------------------------- #
@@ -386,7 +386,7 @@ def _algorithm(store: Store, node_id: str) -> list[dict[str, Any]]:
     coupled through a decision. Neither is reachable from the call graph, and this is
     the lane that says so.
 
-    **Rarely, and it says so.** On Society 8 routines of 4,823 get the table thread and
+    **Rarely, and it says so.** On Comitia 8 routines of 4,823 get the table thread and
     660 get the decision one. A thread that fires seldom is a fact about the program
     rather than a broken lane (design rule 1), and every thread states its own size, so
     the reader is never left to guess which they are looking at.
@@ -411,7 +411,7 @@ def _algorithm(store: Store, node_id: str) -> list[dict[str, Any]]:
     for r in _rows(store, queries.THREAD_DECIDED, {"id": node_id}):
         header, others = r["header"], int(r["others"])
         if not others:
-            # A test nobody else makes is not a neighbour, and 1,348 of Society's 1,516
+            # A test nobody else makes is not a neighbour, and 1,348 of Comitia's 1,516
             # distinct headers are that. The table above keeps its zero because a table
             # is a shared thing whether or not anyone shares it; a decision made once is
             # simply this routine's own line, and a lane of them would bury the 168 that
@@ -487,7 +487,7 @@ def cohort(store: Store, kind: str, key: str) -> dict[str, Any]:
         "net": queries.NET_ROUTINES,
         # **Not `TABLE_ROUTINES`**, and that is the whole point of the kind existing. The
         # thread beside it counts the routines that touch this table *from inside a loop*
-        # -- 15 on Society against 190 that touch one at all -- and opening the wider set
+        # -- 15 on Comitia against 190 that touch one at all -- and opening the wider set
         # would be a figure that counts one thing and opens another (rule 32).
         "looped_table": queries.LOOPED_TABLE_ROUTINES,
         # A decision is not a node and neither is a test, so following one selects the

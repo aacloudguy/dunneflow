@@ -679,7 +679,7 @@ func (e *extractor) routine(name string, ft *ast.FuncType, body *ast.BlockStmt,
 }
 
 // declared records what a routine's signature says it touches, where its body was not
-// seen to touch anything of that kind: Society2's Stage 0 stubs return a
+// seen to touch anything of that kind: Comitia2's Stage 0 stubs return a
 // `*net.UnixListener` from a body that only panics. **Declared, never observed** -- the
 // host keeps these out of every count of touches (`declared_boundaries`, rule 32) -- and
 // only where the body says nothing of that kind, so product code is not counted twice.

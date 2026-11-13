@@ -21,7 +21,7 @@
  *
  * ── what the corpus actually contains, because the handling was chosen from it ──
  *
- * Measured over Mensores' 2,019 Markdown documents:
+ * Measured over Lictores' 2,019 Markdown documents:
  *
  *   3,516 https links · 6 http · 666 relative · 16 anchors · 6 other schemes
  *   (`graph:`, `xs:`, `node:` — prose that happens to look like a link)
@@ -108,7 +108,7 @@ const Prose = (function () {
    * what a relative link means, and returned as a plain corpus path so the caller can look
    * it up in the document list it already holds. A target that climbs out of the tree is
    * returned as it resolves — `.groma/PROJECT.md` really does link to
-   * `../../Society-Specs/01-naming-standards.md`, which is outside the corpus, and saying so
+   * `../../Comitia-Specs/01-naming-standards.md`, which is outside the corpus, and saying so
    * is the caller's job. Guessing that it must have meant something inside would be worse
    * than useless.
    *
@@ -153,7 +153,7 @@ const Prose = (function () {
    * markdown-it knows nothing about frontmatter, so a document opening `---\nkind:
    * reference\ntitle: Glossary\n---` parses as a **setext heading**: the metadata becomes an
    * `<h2>` with an id of `kind-referencetitle-glossary`, at the top of the page, before the
-   * document's own title. **989 of Mensores' 2,019 Markdown documents** begin with a
+   * document's own title. **989 of Lictores' 2,019 Markdown documents** begin with a
    * frontmatter block, so this is half the corpus opening with its own machine-readable
    * header rendered as prose.
    *
@@ -193,7 +193,7 @@ const Prose = (function () {
    * with three HTML constructs in it yields `html_block: 0`. So there is nothing to catch at
    * the token level, and this has to happen to the text.
    *
-   * **7,317 comments across 505 of Mensores' 2,019 documents** — a quarter of the corpus
+   * **7,317 comments across 505 of Lictores' 2,019 documents** — a quarter of the corpus
    * showing editorial notes nobody wrote for the reader.
    *
    * Replaced by **exactly as many newlines as they contained**, which is the frontmatter

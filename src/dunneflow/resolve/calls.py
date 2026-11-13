@@ -178,7 +178,7 @@ def resolve_calls(store: Store) -> ResolveStats:
                 # describes (rule 13). Lost in the chunk 6 split and unnoticed for three
                 # chunks: v1 counted it in the tail every no-target path fell through, and
                 # the split gave each `NoEdge` its own branch and kept only the boundary
-                # one. Society read *4,063 external* over 30,544 calls of which 24,103
+                # one. Comitia read *4,063 external* over 30,544 calls of which 24,103
                 # leave the program — which is the `at_boundary` count wearing another
                 # word, and 4,063 + 5,653 + 788 does not reach 30,544 either. Found by
                 # chunk 10's gate, because a resolution rate is the first thing anybody

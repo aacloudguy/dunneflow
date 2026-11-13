@@ -3,7 +3,7 @@
 A program directory holds one `source.db` -- the spine, never discarded (rule 25) --
 and a graph and a document store **per revision**:
 
-    output/mensores/
+    output/lictores/
         source.db                       the revision index, and the bodies
         graph@2026-08-26T09-14-02Z.db
         docs@2026-08-26T09-14-02Z.db

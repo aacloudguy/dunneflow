@@ -145,7 +145,7 @@ def test_the_checkable_sentence_never_claims_a_check_is_run(tmp_path: Path) -> N
     population for.
 
     Then it was wrong the other way. It said "DunneFlow does not yet run one" for two days
-    after `conformance.py` began running exactly these -- 4 of Society's 12 -- and the
+    after `conformance.py` began running exactly these -- 4 of Comitia's 12 -- and the
     surface went on printing it. So what the sentence must do is **defer**: name the lane
     that answers, and claim nothing about the answer.
     """

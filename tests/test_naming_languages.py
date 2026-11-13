@@ -14,7 +14,7 @@ are `982 of 998` and `116 of 116` — two conventions, both true, neither visibl
 Three properties are guarded here, and the third is the one that nearly went missing.
 
 **A one-language map is untouched.** It has no language axis to state, so its report reads
-exactly as it did — which is also what keeps every recorded Mensores figure reproducible.
+exactly as it did — which is also what keeps every recorded Lictores figure reproducible.
 
 **The split is per language and the languages are read off the map**, never guessed. That
 is the distinction from `conformance.py`'s refusal of a path-shaped scope: nothing supplies

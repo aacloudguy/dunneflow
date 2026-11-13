@@ -321,7 +321,7 @@ def test_the_cache_key_holds_only_what_extraction_reads() -> None:
     extraction has ever heard of it.
 
     That happened: a canonicaliser for the change comparison landed there and made both of
-    Mensores' graphs read as stale — including a sealed snapshot, which exists precisely to
+    Lictores' graphs read as stale — including a sealed snapshot, which exists precisely to
     outlive its source tree (rules 25 and 62) — for a module extraction never imports and
     that cannot alter a single fact. It lives in `canonical/` now.
 

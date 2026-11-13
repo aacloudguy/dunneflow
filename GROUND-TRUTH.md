@@ -9,11 +9,16 @@ reproduce** — plus the two probes that are not tests: `tools/ordering.py` and
 row here states its conditions where they are load-bearing, and a measurement taken without
 reproducing them is a different measurement under the same label (rule 24).
 
-**Society is unpublished.** It is a 628-file Python application whose package is `mensores`,
-and most figures in this repository were measured on it. Its snapshots sit beside this
-repository as `../society-<date>` and are the maintainer's, so a contributor without them
+**Comitia is unpublished, and Comitia is not its name.** It is a 628-file Python application
+whose package is written here as `lictores`, and most figures in this repository were
+measured on it. Since 2026-11-12 the project, its package and its components are spelt
+throughout this repository with stand-in names of the same length, one for one; the real
+ones and the table between them are the maintainer's and are kept outside this repository.
+So a command below that reads `../comitia-2026-08-29/src --name lictores` is the command
+that was run, with those two words changed, and the figures beside it are the figures. Its snapshots sit beside this
+repository as `../comitia-<date>` and are the maintainer's, so a contributor without them
 cannot run this gate and should say so rather than report it passed. The four
-Society clones are read-only and only two of them are the pair; getting that wrong cost a
+Comitia clones are read-only and only two of them are the pair; getting that wrong cost a
 whole analysis once, and the result looked perfectly healthy.
 
 ## Verification — run before marking anything complete
@@ -76,15 +81,15 @@ ordering on a column with ties returns whatever the pool finished first (rule 66
 like that for a year:
 
 ```bash
-uv run python tools/ordering.py output/mensores          # reverses every row, re-renders, diffs
-uv run python tools/ordering.py output/mensores --api    # every GET route, asked twice
+uv run python tools/ordering.py output/lictores          # reverses every row, re-renders, diffs
+uv run python tools/ordering.py output/lictores --api    # every GET route, asked twice
 uv run python tools/ordering.py --survey                 # what no ORDER BY, and no key, defends
-uv run python tools/ordering.py output/mensores-wide --api   # the comparison lane's own pair
+uv run python tools/ordering.py output/lictores-wide --api   # the comparison lane's own pair
 ```
 
-**`output/mensores-wide` is the pair the comparison lane is measured against**, and it is
-wide on purpose: Society's `main` at `09b9ef11` against the branch head at `03ebbd93`,
-**384 Python files against 628**, where the `mensores` pair differs in three. It is what
+**`output/lictores-wide` is the pair the comparison lane is measured against**, and it is
+wide on purpose: Comitia's `main` at `09b9ef11` against the branch head at `03ebbd93`,
+**384 Python files against 628**, where the `lictores` pair differs in three. It is what
 takes `/api/changes` from three rows to 2,733, and its old side's tree is gone — a sealed
 snapshot does not need one (rules 25 and 62). Rebuild it by cloning that repository at
 `origin/main` into a scratchpad, analysing it with `--standards ../dunnecorp-standards`,
@@ -103,7 +108,7 @@ nothing; it is **rule 101** that says why the probe and not the survey is the au
 
 Reversal rather than a second analysis, because two real runs shuffle *some* of the order
 and catch *some* of the ties, differently each time. `tests/test_ordering.py` is the same
-gate on a fixture; every file in it is a tie the Society map was actually unstable on —
+gate on a fixture; every file in it is a tie the Comitia map was actually unstable on —
 including the three the *comparison* lane needs, which no corpus supplies at all.
 
 **Half of what this gate covers, the reversal cannot see, and that is rule 105.** A
@@ -117,20 +122,20 @@ Then verify against real code, because unit tests on a toy program cannot catch 
 resolution defect that only appears at scale:
 
 ```bash
-uv run dunneflow analyze ../society-2026-08-29/src --name mensores
+uv run dunneflow analyze ../comitia-2026-08-29/src --name lictores
 ```
 
-**Four trees, and only two of them are the pair.** `../society-2026-08-26` (e2e658b4,
-625 files) and `../society-2026-08-29` (03ebbd93, 628 files) are the sister clones every
-recorded temporal figure belongs to; `../mensores-overhaul` is a third copy of 626 files
-and is neither end of it. This file named `mensores-overhaul` here for a year and it cost a
+**Four trees, and only two of them are the pair.** `../comitia-2026-08-26` (e2e658b4,
+625 files) and `../comitia-2026-08-29` (03ebbd93, 628 files) are the sister clones every
+recorded temporal figure belongs to; `../lictores-overhaul` is a third copy of 626 files
+and is neither end of it. This file named `lictores-overhaul` here for a year and it cost a
 wasted analysis in the session that bumped `SCHEMA_VERSION` — the result looked perfectly
 healthy, and the tell was the sidecar reporting *"1 read, 625 already held"* where the record
 says twelve files differ.
 
-`../society-2026-08-30` (7baa17bf, 628 files) is the checkpoint taken 2026-09-09, and it is
-the newest Society there is: 6 commits past 03ebbd93, 43 files changed, and **3 source files**
-of them. **`main` is not where Society lives** — it sits at 09b9ef11 from 2026-06-10 with 384
+`../comitia-2026-08-30` (7baa17bf, 628 files) is the checkpoint taken 2026-09-09, and it is
+the newest Comitia there is: 6 commits past 03ebbd93, 43 files changed, and **3 source files**
+of them. **`main` is not where Comitia lives** — it sits at 09b9ef11 from 2026-06-10 with 384
 files under `src/`, and the work is on `feat/spec-lifecycle-and-evidence`. Cloning the default
 branch gets a tree three months stale that analyses perfectly, which is why the branch is
 named here.
@@ -143,16 +148,16 @@ ground truth above cannot be run there and no figure in this file was retaken on
 Linux session can press instead is DunneFlow's own tree and `../dunnenote` — real code, not a
 toy, and enough to exercise the binary end to end — and that is what the Linux figures in
 **Packaging** were taken against. A session that needs the recorded numbers needs the trees:
-clone them, or take the measurement on the Mac. Do not restate a Mensores figure measured
+clone them, or take the measurement on the Mac. Do not restate a Lictores figure measured
 somewhere else as though it had been reproduced (rule 24).
 
 Rebuilding the pair after a schema bump is two analyses and a seal, in this order — a
 sealed snapshot is never re-analysed in place, by design (rules 25 and 62):
 
 ```bash
-uv run dunneflow analyze ../society-2026-08-26/src --name mensores
-uv run dunneflow revisions output/mensores --seal --label "Society at e2e658b4 - 2026-08-26"
-uv run dunneflow analyze ../society-2026-08-29/src --name mensores \
+uv run dunneflow analyze ../comitia-2026-08-26/src --name lictores
+uv run dunneflow revisions output/lictores --seal --label "Comitia at e2e658b4 - 2026-08-26"
+uv run dunneflow analyze ../comitia-2026-08-29/src --name lictores \
     --standards ../dunnecorp-standards
 ```
 
@@ -184,23 +189,23 @@ is held out of the comparison with the naming page saying so.
 rebuild leaves one behind — delete its `graph@…db` and `docs@…db`, then its rows in `paths`
 and `revisions` in **both** sidecars. Blobs are shared by content and are left alone.
 
-Ground truth for documentation: the pantheon table in
-`.groma/milestones/v1.1-harness-ownership/NAMING.md` yields `groma`, `disceptator`,
-`quaestor` and the rest with their Latin glosses; its three BINDING rules appear in the
+Ground truth for documentation: the rollcall table in
+`.groma/milestones/v1.1-harness-ownership/NAMING.md` yields `groma`, `conciliator`,
+`tribunus` and the rest with their Latin glosses; its three BINDING rules appear in the
 **Vocabulary** lane, quoted whole; `.groma/PROJECT.md` and `docs/reference/glossary.md`
-both define `mensor` from *mētior*. And the precision half, which matters more:
+both define `lictor`. And the precision half, which matters more:
 `.groma/research/v0.2/conventions-naming-and-documentation.md` is a paper *about*
 building a naming-standards importer, and must yield **zero** naming rules. If it yields
 any, the detector is wrong, not the corpus.
 
 Ground truth for code: the four executables declared in its
-`pyproject.toml [project.scripts]` — `mensores`, `mensores-mcp`, `mensores-signator`,
-`mensores-scriba` — must all appear in "Where to start" with plausible reach. If one
+`pyproject.toml [project.scripts]` — `lictores`, `lictores-mcp`, `lictores-cantator`,
+`lictores-praeco` — must all appear in "Where to start" with plausible reach. If one
 collapses to a reach of 1 or 2, a registration idiom is being missed.
 
 ## Go: two public trees, and what each reproduces (2026-11-01)
 
-**Neither is Society, and neither is the pair.** They are what the Go reader was measured on,
+**Neither is Comitia, and neither is the pair.** They are what the Go reader was measured on,
 in `../beads-main` and `../AppGraphs/rain-main`, both public projects copied to this machine,
 and both **read-only** like every other corpus here. Analyse into a scratch output root.
 
@@ -243,7 +248,7 @@ any, is on the client — the finding's own blind spot. The table above is the f
 
 ## Rust: DunneNote and pdfcraft, and what each reproduces (2026-11-01)
 
-**Neither is Society, and neither is the pair.** `../DunneNote` is Tom's Tauri application —
+**Neither is Comitia, and neither is the pair.** `../DunneNote` is Tom's Tauri application —
 Rust under a TypeScript front end, so its map is mixed — and `../pdfcraft` is a Rust
 workspace of 35 packages. Both are **read-only**; analyse into a scratch output root.
 
@@ -327,7 +332,7 @@ and those machines prove the reader builds and reads; they do not retake these n
 
 ## Java: spring-petclinic and traccar, and what each reproduces (2026-11-02)
 
-**Neither is Society, and both are public.** Cloned at depth 1 into `../`, read-only, with
+**Neither is Comitia, and both are public.** Cloned at depth 1 into `../`, read-only, with
 Tom's leave on 2026-11-01: `../spring-petclinic` at **500158f** (2026-09-29), Spring MVC and
 Spring Data JPA, 30 program files and 20 tests; and `../traccar` at **f941c40**
 (2026-11-01), a GPS tracking server on Netty, Guice, JAX-RS and JDBC, 1,059 program files
@@ -375,7 +380,7 @@ showed, about 2,000 edges javac had chosen among overloads it could not tell apa
 remaining are under `protocol/`: traccar finds its protocols by scanning a package and has
 Guice build them, which no static reading follows (`BACKLOG.md`'s residues).
 
-**Society still reads 7 of 7** against `output/GOLDEN-v2.txt` at 21810a9, and the ordering
+**Comitia still reads 7 of 7** against `output/GOLDEN-v2.txt` at 21810a9, and the ordering
 probe passes on traccar's map and its `--api`.
 
 ### By type and by supertype (2026-11-12, BACKLOG 45 and 46)
@@ -518,7 +523,7 @@ ordinary wrappers, which is why it is worded about what happens and never why.
 "Written by macros" counts bodies a macro wrote (`body_by`), as the summary line does; `Runtime`
 has 550 more whose name alone a macro wrote. The boundaries column counts the rows; findings leave out definitions outside the tree, low
 salience, and a callee that starts with the macro's name. No corpus has a shadow, so that path is
-proved by the fixtures alone. Python's golden holds exactly: Society's routines, boundaries, calls
+proved by the fixtures alone. Python's golden holds exactly: Comitia's routines, boundaries, calls
 and ways in are the same row for row against the commit before the slice, every macro table empty,
 findings unchanged. pdfcraft likewise, with 5,239 uses of 35 definitions and one finding's count
 moved, `UNREACHABLE` 1,923 to 1,924 of 4,265: the old sum counted a module scope as reached and not

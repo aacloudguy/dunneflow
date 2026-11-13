@@ -3,7 +3,7 @@
 `visit_Assign` caught only CLI app objects, `_class_fields` caught only class bodies,
 and module level produced nothing at all -- so `JTBD_OPENERS` was declared in
 `_prompts.py`, read six times, and absent from the map. 2,618 constants and 86 type
-aliases on Mensores, none of them previously recorded.
+aliases on Lictores, none of them previously recorded.
 
 Two things here can go wrong quietly, and both have tests.
 
@@ -33,7 +33,7 @@ PROGRAM = '''
 from typing import Any, Callable, Final, Literal, Mapping, NewType
 
 # The Roman records office. Plan 30-02 says this may not move.
-MENSORES_DIRNAME: Final[str] = ".mensores"
+LICTORES_DIRNAME: Final[str] = ".lictores"
 
 JTBD_OPENERS: list[str] = ["What problem?", "For whom?"]
 
@@ -54,7 +54,7 @@ NOT_AN_ALIAS = SOME_DICT["key"]
 AMBIGUOUS = OtherName
 
 __version__ = "1.0"
-__all__ = ["MENSORES_DIRNAME"]
+__all__ = ["LICTORES_DIRNAME"]
 
 try:
     OPTIONAL_BACKEND = "neo4j"
@@ -103,17 +103,17 @@ def test_the_constant_that_motivated_this_is_recorded(facts):
 
 def test_the_value_is_recorded_whole(facts):
     """Rule 8. A ceiling cut off at eighty characters is no longer the ceiling."""
-    assert _by_name(facts)["MENSORES_DIRNAME"].value == "'.mensores'"
+    assert _by_name(facts)["LICTORES_DIRNAME"].value == "'.lictores'"
 
 
 def test_final_is_recorded_because_it_says_do_not_rebind(facts):
     by = _by_name(facts)
-    assert by["MENSORES_DIRNAME"].is_final
+    assert by["LICTORES_DIRNAME"].is_final
     assert not by["LIMIT"].is_final
 
 
 def test_a_leading_comment_becomes_the_why(facts):
-    why = _by_name(facts)["MENSORES_DIRNAME"].comment
+    why = _by_name(facts)["LICTORES_DIRNAME"].comment
     assert why is not None
     assert "Plan 30-02" in why
 
@@ -245,7 +245,7 @@ def test_a_constant_makes_a_documented_word_named(tmp_path):
 def test_a_word_run_matches_a_compound_but_a_substring_does_not():
     """`TOOL_STATUS_RAN` carries `tool status`; `aggregate` does not carry `gate`.
 
-    Measured before it was added: on Mensores this moves exactly one term into a
+    Measured before it was added: on Lictores this moves exactly one term into a
     stronger band on its own, and every term it moves was verified against source.
     """
     from dunneflow.resolve.mirror import name_keys

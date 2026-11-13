@@ -8,7 +8,7 @@ the same remedy: the map supplies which languages it holds, so the question is s
 them rather than the answer widened.
 
 **Measured before it was changed, and the headline is that it moved nothing.** Removing the
-exclusion outright changes no verdict on any of the four corpora — Mensores 1,463 ids,
+exclusion outright changes no verdict on any of the four corpora — Lictores 1,463 ids,
 DunneNote 391, DunneFlow 28, DunneCorp 0. A name must be unique in the program *and* collide
 with a builtin *and* be the symbol tipping an id past `STRONG_LANDED_SYMBOLS` before anybody
 sees it. So this is a correctness fix with a measured effect of nil today, and the reason to

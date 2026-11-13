@@ -7,7 +7,7 @@ Anomalies precedent, a page reached from the navigator and not a fourth centre m
 **Four lanes, and a fifth that is empty on purpose.** A rate, a fork, a ladder and a
 recovery are four different things to notice, and folding them into one ranked list
 would put a 61-line `try` beside a nested `for` under a heading that could only be
-called "interesting". `match` is the fifth: Society holds **none**, and a lane that
+called "interesting". `match` is the fifth: Comitia holds **none**, and a lane that
 silently vanishes cannot be told from one that looked and found nothing (design rule 21).
 
 **Every lane states its population, and the population is the honest denominator.** Not
@@ -18,7 +18,7 @@ rows are all there is. The quiet bands are stated too, on the page rather than p
 make the four lanes credible.
 
 **Unbounded.** A lane is a list and not a diagram, so rule 8's bound never applies --
-793 rows over Society, every one of them. What *is* bounded is the work: the judgement
+793 rows over Comitia, every one of them. What *is* bounded is the work: the judgement
 is one pass over the graph, held on the base and computed on the first ask, exactly as
 the curiosities are (rule 45).
 
@@ -192,7 +192,7 @@ def _is_match(point: Point) -> bool:
 def for_program(store: Store) -> dict[str, Any]:
     """Every lane, with its rows and its denominator. One pass over the graph.
 
-    105 ms warm on Society for the judgement, and the arranging is arithmetic over what
+    105 ms warm on Comitia for the judgement, and the arranging is arithmetic over what
     it returned. Held on the base by the route that calls this, so a reader pays it once
     a session and only if they open the page.
     """
@@ -273,7 +273,7 @@ def for_program(store: Store) -> dict[str, Any]:
 # So this reads top to bottom like the source, it cannot move under a gesture (rule 73),
 # it needs no vendored library, and it scrolls -- which is how this reader reads.
 #
-# **Guards are in, and this is where they belong.** 3,931 of Society's branches are
+# **Guards are in, and this is where they belong.** 3,931 of Comitia's branches are
 # refusals; a worklist of them would be a list of the program, and a routine's own shape
 # without them would be a lie about the routine. The bound is the reader opening one
 # routine, which is `/api/flow`'s own argument (rule 45).

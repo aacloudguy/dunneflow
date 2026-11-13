@@ -3,7 +3,7 @@
 The feature is one question -- *does the program do what the rule says* -- and almost every
 way of answering it is worse than not answering. What is guarded here is the answering:
 
-**The population is never inferred from the scope word.** Measured on Mensores before this
+**The population is never inferred from the scope word.** Measured on Lictores before this
 existed: all six of its `checkable` rules come from a harness standard and not one is a
 question about the code graph. *"Files: kebab-case"*, checked against the graph, is
 **0 of 628** Python files -- a catastrophic claim about a rule its own document scopes to
@@ -136,7 +136,7 @@ def test_a_document_scoped_rule_is_never_measured_against_the_code_graph(
 
     `src/**/*.md` selects documents. A check that reached for the graph's Python files
     instead would report a confident 0% against a rule that governs three markdown files --
-    which is exactly what Mensores would have shown.
+    which is exactly what Lictores would have shown.
     """
     root = tmp_path / "p"
     store = _code(root)
@@ -256,9 +256,9 @@ def test_a_dotted_module_name_is_not_an_exception_to_its_own_convention(
     """Rule 51's cost, reproduced once and then guarded.
 
     `naming.py` learned that a dotted path is not one identifier -- reading
-    `mensores.cli.main` as a word made every module an exception. Reusing `POPULATIONS`
+    `lictores.cli.main` as a word made every module an exception. Reusing `POPULATIONS`
     without reusing `DOTTED` reproduced it exactly: `modules / snake_case` reported **1 of
-    628** on Mensores before this was fixed.
+    628** on Lictores before this was fixed.
     """
     root = tmp_path / "p"
     store = _code(root)

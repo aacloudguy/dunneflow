@@ -110,7 +110,7 @@ def test_the_index_names_every_revision_and_where_its_map_is(tmp_path):
 
     from dunneflow.sourcedb import SourceStore
     source = SourceStore(prog / "source.db")
-    source.seal(label="Society at the start")
+    source.seal(label="Comitia at the start")
     source.commit()
     source.close()
     # A revision is identified to the second, and `_free_revision_id` disambiguates a
@@ -126,7 +126,7 @@ def test_the_index_names_every_revision_and_where_its_map_is(tmp_path):
         assert f"({where.name}/README.md)" in index, (
             f"the index names {rev} and does not link to its map"
         )
-    assert "Society at the start" in index, (
+    assert "Comitia at the start" in index, (
         "a sealed revision's label is the one thing telling a reader what it is, and the "
         "index drops it"
     )
@@ -270,7 +270,7 @@ def _stale_map(tree: Path) -> Path:
     it once. Both layouts, because both exist on disk: the loose `NN-*.md` files of the
     flat layout, and a `map@<revision>/` beside them.
     """
-    prog = tree / "output" / "mensores"
+    prog = tree / "output" / "lictores"
     revisions.db_path(prog, revisions.GRAPH, "2026-01-01T00:00:00Z").parent.mkdir(
         parents=True)
     revisions.db_path(prog, revisions.GRAPH, "2026-01-01T00:00:00Z").touch()

@@ -111,7 +111,7 @@ def _matched(session: Session, needle: str, limit: int) -> tuple[list[dict], dic
 
     `search_said` travels with the rows and is not optional. `find_routine` falls back to a
     substring match when nothing is named exactly, and that fallback once answered
-    `touches --routine mensores.cli.app` about `mensores.cli.apply.apply` with a reach of 1.
+    `touches --routine lictores.cli.app` about `lictores.cli.apply.apply` with a reach of 1.
     A tool that returned `matches` and dropped the caveat would hand a model a plausible
     answer to a question it did not ask.
     """

@@ -1,7 +1,7 @@
 """Which order to stack the plates in, so a crossing does not have to travel far.
 
 The stack orders plates by size -- `defaultOrder` in `graph.js`, packages above externals,
-biggest nearest the middle. Nothing in that order knows what links to what, and on Society
+biggest nearest the middle. Nothing in that order knows what links to what, and on Comitia
 **73.3% of the 5,101 cross-plate crossings span more than twenty plates**, which is a line
 no reader can follow to its other end. The force layout made those crossings *upright*
 (`forcelayout.js`); nothing had made them *short*.
@@ -28,7 +28,7 @@ letting the next reader assume one mechanism does both.
 
 ## Where the crossings go
 
-Measured on Mensores, routine level, 53 plates and 403 connected pairs:
+Measured on Lictores, routine level, 53 plates and 403 connected pairs:
 
 | how far a crossing travels | by size | by what they link to |
 |---|---|---|
@@ -43,7 +43,7 @@ At module level (38 plates, 1,501 crossings) it is -74.1%, mean 20.56 -> 5.33.
 ## The grouped variant, and why both are built
 
 The best order **interleaves boundary plates among the packages** -- `ext:DATABASE` just
-above `storage`, `ext:STDIO` between `scriba` and `cli`. That reads well, and it also
+above `storage`, `ext:STDIO` between `praeco` and `cli`. That reads well, and it also
 overturns what the current default *means*: your code on top, the world below. Holding that
 grouping costs most of the gain (-29.4% at routine level, -41.4% at module), so the two are
 not interchangeable on the numbers -- they are interchangeable on what the reader wants to
@@ -190,7 +190,7 @@ def _sweep(order: list[str], w: dict[tuple[str, str], int]) -> list[str]:
     defend. Taking the first one makes the traversal itself the tie-break, and the
     traversal is stated.
 
-    Converges in 7 passes on Society's 53 plates and 11 on the 38 at module level.
+    Converges in 7 passes on Comitia's 53 plates and 11 on the 38 at module level.
 
     The pairs are narrowed to this band's own plates **once**, rather than on each of the
     ~2,800 candidates per pass. Under `grouped` the caller hands the whole program's pairs

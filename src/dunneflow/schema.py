@@ -57,7 +57,7 @@ from typing import Literal
 #     macro wrote (`Routine.name_by`, `body_by`, `BoundaryHit.through_macro`).
 # 20: `BoundaryKind.LOCAL_IPC` and `BoundaryHit.declared` -- a Unix-domain socket is not a
 #     network connection, and a boundary a signature names is not one a body was seen to
-#     touch (Society2's Stage 0 stubs, whose bodies only panic). Built on a branch as 18,
+#     touch (Comitia2's Stage 0 stubs, whose bodies only panic). Built on a branch as 18,
 #     which `read_through` also was; it is 20 because it merged second. Before 20 left
 #     the branch, `db_columns.line` joined it: each column belongs to its own CREATE TABLE.
 SCHEMA_VERSION = 20
@@ -120,8 +120,8 @@ class EntrypointKind(StrEnum):
 class TargetKind(StrEnum):
     """How to find the thing a **declared** way in names -- said, never inferred.
 
-    `mensores.cli:app`, `./cli.js` and `src/main.rs` are three shapes of string and a
-    fourth that looks like any of them is one guess away: `Path("mensores.cli:app").suffix`
+    `lictores.cli:app`, `./cli.js` and `src/main.rs` are three shapes of string and a
+    fourth that looks like any of them is one guess away: `Path("lictores.cli:app").suffix`
     is `.cli:app`, which a reader looking for a language would report as a suffix nobody
     claims. The provider that read the manifest knows which kind it read, so it says
     (rule 30) -- and it is stored, because `render/markdown.py` and `anomalies.py` ask the
@@ -595,7 +595,7 @@ class ControlKind(StrEnum):
     expression that chooses between two numbers is the arithmetic this tool exists not
     to report. `GUARD` is a `DECISION` narrowed by how it *ends* rather than by how it
     is written, because that is what makes it a different thing to read -- 3,937 of
-    Mensores' 6,293 branches are refusals, and a refusal is a precondition stated in
+    Lictores' 6,293 branches are refusals, and a refusal is a precondition stated in
     code.
     """
 
@@ -704,7 +704,7 @@ class ControlPoint:
     #
     # It is the iterable's span **minus every line a repeated part of this point also
     # occupies**, and the subtraction is the whole fact. The iterable's span alone
-    # reclassifies 45 of Society's loops and 34 of them wrongly, because
+    # reclassifies 45 of Comitia's loops and 34 of them wrongly, because
     # `[fetch(x) for x in ids]` writes its element and its iterable on one line and a line
     # cannot choose between them. Subtracting leaves the range empty there -- nothing is
     # excluded, which is the answer that cannot be wrong (rule 49: a plausible fallback is
@@ -714,7 +714,7 @@ class ControlPoint:
     #
     # Why it is a fact and not something the resolver works out (rule 85): `line BETWEEN
     # line_start AND line_end` reads the iterable as part of the body, so `for row in query():`
-    # reported one query as a query per pass -- 11 of Society's 261 rates, in the sentence
+    # reported one query as a query per pass -- 11 of Comitia's 261 rates, in the sentence
     # that is the feature's headline. Four statements in `web/queries.py` ask the same
     # range question in SQL and cannot import the resolver, so the answer has to be a
     # column they can read (rule 51).
@@ -730,7 +730,7 @@ class ControlArm:
     say **which** way out writes to a table, and that is the whole question -- a branch
     whose arms compute different numbers is the arithmetic this tool excludes, while a
     branch where one arm writes to a table and the other does not is a decision about
-    what leaves the program. Measured over Society: 78 of its 2,213 decisions differ in
+    what leaves the program. Measured over Comitia: 78 of its 2,213 decisions differ in
     what moves between their arms, and 396 of its 1,531 handlers recover by moving
     something. Neither number can be asked of the point alone.
 
@@ -750,7 +750,7 @@ class ControlArm:
     **Recorded only where a point has more than one way through it.** A plain `if` with
     no `else`, a `for` with no `else`, a `GUARD` -- each has one arm, which is its own
     span, and a row saying so again would be a second answer to a settled question
-    (rule 41). Society records 2,269 arms over 1,689 points, against 9,625 points in all.
+    (rule 41). Comitia records 2,269 arms over 1,689 points, against 9,625 points in all.
 
     The `if` arm's header is the point's header, by construction and from the same node,
     so the two cannot disagree (rule 13). It is written on both because a ladder has to
@@ -790,7 +790,7 @@ class BoundaryHit:
     through_macro: str = ""
     # **Named by a signature, not seen in a body** (schema 20). A routine whose parameter
     # or result is a `*net.UnixListener` says what it will touch before any body does --
-    # Society2's Stage 0 stubs only panic -- and that is worth a row, but it is a claim
+    # Comitia2's Stage 0 stubs only panic -- and that is worth a row, but it is a claim
     # about intent and never a count of touches (rule 32). Every surface that counts or
     # lists boundaries keeps the two apart.
     declared: bool = False
@@ -1046,7 +1046,7 @@ class Constant:
     map could not say it existed: `visit_Assign` caught only CLI app objects, class
     bodies became `Field_`, and module level became nothing. A constant is a name a
     person chose for a value -- the same argument that made `Artefact` a fact type --
-    and 2,489 of them on Mensores carry the program's configuration: model names, token
+    and 2,489 of them on Lictores carry the program's configuration: model names, token
     ceilings, directory names, retry limits.
 
     Module level means *runs at import*, so a constant inside a module-level `try` or
@@ -1114,20 +1114,20 @@ class StringLiteral:
 class Artefact:
     """A file the program names: a database, a config, a script, a document.
 
-    Added because `tabularium.db` -- the single most-referenced name in Mensores, 50
+    Added because `vestiarium.db` -- the single most-referenced name in Lictores, 50
     quoted occurrences -- appeared nowhere in the map. It is built as
-    `repo_root / ".mensores" / "tabularium.db"`, so it is not a module, not a table,
+    `repo_root / ".lictores" / "vestiarium.db"`, so it is not a module, not a table,
     and not a boundary target: the path is assembled from parts and only the parts
     are literals. A program names its artefacts as deliberately as it names its
     packages, and the words it chooses are part of its vocabulary. 101 distinct ones
-    in Mensores, and DunneFlow could see none of them.
+    in Lictores, and DunneFlow could see none of them.
 
     One row per reference site, never deduplicated at ingest, so "how often is this
     named, and by whom" is answerable and rule 8 holds.
     """
 
-    name: str            # basename as written -- "tabularium.db"
-    stem: str            # basename minus its final extension -- "tabularium"
+    name: str            # basename as written -- "vestiarium.db"
+    stem: str            # basename minus its final extension -- "vestiarium"
     ext: str             # lowercased, no dot -- "db"
     kind: str            # DATABASE | CONFIG | SCRIPT | DOCUMENT | DATA | ARCHIVE
     routine_id: str
@@ -1324,7 +1324,7 @@ class Provenance(StrEnum):
 
 
 class DocRefKind(StrEnum):
-    CODE = "CODE"    # a backticked identifier: `resolve_calls`, `mensores custos`
+    CODE = "CODE"    # a backticked identifier: `resolve_calls`, `lictores aedile`
     PATH = "PATH"    # a path-shaped token: src/dunneflow/store.py
     URL = "URL"
 
@@ -1336,7 +1336,7 @@ class Heading:
     level: int
     text: str
     line: int
-    path: str = ""    # "Naming rules > The pantheon"
+    path: str = ""    # "Naming rules > The rollcall"
 
 
 @dataclass(slots=True)
@@ -1377,7 +1377,7 @@ class DocRef:
 class DocTable:
     """A table, header and every row, whole.
 
-    The "pantheon" table pairs each component with its Latin name, its gloss, its
+    The "rollcall" table pairs each component with its Latin name, its gloss, its
     historical accuracy and its trademark risk. Keeping only the gloss would throw away
     four columns that are the reason the table was written.
     """

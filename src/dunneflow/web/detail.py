@@ -78,8 +78,8 @@ def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
 # are told apart by looking; the other three are prefixed.
 #
 # The constant split is on the *last* dot deliberately: a module path holds dots
-# and an identifier does not, so `const:mensores.agent.JTBD_OPENERS` is the module
-# `mensores.agent` and the name `JTBD_OPENERS`, and no other split is right.
+# and an identifier does not, so `const:lictores.agent.JTBD_OPENERS` is the module
+# `lictores.agent` and the name `JTBD_OPENERS`, and no other split is right.
 # --------------------------------------------------------------------------- #
 
 def classify(node_id: str) -> tuple[str, dict[str, Any]]:
@@ -206,7 +206,7 @@ def _constant(store: Store, params: dict[str, Any]) -> dict[str, Any] | None:
         "label": ident["name"],
         "identity": ident,
         # A constant's comment is its WHY and there is nowhere else to look for it:
-        # 1,030 of Mensores' 2,618 carry one, and that is the whole reason rule 19
+        # 1,030 of Lictores' 2,618 carry one, and that is the whole reason rule 19
         # was worth the work.
         "governance": {
             "annotations": [],
@@ -579,7 +579,7 @@ def hover_card(store: Store, node_id: str) -> dict[str, Any]:
         if const is None:
             return {"found": False, "id": node_id, "reason": "no such node in this map"}
         # A constant's comment is its WHY and there is nowhere else to look: 1,030 of
-        # Mensores' 2,618 carry one, which is the whole reason rule 19 was worth the work.
+        # Lictores' 2,618 carry one, which is the whole reason rule 19 was worth the work.
         note = str(const["comment"] or "").strip()
         return {"found": True, "id": node_id, "kind": "CONSTANT",
                 "name": const["name"], "module": const["module"],

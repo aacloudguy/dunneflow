@@ -61,7 +61,7 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}$")
 
 # Rule 3, in a new place. A program that happens to define one thing called `list` does
 # not make every document naming `list` evidence of that thing. `ADR-59`'s entire claim
-# to having landed was the word `list`, and it was the only such case on Mensores --
+# to having landed was the word `list`, and it was the only such case on Lictores --
 # which is why the exclusion is this narrow and not a guessed stopword list.
 #
 # **The builtins of the languages this map actually holds**, which for a long time was
@@ -74,7 +74,7 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}$")
 #
 # **Measured before it was changed, and the honest headline is that it moved nothing.**
 # Removing the exclusion outright changes **no verdict on any of the four corpora** --
-# Mensores 1,463 ids, DunneNote 391, DunneFlow 28, DunneCorp 0 -- because a name has to be
+# Lictores 1,463 ids, DunneNote 391, DunneFlow 28, DunneCorp 0 -- because a name has to be
 # unique in the program *and* collide with a builtin *and* be the thing tipping an id over
 # `STRONG_LANDED_SYMBOLS` before anybody sees it. So this is a correctness fix with a
 # stated effect of nil today, and the reason to make it is rule 98: a detector's population
@@ -117,7 +117,7 @@ def _builtins(store: Store) -> frozenset[str]:
 STRONG_LANDED_SYMBOLS = 3
 
 
-# Called once per annotation row -- 48,706 times on Mensores for about 1,300 distinct
+# Called once per annotation row -- 48,706 times on Lictores for about 1,300 distinct
 # values. The cache is what keeps that a rounding error rather than three seconds.
 @cache
 def normalise(value: str) -> str:
@@ -386,10 +386,10 @@ def _symbol_population(store: Store) -> Counter[str]:
     """How many distinct things in the program answer to each name.
 
     A name that means one thing is evidence; a name that means twenty-two is rule 5's
-    trap. `__init__` names 217 routines in Mensores and could never distinguish a plan.
+    trap. `__init__` names 217 routines in Lictores and could never distinguish a plan.
 
     Counted over *identities*, not rows. A dataclass is recorded as both a structure
-    and a class -- 570 names on Mensores sit in both tables -- and summing rows would
+    and a class -- 570 names on Lictores sit in both tables -- and summing rows would
     give every one of them a population of two, disqualifying as evidence exactly the
     distinctive type names a plan document is most likely to cite.
     """

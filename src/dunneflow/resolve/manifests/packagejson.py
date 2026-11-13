@@ -4,7 +4,7 @@
 reader's `PATH` when they install the program; `scripts` is a task runner, and admitting it
 would put fourteen build commands in the ways-in panel beside real ones. Measured across
 the four JavaScript corpora here: **31 `scripts` entries and not one `bin`** -- DunneNote 4,
-DunneCorp 16, uigen 8, Society 3. Every one of them is declined by name, so a reader
+DunneCorp 16, uigen 8, Comitia 3. Every one of them is declined by name, so a reader
 looking at a manifest that plainly lists sixteen somethings is told why none of them is a
 way in (design rule 1).
 

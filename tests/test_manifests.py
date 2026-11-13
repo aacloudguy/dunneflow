@@ -15,7 +15,7 @@ argument (rule 30) one step earlier.
 
 **A refusal is said, not silent** (design rule 1). `"scripts"` is a task runner and not a
 way in, and the four JavaScript corpora here hold **31 of them and not one `bin`** --
-DunneNote 4, DunneCorp 16, uigen 8, Society 3. A reader looking at a manifest that plainly
+DunneNote 4, DunneCorp 16, uigen 8, Comitia 3. A reader looking at a manifest that plainly
 lists sixteen somethings, and a panel holding none of them, is owed the sentence.
 
 *`build.gradle.kts` is proved by this file and by nothing else.* There is no such file
@@ -195,7 +195,7 @@ def test_pyproject_reads_both_script_tables_and_each_names_itself(tmp_path):
 
 
 def test_a_dynamic_version_is_a_declared_absence_and_earns_a_sentence(tmp_path):
-    """Society's own case, and the reason it is not silent.
+    """Comitia's own case, and the reason it is not silent.
 
     `dynamic = ["version"]` says the version is computed at build time, by a tool this
     program will never run. Falling through to the directory-name guess is the right
@@ -445,8 +445,8 @@ def test_the_root_manifest_is_read_once_when_it_is_also_in_the_tree(tmp_path):
 # ------------------------------------------------------------------ identity --- #
 
 def test_a_root_declaration_keeps_the_bare_name_as_its_id(tmp_path):
-    """What holds the golden. Society's four script ids are `make_id("script", name)` and
-    every stored map since v1 agrees; Society's `src/` holds no nested manifest at all."""
+    """What holds the golden. Comitia's four script ids are `make_id("script", name)` and
+    every stored map since v1 agrees; Comitia's `src/` holds no nested manifest at all."""
     from dunneflow.schema import make_id
     root = _tree(tmp_path, {
         "pyproject.toml": '[project]\nname = "p"\n[project.scripts]\nx = "p:main"\n',

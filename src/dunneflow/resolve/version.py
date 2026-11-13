@@ -14,7 +14,7 @@ Three tiers, in the order they are trusted, and each says how it knows:
   one of six (rule 51).
 * `__version__` at module scope -- the same claim written in code, proven by a file and
   a line.
-* **the directory's own name** -- `society-2026-08-26`, `myapp-1.2.3`. A guess, marked
+* **the directory's own name** -- `comitia-2026-08-26`, `myapp-1.2.3`. A guess, marked
   `INFERRED`, and offered only when nothing better exists. Tom's rule: we may infer,
   provided we say that we did.
 
@@ -45,7 +45,7 @@ from ..schema import Provenance, stored_path
 VERSION_FILES: tuple[str, ...] = ("__init__.py", "_version.py", "version.py")
 
 # A version-shaped or date-shaped tail on a directory name. Anchored at a separator so
-# `society-2026-08-26` yields `2026-08-26` and `mensores` yields nothing -- a marker must
+# `comitia-2026-08-26` yields `2026-08-26` and `lictores` yields nothing -- a marker must
 # sit at an edge of the name (rule 5), or every directory has a version in it somewhere.
 _LEAF = re.compile(
     r"[-_@]("

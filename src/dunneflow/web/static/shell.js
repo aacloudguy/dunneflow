@@ -4,7 +4,7 @@
 /* ════════════════════════════════════════════════════════════
    The data these views draw comes from the server, not from here.
 
-   This file began as the ratified prototype with Mensores' real numbers pinned
+   This file began as the ratified prototype with Lictores' real numbers pinned
    into it -- 292 lines of `const` arrays standing exactly where the store
    belongs. Pinned data is the right way to settle a design and the wrong way to
    ship one: point the tool at another program and every one of those arrays is
@@ -18,12 +18,12 @@ let ENTRYPOINTS = [];   // ways in, deduplicated and ranked by reach
 let WAYIN = null;       // one way in, opened: its evidence, its commands, its sub-applications
 let BOUNDARIES  = [];   // boundary kinds with counts and their commonest target
 let PKGS        = [];   // top-level packages by routine count
-/* The program's own namespace -- `mensores` -- measured by the server over every module and
+/* The program's own namespace -- `lictores` -- measured by the server over every module and
    sent with the cover, so it is known before anything renders. What a narrow field drops
    first, because it is the one part of a module path that is the same on every row.
 
    This was a `Set` of package ids and the lookup was "the first segment that names a
-   package", which never stripped anything: `mensores` is a package too. Replaced rather
+   package", which never stripped anything: `lictores` is a package too. Replaced rather
    than patched -- the packages were never the right instrument for this question. */
 let ROOT        = "";
 let TABLES      = [];   // declared tables, busiest first
@@ -71,11 +71,11 @@ let ALGOLANES = [];
    something else might be worth a detour. */
 /* Threads to pull, per node, served -- not pinned.
  *
- * This was six hand-written rows about one Mensores routine, naming its plans, its
+ * This was six hand-written rows about one Lictores routine, naming its plans, its
  * packages and its environment variables, and it slipped past all three pinned-data
  * guards: it is a `const` object rather than a `let []`, so the array guard could not
  * see it; it is not in `PER_PROGRAM`, so the top-level guard was not looking; and the
- * prose guard searches for the program's *name*, while this said `disceptator`. It is
+ * prose guard searches for the program's *name*, while this said `conciliator`. It is
  * in `PER_PROGRAM` now, which is a structural check rather than a lexical one and
  * therefore cannot be evaded the same way. Rule 34. */
 let THREADS = {};
@@ -91,7 +91,7 @@ let UNDEFINED = [];    // words it uses and nothing defines -- the mirror's find
 /* Words held back from that finding: they occur only *inside* a compound constant name,
    never as the whole name of anything, and nothing defines them. Served rather than
    filtered away at the server (design rule 1), because the reader can put one back --
-   `MENSORES_MAX_LEN` carries the program's own word beside a modifier and a unit, and only
+   `LICTORES_MAX_LEN` carries the program's own word beside a modifier and a unit, and only
    a person can say which is which. */
 let SET_ASIDE = [];
 let CONVENTIONS = [];  // measured naming conventions, each with the query that counted it -- served
@@ -416,7 +416,7 @@ const state = {
    *
    * An HTML comment is content the author hid, and `html: false` un-hides it — markdown-it
    * escapes a refused `html_block` rather than dropping it, so 7,317 comments across 505 of
-   * Mensores' 2,019 documents would read as body prose. Folded rather than dropped, because
+   * Lictores' 2,019 documents would read as body prose. Folded rather than dropped, because
    * a silent filter is the thing design rule 1 exists to prevent and a template's comments
    * are occasionally the most useful thing in it. The same bargain, and the same switch
    * shape, as the code browser's margin and provenance folds. */
@@ -444,7 +444,7 @@ const state = {
   /* How a match is decided. Persisted, because they are how this reader searches rather
      than what they are looking for right now -- the same line `termFilter` and `routineQ`
      sit on the other side of. */
-  searchCase: false,      // `Quaestor` and `quaestor` are different words
+  searchCase: false,      // `Tribunus` and `tribunus` are different words
   searchWord: false,      // `emit`, not `_emit_all`
   searchRegex: false,     // and then whole-word is off, because a regex writes its own \b
   searchOpen: {},         // path -> open, for the current answer only. Never persisted.
@@ -511,8 +511,8 @@ const state = {
    * **`comparedRev` has three states, not two, and for a while it had two.** *Nothing
    * chosen yet* (`""`) and *chosen: on its own* (`ALONE`) are different answers, and
    * collapsing them made the "on its own" option a control that could not work. Reported
-   * by Tom: *"I have selected society-2026-08-29 on its own. However, the next line down
-   * still shows BASE then compared with society-2026-08-26."*
+   * by Tom: *"I have selected comitia-2026-08-29 on its own. However, the next line down
+   * still shows BASE then compared with comitia-2026-08-26."*
    *
    * Everything about that option was right — it exists, it is selected, the handler sets
    * the field, clears `CHANGES`, and carries a comment saying "On its own is a real answer
@@ -581,7 +581,7 @@ const state = {
    * 4,786 rows and an inspector naming the gesture that had just failed. Honesty was never
    * what was missing; an answer was.
    *
-   * The plate id, which is the model's -- `pkg:mensores.cli`, `ext:DATABASE` -- and not a
+   * The plate id, which is the model's -- `pkg:lictores.cli`, `ext:DATABASE` -- and not a
    * node id, because a plate is not a node (rule 30) and not one of the things it holds
    * (rule 74). Found by Tom, 2026-09-05. */
   plate: null,             // the plate id under inspection, or null
@@ -621,7 +621,7 @@ const state = {
   filters: [],
   /* Counted locally, and only so a Setting can be retired on evidence rather than on
    * opinion. It starts empty: the prototype shipped `{cover: 41, graph: 68, table: 52}`
-   * as pinned Mensores numbers, which would have retired a setting on fiction and read as
+   * as pinned Lictores numbers, which would have retired a setting on fiction and read as
    * a measurement while doing it. `test_no_program_data_is_pinned_into_the_shell` looked
    * only at the top-level arrays and never inside `state`, so it never saw them. */
   usage: {},
@@ -666,7 +666,7 @@ const state = {
   detail: false,
   detailAll: {},
   /* Seeded once the program's name is known, never with a name written here -- this
-     carried a literal "mensores" from the prototype, which is a confident label about a
+     carried a literal "lictores" from the prototype, which is a confident label about a
      program nobody has read. */
   trail: [],
   pins: [],      // {term, idx} — which citation is open in the source viewer   // what a one-time inference pass would cover
@@ -690,7 +690,7 @@ const state = {
  * a filter that fights the reader. What is left out is always stated (design rule 1).
  *
  * It is the reader's to set, because 200 was a judgment about *this* machine and it read as
- * a tease: Mensores' packages mostly hold 200-400, so the notice said `200 of 377` over a
+ * a tease: Lictores' packages mostly hold 200-400, so the notice said `200 of 377` over a
  * list that was very nearly whole. `0` is every routine there is -- the pane gets long, and
  * that is a thing someone may want. The default stays 200. */
 const NAV_CAPS = [50, 100, 200, 500, 0];
@@ -1254,10 +1254,10 @@ const NAV_ROUTES = {
    * to act on, and no subject had ever reached the DOM. Design rule 16 one level down
    * again: a control that renders, routes, and resolves to nothing. */
   /* **A tree is not one of the things it holds** (rule 74), and which of the two this row
-     is comes from the server rather than from `nodes.length > 1` (rule 30). `mensores` is
-     `mensores.cli:app` — a Typer object with no file — expanding to 107 commands across 44
+     is comes from the server rather than from `nodes.length > 1` (rule 30). `lictores` is
+     `lictores.cli:app` — a Typer object with no file — expanding to 107 commands across 44
      files, and selecting all 107 landed the reader in whichever one a query returned first:
-     `mensores.cli.examples.list_cmd` from one, `mensores/cli/_root.py` from another. Not
+     `lictores.cli.examples.list_cmd` from one, `lictores/cli/_root.py` from another. Not
      wrong so much as arbitrary, and nothing on screen explained it. A single-routine way in
      is unchanged, because for those the ordinary selection was always the right answer. */
   ep:  (b) => {
@@ -1775,7 +1775,7 @@ const CHANGE_FILE_BANDS = {
  * identity where one exists, a name where none does. A table is not a node; a structure is.
  *
  * **What was measured before this was written.** Routing these through the diagram box —
- * a box *is* a class (rule 74) — covers 192 of Mensores' 671 structures, because a box is
+ * a box *is* a class (rule 74) — covers 192 of Lictores' 671 structures, because a box is
  * built from routine nodes and every TYPE_ALIAS, ENUM and TYPEDDICT has no methods at all.
  * Four of the eight rows that actually move have none. Rule 77: a subject minted on a
  * condition cannot carry a fact that does not share it.
@@ -1788,7 +1788,7 @@ const CHANGE_STRUCT_BANDS = {
     nav: "chg", id: "id", label: "name", meta: "module", badge: "kind",
     labelFit: "name", metaFit: "module", tone: "gone",
     title: "Structures only in the base",
-    /* Compared by nothing at all until 2026-09-02: on Mensores' pair that hid eight of
+    /* Compared by nothing at all until 2026-09-02: on Lictores' pair that hid eight of
        them while the page was free to say *no differences found*. History, so it stays
        here and out of the sentence a reader of any program is shown (BACKLOG 25). */
     why: `A class, dataclass, enum or type alias the base version declares and the compared
@@ -1861,7 +1861,7 @@ function routineIndex() {
       }
       /* The `moved` kinds ride in the index rather than being looked up when a row is
          drawn. `find` over the behaves band per row is rule 45's shape again -- fine at
-         Mensores' eighteen and quadratic on a program where a thousand routines moved. */
+         Lictores' eighteen and quadratic on a program where a thousand routines moved. */
       by.set(r.id, { status, moved: (r.moved || []).join(", ") });
     }
   }
@@ -2089,7 +2089,7 @@ function changeByNodeId() {
   if (CHANGES._byNode) return CHANGES._byNode;
   /* **Walked over the payload, not copied out of `routineIndex()`.**
    *
-   * The index holds only the ids that are *in a band* -- 86 of them on Mensores -- and
+   * The index holds only the ids that are *in a band* -- 86 of them on Lictores -- and
    * `routineStatus` supplies `same` for a routine in none. Copying the index alone
    * therefore left every unchanged routine absent, and an absent id is `unclaimed`: the
    * key read *15 unchanged · 9,929 not compared* over a program with 4,700 unchanged
@@ -2116,7 +2116,7 @@ function changeByNodeId() {
 
        `same` is the ground and not a competing claim: a file with 63 unchanged routines and
        one arrival is a file something arrived in. Written the other way -- any two distinct
-       bands make it mixed -- every changed module on Mensores reads `mixed` and the colour
+       bands make it mixed -- every changed module on Lictores reads `mixed` and the colour
        says nothing at all. With `same` as the ground, 14 modules carry the whole comparison
        and 7 of them are genuinely mixed.
 
@@ -2689,7 +2689,7 @@ function paintRebuild() {
 /* How a revision reads to someone who did not capture it.
  *
  * **The instant is when the snapshot was captured, not when the code is from**, and here
- * the two are nothing alike: these snapshots hold a Society tree from 2026-08-26 and one
+ * the two are nothing alike: these snapshots hold a Comitia tree from 2026-08-26 and one
  * from 2026-08-29, and *both* were captured on the evening of the 29th, twenty-nine
  * seconds apart. So the instant is a serial number that happens to contain a date, and
  * the **label** is where "which point in time is this" actually lives.
@@ -2707,7 +2707,7 @@ function revWhen(r) {
  *
  * It prefixed the served revision with the word **current**, which was honest while the
  * reading end was pinned to whatever the server had opened. It is false now, and falsest
- * exactly where it matters: in `Society at e2e658b4 ← current`, the word names the
+ * exactly where it matters: in `Comitia at e2e658b4 ← current`, the word names the
  * *compared* end — the one that would stop being current the moment the reader chose that
  * row. A label that is true of a thing's present state and printed beside an offer to
  * change it is a label about the wrong moment.
@@ -2817,8 +2817,8 @@ function versionStrip() {
      limit of the program (design rule 1, which is about knowing what you are not looking
      at).
 
-     Reported by Tom: *"I have selected society-2026-08-29 on its own. However, the next
-     line down still shows BASE then compared with society-2026-08-26."* This branch tested
+     Reported by Tom: *"I have selected comitia-2026-08-29 on its own. However, the next
+     line down still shows BASE then compared with comitia-2026-08-26."* This branch tested
      `usable.length < 2` — whether the *program* has a second version — and never whether a
      comparison was actually running, so on a two-revision pair it could not fire at all. */
   if (!comparing()) {
@@ -2980,7 +2980,7 @@ function buildRevControls() {
  * digests, and a digest cannot contain a space -- and wrong about every other route
  * through here. `chg` carries `art:<the name the program gave a file>`, and a file called
  * `release notes.md` came back as two ids that name nothing: not an error, a selection of
- * nothing, which looks exactly like a row nobody clicked (design rule 16). Mensores has 0
+ * nothing, which looks exactly like a row nobody clicked (design rule 16). Lictores has 0
  * such names and a constant's `module.name` cannot hold a space at all, so this corpus
  * never exercised it; the next artefact-bearing one can.
  *
@@ -3008,7 +3008,7 @@ document.addEventListener("click", (ev) => {
   const term = b.dataset.term;
   /* The word names the step, and it is handed to the move rather than filed ahead of it.
      Ahead of it, the step landed on the subject being left and the real one arrived named
-     after whichever routine using the word sorted first -- `mensores` opens 628 modules,
+     after whichever routine using the word sorted first -- `lictores` opens 628 modules,
      and one of them standing in for the term is rule 74 in the trail. */
   followThread({ type: "cohort", kind: "term", key: term, label: term },
                { label: term, note: b.dataset.termuse || "" });
@@ -3017,7 +3017,7 @@ document.addEventListener("click", (ev) => {
 /* A word promoted into the glossary's worklist, or put back. The one judgement in the
  * vocabulary lane that is a reader's rather than a measurement's: a word occurring only
  * inside a compound constant name is a unit or a type nine times in ten, and the tenth is
- * the program's own word standing in front of one (`MENSORES_MAX_LEN`). Nothing can tell
+ * the program's own word standing in front of one (`LICTORES_MAX_LEN`). Nothing can tell
  * them apart from the name alone, so the split is stated and the decision is offered.
  *
  * Persisted per program beside `triage`, because it is a decision about *this* program and
@@ -3245,7 +3245,7 @@ const CODE_ROUTES = {
  * `docwhere` is declared **before** `docrow`, and the order is load-bearing: the location
  * button sits inside a row that is itself a selection, and the loop below returns on the
  * first kind that matches rather than on the nearest element. Declared the other way
- * round, clicking `mensores/cli/agent.py:38` would select the routine instead of opening
+ * round, clicking `lictores/cli/agent.py:38` would select the routine instead of opening
  * the file. */
 const DOC_ROUTES = {
   /* The one control that changes which document is open. It drops nothing: `loadDocPage`
@@ -3364,7 +3364,7 @@ const DOC_ROUTES = {
   },
   /* A relative link to another document. **Checked against the corpus before it is
      followed**, because 666 of them exist and a great many point outside it — `.groma/
-     PROJECT.md` links to `../../Society-Specs/01-naming-standards.md`, which is a real link
+     PROJECT.md` links to `../../Comitia-Specs/01-naming-standards.md`, which is a real link
      to a real file that is not part of this program. Following it would open a blank pane;
      saying so names what happened and what the reader is looking at. */
   doclink: (b) => {
@@ -3788,7 +3788,7 @@ function renderDiagram() {
      says which box they are inside -- otherwise the drawing is a compartment nobody
      recognises, with no way to tell it is one level down.
 
-     **Every count in it can be one, and most of them are.** Measured on Mensores
+     **Every count in it can be one, and most of them are.** Measured on Lictores
      2026-09-08: 8 of 53 compartments hold one box, and of 250 opened boxes 97 hold one
      routine, 43 cross to one other box and 24 hold one flow within. The reader of this
      sentence does not write code and reads "1 boxes over 8 routines" as a defect in the
@@ -3915,7 +3915,7 @@ function diagramCard(box) {
              : box.kind === "port" ? "another compartment"
              : box.kind === "wayin" ? "a way in" : "what it touches";
   /* **A way in counts what it starts *here*, and says so.** `holds` on this box is the
-     routines it starts in this compartment, not its reach — `mensores` reaches 1,381 and
+     routines it starts in this compartment, not its reach — `lictores` reaches 1,381 and
      starts 106 in `pkg:cli`, and "106 functions" unqualified would read as the second
      number being the first (rule 32). */
   const held = box.kind === "wayin"
@@ -4796,9 +4796,9 @@ const BKIND_GLYPH = {
 };
 
 /* **"Where to start" fits its names**, and it is the field on this page where losing a tail
- * costs most. Measured on Mensores: **3 of its 14 rows overflowed**, and two of them were
- * `python -m mensores.chaos.chaos_scriba_kill` and `…chaos_broker_kill` in a 156px box,
- * both reading `python -m mensores.ch…`. Two different ways into the program, drawn as one
+ * costs most. Measured on Lictores: **3 of its 14 rows overflowed**, and two of them were
+ * `python -m lictores.chaos.chaos_praeco_kill` and `…chaos_broker_kill` in a 156px box,
+ * both reading `python -m lictores.ch…`. Two different ways into the program, drawn as one
  * string, on the panel whose entire job is to say where to start.
  *
  * Fitted rather than budgeted because the box differs **per row inside one window**: 156px
@@ -4807,7 +4807,7 @@ const BKIND_GLYPH = {
 /* One way in, fetched when the reader opens it.
  *
  * On demand rather than with the cover, because a command tree costs a recursive walk per
- * mounted sub-application — 22 of them on Mensores — and a reader who never opens one must
+ * mounted sub-application — 22 of them on Lictores — and a reader who never opens one must
  * not pay for it at every boot (rule 45).
  *
  * Keyed by name because the name is what the row printed and the cover has no other identity
@@ -4834,9 +4834,9 @@ async function loadWayIn(name, inside) {
    view, the trail step, and the persisted state. `applySelectionStep` calls `loadWayIn`
    alone, because a restore must not file a step while it is restoring one. */
 async function openWayIn(name, inside) {
-  /* **The label is the mount's name, never its id.** `quaestor` is what the row says and
+  /* **The label is the mount's name, never its id.** `tribunus` is what the row says and
      what the reader clicked; `e932ebddd857f25f` is how the store finds it. A trail step
-     reading `mensores ▸ e932ebddd857f25f` names the right step in a language nobody on this
+     reading `lictores ▸ e932ebddd857f25f` names the right step in a language nobody on this
      side of the screen speaks, and this reader does not write code. Read off the groups
      already in `WAYIN`, which is the payload the button was drawn from, so the two cannot
      disagree — and falling back to the id rather than to nothing, because a step that
@@ -4855,7 +4855,7 @@ async function openWayIn(name, inside) {
 
 /* A row in the pane that names a routine is an **ordinary selection** — the same one the
  * navigator and the graph make — so the stack lights, the inspector fills, Code walks to the
- * file and the trail records the hop. That is the whole point of the pane: `mensores` is a
+ * file and the trail records the hop. That is the whole point of the pane: `lictores` is a
  * tree of 107 commands, and picking one of them is the thing a reader came to do. */
 function wayInCmdRow(c) {
   const where = c.file
@@ -4969,7 +4969,7 @@ function viewWayIn() {
 
 /* ═══ ways in: what each one is, where it lives, and what it starts ═══ */
 
-/* **Declared or guessed, and they must not look alike.** Four of Mensores' fourteen ways in
+/* **Declared or guessed, and they must not look alike.** Four of Lictores' fourteen ways in
  * are console scripts read out of `pyproject.toml` — facts about how the program is
  * installed. Nine are a module-level function DunneFlow recognised *by its name*, or a
  * `__main__` guard. The cover drew all fourteen as a name, a kind tag and a bar, so an
@@ -4985,12 +4985,12 @@ function authorityTag(e) {
 
 /* What the row is *about*: the evidence, and where it lives.
  *
- * The evidence is printed verbatim and unparsed — `pyproject.toml [project.scripts] mensores
- * = mensores.cli:app` is the answer to "what, exactly?", and tidying it into fields would
+ * The evidence is printed verbatim and unparsed — `pyproject.toml [project.scripts] lictores
+ * = lictores.cli:app` is the answer to "what, exactly?", and tidying it into fields would
  * promote this tool's own sentence to a contract for nothing (rule 30).
  *
- * **A command tree says what it spans instead of naming one file.** `mensores` is
- * `mensores.cli:app` — a Typer object, not a routine, with no definition site — and it starts
+ * **A command tree says what it spans instead of naming one file.** `lictores` is
+ * `lictores.cli:app` — a Typer object, not a routine, with no definition site — and it starts
  * 107 routines across 44 files. A file invented to fill the column would be one of the 107
  * chosen arbitrarily, which is what clicking used to do (rule 1). */
 function wayInWhat(e) {
@@ -5374,7 +5374,7 @@ function viewTable() {
   /* ── what you are looking at ──
    *
    * The table *was* in sync and there was no way to tell. The selected row carries
-   * `aria-selected` and is tinted, and on Mensores it sits 238,401px down a 4,734-row list
+   * `aria-selected` and is tinted, and on Lictores it sits 238,401px down a 4,734-row list
    * with the scroll at nought -- so a reader switching to this view saw four thousand rows
    * and nothing to say which of them was theirs. Reported exactly that way: *I cannot tell
    * what I am viewing in Table view.*
@@ -5510,7 +5510,7 @@ function viewTable() {
  *
  * **The narrative view, delivered — and delivered from rows rather than from prose.**
  *
- * What stood here was a page of hand-written sample text about one Mensores command,
+ * What stood here was a page of hand-written sample text about one Lictores command,
  * presented exactly as generated output would be, with nothing marking it as a mockup. It
  * was deleted as pinned data (rule 34) and replaced by an honest *"not built yet"*. This
  * is what that note was standing in for.
@@ -5818,7 +5818,7 @@ function docCell(kind, value) {
  * the node. A table name selects the code that reads and writes it — a declared table is
  * not a node, and `queries.py` wrote down before anything needed it that inventing an id
  * to make a row clickable would be a link to nothing. And a null id is a real answer: 8 of
- * Mensores' 178 entrypoints name a routine the resolver could not place, and those rows
+ * Lictores' 178 entrypoints name a routine the resolver could not place, and those rows
  * carry a title saying so rather than a link that goes nowhere. */
 function docRowAttrs(row, selects) {
   if (selects === "table" && row.table) {
@@ -6188,7 +6188,7 @@ function paintDocNote() {
  *
  * **Ranked, never filtered, and the two numbers are both on the page.** A routine carries a
  * median of two governance ids, and those two are named by a median of **281** documents —
- * 14% of Mensores' corpus. Calling those "related" would be a filter that filtered nothing.
+ * 14% of Lictores' corpus. Calling those "related" would be a filter that filtered nothing.
  * What is selective is the intersection: documents naming *every* id come to a median of 4.
  * So the full band is the answer and the rest is counted and offered (design rule 1). */
 async function loadRelDocs(nodeId) {
@@ -6264,7 +6264,7 @@ function relDocsBlock() {
 
 /* **This document is still open, and it may have nothing to do with what you have picked.**
  *
- * Tom's report: he selected `signator.__main__`, pressed Document, and got a document about
+ * Tom's report: he selected `cantator.__main__`, pressed Document, and got a document about
  * PAUL style rules — opened twenty minutes earlier from a naming citation and never put
  * away. Nothing on the page said so, and Document mode is one of five ways of reading *one
  * selection*.
@@ -6601,7 +6601,7 @@ function viewChanges() {
    *
    * `.navlabel` on the name for a second reason: the click handler falls back to the whole
    * button's text when there is no label, so the trail step read
-   * "claim_status_cmd mensores.cli.scribe boundariescallssql_ops". */
+   * "claim_status_cmd lictores.cli.scribe boundariescallssql_ops". */
   const rows = (list) => list.map(r => `
     <li><button class="chg-item" data-nav="chg" data-navid="${esc(r.id)}">
       <span class="chg-title navlabel" data-fit="name">${esc(r.name)}</span>
@@ -6839,7 +6839,7 @@ function viewChanges() {
  *
  * A module docstring is the only place a module says what it *is*, and it belongs to no
  * routine — so it gets a subject of its own rather than being hung on the synthetic
- * `<module>`, which exists in 487 of Mensores' 628 files while 619 of them carry a module
+ * `<module>`, which exists in 487 of Lictores' 628 files while 619 of them carry a module
  * docstring. For the 138 that state what they are and run nothing at import, this band is
  * the difference between the change being reported and the page saying "No differences
  * found" (rule 74's shape: a thing is never one of the things it holds).
@@ -6897,7 +6897,7 @@ function modband(b, rows, key) {
  *
  * **And "drawn" means this tab, not this program.** The first version counted all 106
  * findings while the head around it -- the tabs, the progress bar, "left to triage" -- was
- * per severity, so on Mensores' pair the Suspect tab read "◈ 4 claiming something different
+ * per severity, so on Lictores' pair the Suspect tab read "◈ 4 claiming something different
  * · 1 added" with **not one marked row on screen**: all five banded findings are INFO. Two
  * correct numbers, neither saying what it counted, which is the whole of rule 32 and the
  * reason `degree` stopped being printed beside a routine. Found by looking at the pane.
@@ -7053,7 +7053,7 @@ function viewAnomalies() {
     </button>`;
 
   /* **The title is `prose`, the one fit kind that refuses to shorten.** Measured over
-   * Mensores' 107 findings: every one contains a space and 80 contain a dot, so `shorten()`
+   * Lictores' 107 findings: every one contains a space and 80 contain a dot, so `shorten()`
    * would read a title as a dotted name, decide the head was ``self`` and the leaf was the
    * whole predicate, and elide the *subject* out of the middle of a sentence. Prose is cut
    * at its tail, where a sentence carries least; the stylesheet clamps it to two lines and
@@ -7154,7 +7154,7 @@ function viewAnomalies() {
               **The second button counts the list, never the finding's own figure** (rule
               32). They are not the same number and must not be spelled as if they were:
               `ONE_WAY_TABLE`'s count is read-plus-write *operations* while its occurrences
-              are the table and the routines that touch it -- one finding on Mensores is
+              are the table and the routines that touch it -- one finding on Lictores is
               `1` against a list of three.
 
               A finding that enumerates nothing keeps the old shape: visible, inert, and
@@ -7226,7 +7226,7 @@ function viewAnomalies() {
  *
  * The roster and the prose only; the arrangement itself is `forcelayout.js`, which knows
  * nothing about this page. Numbers here are measured rather than claimed — see
- * `PERFORMANCE.md`, and the crossing counts are on Mensores' busiest plate. */
+ * `PERFORMANCE.md`, and the crossing counts are on Lictores' busiest plate. */
 const PLATE_LAYOUTS = [
   { id: "structural", name: "By structure",
     why: "A sunflower spiral, busiest nearest the middle. Even, instant, and the same "
@@ -8173,7 +8173,7 @@ function selectionSnapshot() {
  * and not to the comparator. The result is rule 33's exact symptom with the field present:
  * the step carries its subject perfectly and is then deduplicated against the step before it,
  * so drilling from a way in into one of its sub-applications filed a step labelled
- * `mensores ▸ quaestor` that the trail discarded and replaced with `mensores`.
+ * `lictores ▸ tribunus` that the trail discarded and replaced with `lictores`.
  *
  * The comments on `diagramId`, `diagramBox` and `codeFile` each record paying this once, in
  * the snapshot, where the lesson does not reach the half that forgets. One list now, and the
@@ -8254,7 +8254,7 @@ function recordSelection(label, note, view) {
      gone rather than kept, because it was rescuing six callers from a mistake they no
      longer make. They each named a step *before* an async move; the step landed on the
      subject being left, was deduplicated here, and its note was written onto whatever the
-     reader had come from -- so following the *quaestor* curiosity left an unrelated routine
+     reader had come from -- so following the *tribunus* curiosity left an unrelated routine
      called `rubrics` labelled *"45 modules, 1 constant"*. The note it wanted was on the
      right step and about the wrong thing, which is worse than absent. The name rides with
      the move now (`selectFromNav`'s `name`), so there is one step, it is named when it is
@@ -8799,7 +8799,7 @@ function codeTable() {
    * right and the rule doing it was three lines away in another file. */
   /* **A file with nothing to mark pays for no column**, whichever way the fold is set. The
      toggle is a reader's preference between two jobs; this is a fact about the file, and
-     284 of Mensores' 628 files have no marks at all. Baked into the markup rather than
+     284 of Lictores' 628 files have no marks at all. Baked into the markup rather than
      stamped on the root, because it is a property of *this* file and the subtree is cached
      under the file's own key -- a root stamp would follow the reader to the next file and be
      wrong there. */
@@ -8890,14 +8890,14 @@ function viewAlgorithms() {
         <span class="muted">Ordered by ${esc(lane.order)}.</span>
         ${/* **Only on the lane it is a fact about.** `nested_rates` counts the rates that
               sit inside another loop — one call per item, per item — and it is the figure
-              this lane exists to surface: 250 rates on Society, and 9 of them quadratic.
+              this lane exists to surface: 250 rates on Comitia, and 9 of them quadratic.
               Deliberately *not* in the "measured and not listed here" paragraph below,
               which is about points that are absent from every lane; these are listed, each
               row saying "inside the loop at line N". A count of rows already on screen and
               a count of rows withheld are different claims (rule 32), so they do not share
               a sentence. `in_loop`, never `depth > 1`: depth counts every enclosing control
               point, so a loop written inside an `if` has depth 2 and is nested in nothing —
-              the two answers on Society are 98 and 9. */""}
+              the two answers on Comitia are 98 and 9. */""}
         ${lane.key === "rates" && ALGOS.quiet && ALGOS.quiet.nested_rates
           ? `<span class="muted"><b class="num">${
                ALGOS.quiet.nested_rates.toLocaleString()}</b> of these run inside another
@@ -8933,7 +8933,7 @@ function viewAlgorithms() {
  * no `goto` to draw and Python source never lost the structure. So there is no layout
  * pass, no library, nothing that can move under a gesture (rule 73), and it scrolls.
  *
- * **Guards are drawn here, and only here.** 3,931 of Society's branches are refusals: a
+ * **Guards are drawn here, and only here.** 3,931 of Comitia's branches are refusals: a
  * worklist of them is a list of the program, and a routine's shape without them is a lie
  * about the routine. The bound is the reader opening one routine (rule 45).
  */
@@ -9217,7 +9217,7 @@ function algoRow(r) {
   const more = r.n_moves > r.moves.length
     ? `<span class="algo-more num">+${r.n_moves - r.moves.length} more</span>` : "";
   /* **The line, then the header as written -- never a sentence built round it.** This read
-     `inside ${header}`, and Society's commonest enclosing loop is `while True:`, so ten of
+     `inside ${header}`, and Comitia's commonest enclosing loop is `while True:`, so ten of
      the rows this lane exists for said *"inside True"*. The store records a loop's test or
      its iterable and **not the word that opened it**, so any prose here would be inventing
      one: "inside the loop over True" is false for a `while`, and "inside True" is not a
@@ -9842,9 +9842,9 @@ const DETAIL_FLOW_SHOWN = 12;
 /* How many characters a module gets, per field, and each is that field's own width.
  *
  * `.navsub` is `max-width: 11rem` at `font-size: .64rem` (tokens.css). 30 is what the
- * shortening it replaces was already producing there and fitting -- `…disceptator.
+ * shortening it replaces was already producing there and fitting -- `…conciliator.
  * _extraction_state` is 30 -- so it is a measured calibration rather than a guess, and with
- * the program root dropped it now shows **81% of Mensores' 566 modules whole**.
+ * the program root dropped it now shows **81% of Lictores' 566 modules whole**.
  *
  * `.dflow-go .dim` sits in the detail window's flow column, which is `overflow-wrap:
  * anywhere` rather than clipped -- it wraps instead of cutting. So this budget buys
@@ -9936,7 +9936,7 @@ function detailPanel() {
                  dropping it was a silent filter that turned two real FILE writes into
                  "reaches nothing outside itself" (design rule 1, and the claim was simply
                  false). The path is usually assembled rather than literal -- rule 17's
-                 `root / ".mensores" / "tabularium.db"` -- so only the parts are in the
+                 `root / ".lictores" / "vestiarium.db"` -- so only the parts are in the
                  source and none of them is the name. */
               : `<b class="dtouch-unnamed">target not literal in the source</b>`}${
             x.d ? `<span class="dim">${esc(x.d)}</span>` : ""}</span>`).join("")
@@ -10740,7 +10740,7 @@ function conventionPanel(cv, i) {
  * before it was (`22e82ff`, 2026-09-06) and outlived it by nine days, on a page whose own
  * foot named it.
  *
- * Unbounded (rule 8). Mensores states twelve; a stale self-analysis in `output/` states 136,
+ * Unbounded (rule 8). Lictores states twelve; a stale self-analysis in `output/` states 136,
  * and all 136 would be drawn. Grouped by document because the document is both what makes a
  * long list readable and the thing the reader can open. */
 
@@ -10977,7 +10977,7 @@ function sourceBadge(src) {
  *
  * `scope · pattern` for a rule that names both -- which is what makes it checkable, so the
  * pair is the rule's identity. A prose rule names neither, and the first draft headed all
- * five of Mensores' with **"— · —"**, a title that distinguishes nothing from nothing: five
+ * five of Lictores' with **"— · —"**, a title that distinguishes nothing from nothing: five
  * panels with the same name, in the group whose whole job is saying why each was refused.
  * Its heading, then its own first words, then the fallback -- a name is not optional
  * (rule 30's family: a label a reader cannot act on is not an identity). */
@@ -11536,7 +11536,7 @@ function heldHead(held) {
 
 /* The band that makes the filter honest. `_GLOSSARY_DEFINITION_MAX_LEN` is one name
    somebody chose, and splitting it on underscores yields its subject, its type and its
-   unit; 889 of Society's 1,154 undefined words are units and types like that, and they
+   unit; 889 of Comitia's 1,154 undefined words are units and types like that, and they
    were the whole head of the worklist. Held back rather than dropped, and every one of
    them offered back, because the split cannot tell a subject from a unit and the reader
    can. */
@@ -11652,7 +11652,7 @@ function glossUndefined(undef) {
 
 /* ── the inspector ────────────────────────────────────────────────────────────
  *
- * One inspector, from two. The ratified design settled the *layout* and had one Mensores
+ * One inspector, from two. The ratified design settled the *layout* and had one Lictores
  * routine pinned into it as a permanent subject; `/api/node` and a separate `inspector.js`
  * had the *data* and no design. Keeping both meant two implementations of the pane the
  * whole tool points at, which is how the graph and the shell ended up as two applications.
@@ -11813,7 +11813,7 @@ function inspectorSubject() {
 }
 
 /* **What the legend calls a plate.** The model gives every disk a `name` and the id carries
- * a band prefix in front of it, so `pkg:mensores.cli` is an identity and `mensores.cli` is
+ * a band prefix in front of it, so `pkg:lictores.cli` is an identity and `lictores.cli` is
  * the word for it (rule 30). `graph.js` answers the same question the same way for a pick
  * chip -- `disks.find(...)?.name ?? p.id` -- and the fallback matches on purpose: a plate
  * the payload has not arrived for yet is named by its id rather than by nothing, because a
@@ -12043,9 +12043,9 @@ function followSelectionIntoCode() {
    * painted `state.codeFile` -- a **persisted** value, so the file a previous session left
    * open, from a package the reader had never touched, looking entirely deliberate.
    *
-   * Reported as *"the panel shows `mensores/_internal/_governed_gates.py` which is not what
+   * Reported as *"the panel shows `lictores/_internal/_governed_gates.py` which is not what
    * I expect to see"*, on a node whose own `where.file` was
-   * `mensores/disceptator/_extraction_state.py` all along. The store was right, the walk was
+   * `lictores/conciliator/_extraction_state.py` all along. The store was right, the walk was
    * right, and nothing invited the walk a second time. **Rule 78**, and the rule was written
    * from this. */
   if (!codeOnScreen()) return;
@@ -12136,7 +12136,7 @@ function breakable(qual) {
  * reading the plain text. */
 /* How long a manufactured segment should be, and it is measured rather than chosen.
  *
- * Across Mensores' 4,823 routine names, `jointed()`'s three seams cut 13,175 runs whose
+ * Across Lictores' 4,823 routine names, `jointed()`'s three seams cut 13,175 runs whose
  * **median length is 5** and whose longest is 15. So a break this function invents is aimed
  * at segments of about five characters -- the length the language's own seams already
  * produce -- and a name broken by it looks like a name broken by an underscore rather than
@@ -12339,7 +12339,7 @@ function mayRunList(c, from) {
 }
 
 /* **What a routine's signature names and no body was seen to touch** (BACKLOG 48,
- * `declared_boundaries`). Society2's Stage 0 stubs return a `*net.UnixListener` from a body
+ * `declared_boundaries`). Comitia2's Stage 0 stubs return a `*net.UnixListener` from a body
  * that only panics: worth knowing, and a claim about intent rather than a touch (rule 32). So
  * its own section, its own count, and **drawn by shape rather than colour** (design rule 5):
  * an open glyph and a dashed edge, beside the solid rows of what the body does. Absent where
@@ -12558,7 +12558,7 @@ function viewInspectorFlow(s) {
         <span class="badge certain">${id.weight} along it</span>
         <span style="margin-left:auto;display:flex;gap:.3rem">
           ${/* A kept arrow's note is what the reader sees on the shelf weeks later, and
-                both halves of it can be one: measured over 476 arrows on Mensores
+                both halves of it can be one: measured over 476 arrows on Lictores
                 2026-09-08, **116 carry exactly one call site** and 17 exactly one touch.
                 `${id.weight} along it` above needs nothing -- there is no noun in it. */""}
           ${pinBtn({ kind: "flow", id: s.id }, s.label || s.id,
@@ -12615,7 +12615,7 @@ function viewInspectorFlow(s) {
  *
  * Not indexed. A `Map` is what `routineIndex()` builds because it is asked 4,786 times per
  * repaint; this is asked once, for the one constant on screen, against a list that is seven
- * rows long on Mensores' pair. An index here would be the cache rule 52 warns about --
+ * rows long on Lictores' pair. An index here would be the cache rule 52 warns about --
  * work done to avoid work that was never being done. */
 function constantMoved(nodeId) {
   if (!comparing() || !CHANGES || CHANGES.loading || !CHANGES.available) return null;
@@ -12853,7 +12853,7 @@ function viewInspectorPlate(s) {
             <code data-fit="name">${esc(w.name)}</code>
             <span class="conf badge ${w.declared ? "certain" : ""}">${esc(w.kind)}${
               w.declared ? "" : " · by name"}</span>
-            ${/* How much of a tree is here, beside how big it is. `mensores` puts 106 of
+            ${/* How much of a tree is here, beside how big it is. `lictores` puts 106 of
                  its 107 roots on `pkg:cli` and one on `pkg:validate`, and a bare name
                  would say neither (rule 32). */""}
             ${w.roots > 1 ? `<span class="dim" style="margin-left:auto">${w.here} of ${
@@ -12897,7 +12897,7 @@ function viewInspectorPlate(s) {
  * again, and `algoRow`'s "inside True" is what that costs when it does not (rule 30).
  *
  * **The section counts the loops and opens every enclosing span.** Those are different
- * numbers on purpose: 89 loops reach Society's unnamed FILE boundary and 672 spans of all
+ * numbers on purpose: 89 loops reach Comitia's unnamed FILE boundary and 672 spans of all
  * kinds enclose it, because a decision that writes is a fact about the thing written even
  * though it is not a rate (design rule 1). The badge says which it is counting and the
  * body says what else it holds, so the figure and the list it opens cannot disagree
@@ -13070,7 +13070,7 @@ function viewInspectorTable(s) {
  * through to the drawing, which is what a reader standing on a pane actually wants to know
  * -- *is there anything in here worth reading*.
  *
- * **Guards are counted and never hidden.** 3,931 of Society's 9,625 points are refusals and
+ * **Guards are counted and never hidden.** 3,931 of Comitia's 9,625 points are refusals and
  * they are the largest shape in a real program; a summary that showed only the significant
  * ones would say a routine holding nine guards holds nothing (design rule 1).
  *
@@ -13221,7 +13221,7 @@ function viewInspector() {
    *
    * The empty-callers hint offers three explanations -- a way in, dead code, or a call
    * DunneFlow cannot see -- and for `<module>` every one of them is false. Measured on
-   * Mensores: **487 module nodes, 0 with any caller, 0 that are entrypoints**, against
+   * Lictores: **487 module nodes, 0 with any caller, 0 that are entrypoints**, against
    * baselines of 6,441 calls over 2,866 callees and 178 entrypoints of which 170 resolve.
    * So this is not a case the sentence handles badly, it is a case it cannot handle at
    * all: nothing can call module scope, because module scope is what runs *instead* of
@@ -13465,14 +13465,14 @@ function section(name, fn) {
   }
 }
 /* The breadcrumb is derived from state, never written into the HTML. It used to be
-   three static elements that said "mensores > cli > interview" on every screen --
+   three static elements that said "lictores > cli > interview" on every screen --
    a label that is wrong everywhere is worse than no label at all. */
 function crumbsFor() {
   /* The program's own name, and the *current selection* -- not a pinned path.
    *
    * `graph`, `table` and `doc` used to be fixed pairs -- "packages > system boundary",
-   * "quaestor > routines", "cli > interview" -- so every screen for every program showed
-   * one Mensores path that had nothing to do with what was on it. The comment above this
+   * "tribunus > routines", "cli > interview" -- so every screen for every program showed
+   * one Lictores path that had nothing to do with what was on it. The comment above this
    * function already said a label wrong everywhere is worse than no label, and the table
    * underneath it was doing exactly that. The three centre modes now say what is selected,
    * or say that nothing is. */
@@ -13485,7 +13485,7 @@ function crumbsFor() {
        it already answers for all four (rule 51); it exists because the trail needed exactly
        this and got its own copy of the question instead.
 
-       A plate's crumb is one part rather than two: `pkg:mensores.cli` has no module and a
+       A plate's crumb is one part rather than two: `pkg:lictores.cli` has no module and a
        name, and splitting the name on its last dot would invent a hierarchy the model does
        not have. */
     if (!inspectorSubject()) return [{ label: "nothing selected", cur: true }];
@@ -13942,7 +13942,7 @@ function wire() {
        plausibly and silently to the wrong thing. */
     if (b.dataset.box) { selectFold(b.dataset.box); return; }
     /* A **third** id space, and the third branch of the same argument. A row in a plate's
-       pane names a plate -- `pkg:mensores.cli`, `ext:DATABASE` -- which means nothing to
+       pane names a plate -- `pkg:lictores.cli`, `ext:DATABASE` -- which means nothing to
        `/api/node` and nothing to `/api/fold`. Through `selectFromNav` like every other
        selection, so the stack lights it, the list marks what it holds, the trail records
        the hop and undo reaches it (rule 51: a second path that only filled the inspector
@@ -13971,7 +13971,7 @@ function wire() {
        The row that knows the difference is the row that says so.
 
        Through `labelOf` rather than reading the attribute here, because a caller row's
-       text is now a **fitted** one: taking it raw would file `mensores.chaos.cha…` as the
+       text is now a **fitted** one: taking it raw would file `lictores.chaos.cha…` as the
        step you were on, and a trail step that cannot name where it goes is the whole of
        rule 33. One accessor, so the shortener and the trail cannot disagree (rule 51). */
     pushTrail(state.view, labelOf(b), "followed from the inspector");
@@ -14733,7 +14733,7 @@ function wire() {
       return;
     }
     /* The name goes **with** the move rather than ahead of it. Ahead of it, following the
-       *quaestor* curiosity filed a step called `__init__` and wrote its "45 modules, 1
+       *tribunus* curiosity filed a step called `__init__` and wrote its "45 modules, 1
        constant" onto the unrelated routine the reader had come from. */
     followThread(subject, { label: b.dataset.threadlabel || "thread",
                             note: b.dataset.threadwhy });
@@ -15334,7 +15334,7 @@ function navMatch(m, ...fields) {
 /* The matcher, **compiled once per keystroke and not once per row.**
  *
  * `items()` and `note()` are each called for every group and the predicate for every row --
- * 5,560 names on Mensores -- so building a `RegExp` inside `navMatch` would compile the
+ * 5,560 names on Lictores -- so building a `RegExp` inside `navMatch` would compile the
  * pattern five and a half thousand times per character typed. That is rule 45's own shape:
  * work proportional to the program on every keystroke. Cached on the query and the three
  * flags, so every caller in one repaint shares one compile.
@@ -15615,9 +15615,9 @@ function routineFan(id) {
  *
  * Asked for at the keyboard: *many of the things we attempt to display are actually too
  * large for their fields. We must choose the portion that shows as much uniqueness as
- * possible.* Neither end alone is that portion. `mensores.storage._audit` and
- * `mensores.capture._audit` share a leaf; `mensores.storage._audit` and
- * `mensores.storage._queue` share a head. Only keeping **both** tells the two pairs apart,
+ * possible.* Neither end alone is that portion. `lictores.storage._audit` and
+ * `lictores.capture._audit` share a leaf; `lictores.storage._audit` and
+ * `lictores.storage._queue` share a head. Only keeping **both** tells the two pairs apart,
  * so what goes is the middle.
  *
  * This replaces `moduleTail`, which kept the last two segments and is the reason that
@@ -15651,7 +15651,7 @@ function shorten(text, budget) {
   const s = String(text == null ? "" : text);
   if (s.length <= budget) return { text: s, cut: 0 };
 
-  /* `/` wins where a string has both, because `mensores/storage/_audit.py` is jointed at
+  /* `/` wins where a string has both, because `lictores/storage/_audit.py` is jointed at
      its slashes and the dot in `.py` is not a joint -- splitting on it yields two parts,
      which sends a path down the character branch and cuts it mid-segment. */
   const sep = s.includes("/") ? "/" : s.includes(".") ? "." : "";
@@ -15702,8 +15702,8 @@ function shorten(text, budget) {
      the head, not the leaf.**
    *
    * The first version cut across the whole string, which spends the damage on whichever end
-   * the arithmetic happened to reach: `disceptator._anthropic_architect` came out as
-   * `disceptator._an\u2026opic_architect`, keeping a package name the navigator already prints as
+   * the arithmetic happened to reach: `conciliator._anthropic_architect` came out as
+   * `conciliator._an\u2026opic_architect`, keeping a package name the navigator already prints as
    * the group heading and breaking the one part that separates this row from the others in
    * it. Tom's rule names the leaf as where uniqueness usually sits, so the leaf is what is
    * protected: `disc\u2026ator._anthropic_architect`, both ends still present, one token broken
@@ -15715,7 +15715,7 @@ function shorten(text, budget) {
     return done(squeeze(headRun, room) + sep + leaf);
   }
 
-  /* **The leaf alone is wider than the field** -- 110 of Mensores' 566 modules, whose last
+  /* **The leaf alone is wider than the field** -- 110 of Lictores' 566 modules, whose last
      segment is a 41-character migration name. Nothing can keep it whole, so it takes the
      same treatment: both its ends, its middle elided, behind the first segment and a mark
      for everything dropped between them.
@@ -15740,10 +15740,10 @@ function shorten(text, budget) {
 
 /* A module as a field shows it: the program's own root dropped, then shortened.
  *
- * **All 566 of Mensores' modules begin `mensores.`**, so a rule that keeps the head would
+ * **All 566 of Lictores' modules begin `lictores.`**, so a rule that keeps the head would
  * spend its first nine characters on a word that is identical on every row -- and, for a
- * three-segment module, would elide the *package* to keep it. `mensores.disceptator.
- * _extraction_state` becomes `mensores.\u2026.\_extraction_state`: the useless half kept, the
+ * three-segment module, would elide the *package* to keep it. `lictores.conciliator.
+ * _extraction_state` becomes `lictores.\u2026.\_extraction_state`: the useless half kept, the
  * informative half thrown away.
  *
  * `ROOT` comes from `/api/cover`, measured over every module in the store, so it is the
@@ -15751,12 +15751,12 @@ function shorten(text, budget) {
  *
  * **`startsWith` on the whole prefix, not a search for a segment.** The first attempt asked
  * which segment named a package and stripped everything before it, which stripped nothing
- * at all: `mensores` is itself a package -- the modules directly under it belong to one --
+ * at all: `lictores` is itself a package -- the modules directly under it belong to one --
  * so it matched at position 0 every time. It threw nothing, logged nothing, and left 1,019
- * navigator rows reading `mensores.\u2026.\_advance_gate`; found by looking at them.
+ * navigator rows reading `lictores.\u2026.\_advance_gate`; found by looking at them.
  *
  * Stripped and *then* budgeted, so the modules that now fit are shown whole rather than
- * shortened to make room for a prefix nobody needed -- 81% of Mensores' 566 at the
+ * shortened to make room for a prefix nobody needed -- 81% of Lictores' 566 at the
  * navigator's width. */
 function moduleLabel(module, budget) {
   return shorten(stripRoot(module), budget);
@@ -15788,8 +15788,8 @@ function stripRoot(module) {
  * as well as between windows. Measured on the cover: `.rank-name code` is 156px on one row
  * and 112px on the row below it, because the `kind-tag` beside it is a different width.
  * Measured in the inspector: `.gotonode` gets 242px and **7 of its 11 rows overflowed it**,
- * losing the module leaf off the end -- `mensores.chaos.chaos_scriba_kill` and
- * `mensores.chaos.chaos_broker_kill` both read `mensores.chaos.cha…`, which is the exact
+ * losing the module leaf off the end -- `lictores.chaos.chaos_praeco_kill` and
+ * `lictores.chaos.chaos_broker_kill` both read `lictores.chaos.cha…`, which is the exact
  * failure `shorten()` was extracted to stop and it was still happening one pane away.
  *
  * A constant for a field like that is arithmetic wearing a measurement's clothes -- rule
@@ -15831,7 +15831,7 @@ function stripRoot(module) {
  * the whole of it on the hover. */
 const FIT_KINDS = {
   /* The program's own root goes first and **unconditionally**, not only when short of
-     room: all 566 of Mensores' modules begin `mensores.`, so those nine characters say
+     room: all 566 of Lictores' modules begin `lictores.`, so those nine characters say
      nothing on any row whether or not there is space for them. */
   module: stripRoot,
   /* Any other jointed string as written -- a qualname, a path, a command line. */
@@ -15848,7 +15848,7 @@ const FIT_FULL = "full";
  * Not noise, and not a fudge: a fitted field is usually sized *to* its own content -- a flex
  * item with an `auto` basis -- so the space available and the space needed are computed from
  * the same text and come out **exactly equal**. A strict `<=` between two floats derived that
- * way is a coin flip on the last bit, and `mensores` lost it: 53.3px of text in 53.3px of
+ * way is a coin flip on the last bit, and `lictores` lost it: 53.3px of text in 53.3px of
  * room, declared too long, and shortened to `men…res`. Eight characters cut to seven.
  *
  * **The same number `selfCheck` forgives**, and that is the whole reason it is a constant
@@ -15934,7 +15934,7 @@ function fitFields(root) {
     /* The **unshortened** string, kept the first time this field is seen. Reading the
        element's own text on a later pass would shorten what is already shortened, and it
        would compound: two renders turn
-       `mensores.storage.sqlite.migrations.0028_add_work_items` into
+       `lictores.storage.sqlite.migrations.0028_add_work_items` into
        `storage.….0028_add_work_items` and then into `stor…items`, each pass eating the one
        before it and none of them saying so. */
     if (el.dataset[FIT_FULL] == null) el.dataset[FIT_FULL] = el.textContent;
@@ -16294,7 +16294,7 @@ function overlaySwitchHtml(which) {
  * A text diff says these lines moved. This says **this routine behaves differently** --
  * it calls something it did not, writes a table it did not, has a parameter it did not --
  * which is what the whole tool exists to report and what `git diff` cannot state at all.
- * Four of Mensores' eighteen changed routines have an *unchanged body*: they stopped
+ * Four of Lictores' eighteen changed routines have an *unchanged body*: they stopped
  * resolving `queue.claim` because a new module brought a second routine of that name.
  *
  * Every row is an ordinary selection, so clicking one lights the stack, moves the
@@ -16527,7 +16527,7 @@ function codeNote() {
  *
  * One box, two lanes: **what matches a path**, and **what matches the text inside**. They
  * are two questions and the reader has both at once rather than a mode switch between
- * them, because "where is the quaestor code" and "where is the word quaestor" are asked in
+ * them, because "where is the tribunus code" and "where is the word tribunus" are asked in
  * the same breath and the answer to one is usually the way into the other.
  *
  * The lanes are not alike underneath, and the difference is worth stating. The file lane is
@@ -16536,7 +16536,7 @@ function codeNote() {
  * browser has none of them -- so it is debounced, it says while it is out, and it comes
  * back with counts rather than with lines.
  *
- * **Files first, then lines, and that is the whole design.** `quaestor` matches 782 lines
+ * **Files first, then lines, and that is the whole design.** `tribunus` matches 782 lines
  * in 166 files; `e` matches 133,454 in all 626. One flat list of hits is the haystack
  * again. 626 file rows with a count on each is an answer a reader can act on at any size,
  * and the lines are one click beneath the file that holds them.
@@ -16876,7 +16876,7 @@ function fileRowsHtml(rows) {
       ${/* **After the count, and that is not a style choice.** `dressNavItems` gathers a
             row's loose text nodes into a `.navlabel` and re-inserts it immediately before
             `.n` — so an element written between the file name and the count ends up
-            *between the directory and the name*: `mensores/scriba/ ○ _queue.py`. It read
+            *between the directory and the name*: `lictores/praeco/ ○ _queue.py`. It read
             as a glyph inside the path, and every check passed, because the markup this
             function writes is correct and something else moves it afterwards.
 
@@ -17660,7 +17660,7 @@ function changeList() {
           Its rows open the file, which is the code browser's own route. */
        + Object.entries(CHANGE_FILE_BANDS)
               .map(([k, b]) => modgroup(k, b, c[k] || [])).join("")
-       /* **Counted in the badge and listed nowhere until 2026-10-02**: on Society the group
+       /* **Counted in the badge and listed nowhere until 2026-10-02**: on Comitia the group
           read 49 over rows that added up to fewer, and the difference was these (BACKLOG 18).
           Their spec is the page's, and it carries `meta` and `tone` for this. */
        + Object.entries(CHANGE_STRUCT_BANDS)
@@ -17910,7 +17910,7 @@ function navItemHtml(i) {
             row's loose text into a `.navlabel` and re-inserts it immediately *before* the
             `.n` span -- so an element written between the label and the count comes out in
             front of the name. The file rows learnt this the expensive way: the chip landed
-            inside the path and the row read `mensores/scriba/ \u25cb _queue.py`, a glyph
+            inside the path and the row read `lictores/praeco/ \u25cb _queue.py`, a glyph
             inside a directory (rule 71). Placed last it survives that move and lands in a
             column of its own down the right-hand edge. */""}
       ${i.chg && i.chg.glyph
@@ -18020,7 +18020,7 @@ async function loadCover() {
 /* Every program beside this one, for the topbar's first control.
  *
  * **It has never worked, and it looked as though it did.** The ratified design has this
- * select with three options -- `mensores — 623 files`, `dunneflow — 23 files`,
+ * select with three options -- `lictores — 623 files`, `dunneflow — 23 files`,
  * `+ Analyse a directory…` -- and no change handler even there: a statement of intent
  * wearing a working control's clothes. The port carried the markup across and emptied the
  * options with every other pinned array, and unlike all of those it never got the endpoint
@@ -18547,7 +18547,7 @@ async function loadAnomalies() {
        be a rendering. Dropping it was the defect this chunk opened on: triage was filed
        against the finding's *position* in this array while both declarations of
        `state.triage` said `finding id ->`, and the findings are served sorted by count.
-       Measured on Mensores' pair -- a decision filed against `siq__rebuild_87_02h` read
+       Measured on Lictores' pair -- a decision filed against `siq__rebuild_87_02h` read
        back after a base switch as an acknowledgement of `tags`, with nothing on screen or
        in the console to say so.
 
@@ -18871,7 +18871,7 @@ function applyGraphPalette() {
 /* ── the stack's altitude ──────────────────────────────────────────────────────
  *
  * Two levels of one program. `routine` is every thing it declares -- 10,015 nodes and
- * 14,254 edges on Mensores -- and `module` folds each file into one node and each boundary
+ * 14,254 edges on Lictores -- and `module` folds each file into one node and each boundary
  * kind into one: 578 and 1,505. It is a second way to look at the same facts and not a
  * filter, so nothing is dropped and every folded node says what it stands for.
  *
@@ -19036,7 +19036,7 @@ async function fetchPayload(level, min) {
  *
  * A pick is an index into *one* payload, so the same number means a different routine in
  * the next one -- which is why `setPayload` drops them and the shell re-resolves from ids.
- * But an id does not survive either: `mod:mensores.cli.audit` is not a routine and no
+ * But an id does not survive either: `mod:lictores.cli.audit` is not a routine and no
  * routine id is a module. So the translation is explicit and it is **stated**, because
  * "showing the file your routine lives in" is a different answer from the one asked for and
  * a reader who is not told has been quietly moved.
@@ -19252,7 +19252,7 @@ async function ensureGraph() {
    *
    * The doorway panel is the first surface that can follow a subject with the stack never
    * mounted, and it made it visible at once -- a card naming `backup_cmd` opened the
-   * inspector on `mensores.transport._envelope.<module>`, an unrelated node, and filed two
+   * inspector on `lictores.transport._envelope.<module>`, an unrelated node, and filed two
    * trail steps under its name. That is rule 74's defect arriving through the engine,
    * exactly as rule 76 describes, at the one call site the fix had not reached.
    *
@@ -19766,7 +19766,7 @@ function navHoverSkeleton(row) {
  * a `*` cannot appear in one and not the other. This function does nothing but colour what
  * it is handed. Composing the line here from a bare parameter list is what the server was
  * asked not to make it do: `def f(a, *, b)` and `def f(a, b)` are different functions, and
- * 998 of Mensores' 4,734 routines need that separator.
+ * 998 of Lictores' 4,734 routines need that separator.
  *
  * **No line at all for `<module>`.** That is DunneFlow's own name for module scope, not a
  * routine anybody wrote, and `<module>()` would be a call that cannot be made -- inventing
@@ -19848,7 +19848,7 @@ function hoverDetailHtml(card, needWhere) {
 
        **Characters, not lines, and the difference is a claim.** Every value in `constants`
        reaches the store through `_literal`, which is `ast.unparse`, so **not one of
-       Mensores' 2,638 carries a newline** -- the wrapping on screen is the card's, not the
+       Lictores' 2,638 carries a newline** -- the wrapping on screen is the card's, not the
        program's. "94 more lines" would be a fact about this pane reported as a fact about
        the source (rule 32). */
     const v = String(card.value || "");
@@ -21061,7 +21061,7 @@ function changeKeyHtml() {
      while the answer had long since arrived. Found by reading the console.
 
      **Shadows are skipped**, because they are never drawn (rule 23) and a count beside a
-     picture must count what is in it (rule 32). On Mensores that is 5,855 of them. */
+     picture must count what is in it (rule 32). On Lictores that is 5,855 of them. */
   const nodes = (graphPayload && graphPayload.nodes) || {};
   const ids = nodes.id || [];
   const shadow = nodes.shadow || [];
@@ -21121,7 +21121,7 @@ function changeKeyHtml() {
 
           `same` is the ground rather than a competing claim. Counted the other way, a file
           with 63 unchanged routines and one arrival reads *mixed*, every changed file on
-          Mensores reads mixed, and the tone says nothing at all. */""}
+          Lictores reads mixed, and the tone says nothing at all. */""}
     ${row("tone-mixed", "\u25c6", tally.mixed, "more than one of the above",
           "different things happened to different routines in one file")}
     ${row("tone-quiet", "\u00b7", tally.edited + tally.same, "unchanged",
@@ -21150,7 +21150,7 @@ function changeKeyHtml() {
  * Confirmed at the keyboard before it was fixed -- `gsort` set to `name`, and
  * `Graph.diskOrder()` byte-identical afterwards. The two disagreed even at boot, the
  * legend opening on `ext:STDIO` (991 nodes, biggest of all) over a stack opening on
- * `pkg:disceptator` (961, biggest *package*).
+ * `pkg:conciliator` (961, biggest *package*).
  *
  * `applyOrder` below is the half that was missing, and it is called from the one handler
  * rather than from each branch here (rule 78): a mode added later cannot forget to move

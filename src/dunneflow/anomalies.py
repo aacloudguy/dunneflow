@@ -133,7 +133,7 @@ class Anomaly:
 
     * **No position.** Not a line, and -- for a detector that groups -- not a file
       either. `file` on a grouped finding is `MIN(file)`, an arbitrary tiebreak that
-      moves when an unrelated file changes: keyed with it, Mensores' pair loses three of
+      moves when an unrelated file changes: keyed with it, Lictores' pair loses three of
       its 106 pairings and reports them as removed-and-added. That is `make_id`'s own
       argument one level up, and `changes.py` makes it again for facts.
     * **The parts come from the fact contract**, never from a language's syntax. Every
@@ -619,7 +619,7 @@ def _lost_edges(store: Store, r: Report) -> None:
             blind_spot=blind,
             # The expression that could not be pinned. **Not** the rivals and not the
             # callers: both are what the finding *reports*, and both move while the
-            # finding stays the same one -- 93 of Mensores' 106 findings are this kind,
+            # finding stays the same one -- 93 of Lictores' 106 findings are this kind,
             # so keying on either would report most of the program as churn.
             ident_parts=(row["callee_expr"],),
             subject=row["callee_expr"], file=row["f"], count=row["n"],
@@ -994,7 +994,7 @@ _REACHES_OUT = ("DATABASE", "QUEUE", "NETWORK", "LOCAL_IPC")
 # Every loop that reaches one of those on **every pass**, with what its bound looks like.
 #
 # **Three tables unioned to places, not one table asked.** `boundaries` alone misses two of
-# Society's 74 -- `for col in _SPEC_COLUMNS: ... ALTER TABLE Spec` is a `sql_ops` row that
+# Comitia's 74 -- `for col in _SPEC_COLUMNS: ... ALTER TABLE Spec` is a `sql_ops` row that
 # the boundary detector did not also record -- and a finding whose title counts database
 # work has to count all of it (rule 13). The `UNION` deduplicates the line, which is
 # exactly what `resolve/shape.places` does, so an `INSERT` recorded as a `DATABASE` row
@@ -1061,7 +1061,7 @@ def _looped_boundaries(store: Store, r: Report) -> None:
     """A database, queue or network call written inside a loop.
 
     **The measurement chose the shape of this, and it is worth saying how.** Read as
-    `net_calls` alone it fires twice on Society, and both are `wait_until_serving` --
+    `net_calls` alone it fires twice on Comitia, and both are `wait_until_serving` --
     `while True:` poll loops with a deadline, which is the second blind spot below. Two of
     two findings would have been false alarms, which is what `CLAUDE.md` means by
     verifying a detector's findings against real source before shipping it.

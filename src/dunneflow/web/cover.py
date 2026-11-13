@@ -31,19 +31,19 @@ def _root(store: Store) -> str:
 
     What it is *for*: a field too narrow for a module path has to drop something, and the
     only defensible thing to drop first is the part that is the same on every row. All 566
-    of Mensores' modules begin `mensores.`, so a head-and-leaf shortening spends nine
-    characters saying nothing and then elides `disceptator` -- the package, the one segment
+    of Lictores' modules begin `lictores.`, so a head-and-leaf shortening spends nine
+    characters saying nothing and then elides `conciliator` -- the package, the one segment
     that separates this module from the other 565 -- to afford them.
 
-    **Not "a segment that names a package".** That test was tried and is wrong: `mensores`
+    **Not "a segment that names a package".** That test was tried and is wrong: `lictores`
     is itself a package in `COVER_PACKAGES`, because the modules sitting directly under it
     belong to one, so it matches at position 0 and nothing is ever stripped. It looked
     right, changed nothing, and reported no error -- found by reading 1,019 rows in the
-    navigator that still said `mensores.….\\_advance_gate`.
+    navigator that still said `lictores.….\\_advance_gate`.
 
     Empty rather than a guess when the program has more than one top-level name, and empty
-    when the shared head is a module in its own right -- stripping `mensores` from the
-    module `mensores` leaves nothing to show. A reader then sees whole module paths
+    when the shared head is a module in its own right -- stripping `lictores` from the
+    module `lictores` leaves nothing to show. A reader then sees whole module paths
     shortened by the ordinary rule, which is worse-looking and still true.
     """
     heads = [(r["head"], r["n"]) for r in store.query(queries.COVER_ROOT)]
@@ -65,7 +65,7 @@ def _lines(source: SourceStore | None, revision: str | None) -> int | None:
     # Which version's lines, named by the caller -- the version the cover is *of*, never
     # whichever snapshot happens to be newest. This was `WHERE p.revision = ''` -- the
     # legacy revision, from before a snapshot had a name -- so from the day revisions
-    # landed the cover said "0 lines" about every program analysed since. Mensores is
+    # landed the cover said "0 lines" about every program analysed since. Lictores is
     # 186,786. Nothing failed and nothing was empty: a zero on the first screen reads as a
     # program with no source, which is a claim, and a wrong one. Found by serving a copied
     # program directory and looking at the cover.
@@ -108,7 +108,7 @@ def build(store: Store, source: SourceStore | None, program: str, *,
     # **What each way in *is*, not only how far it reaches.** This used to build the rows
     # here from `ways_in()` and drop `evidence` and `declared` on the floor, so an installed
     # executable and a module-level function DunneFlow had guessed at by its name drew
-    # identically -- and five of Mensores' fourteen rows are all called `main`. `waysin.py`
+    # identically -- and five of Lictores' fourteen rows are all called `main`. `waysin.py`
     # owns the answer now, because the pane behind a click needs the same one (rule 51).
     entrypoints = ways_in_listing(store)
 

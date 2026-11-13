@@ -58,7 +58,7 @@ from .words import plural
 # descend into somebody else's build tree. `.gradle`, `.build` and `.turbo` are
 # deliberately **not** listed, because every name below a dot is already pruned and a
 # second answer to a question this file already answers is how the two come to disagree.
-# Measured before adding any of them: Society's `src` holds no directory of any of those
+# Measured before adding any of them: Comitia's `src` holds no directory of any of those
 # names, so the golden cannot move.
 SKIP_DIRS = frozenset({
     ".git", ".hg", ".svn", "__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache",
@@ -86,11 +86,11 @@ DOC_SKIP_DIRS = frozenset({
 # deliberately -- that is where a project files its charter, its decisions and its naming
 # standard -- and admitting a directory for its documents must not admit a **copy of the
 # program** underneath it. Two stale agent worktrees under `.claude/worktrees/` put 335
-# May-era duplicates of Mensores' own governance documents into the corpus. The copy
+# May-era duplicates of Lictores' own governance documents into the corpus. The copy
 # detector caught 303 and every consumer filters `duplicate_of`, so most numbers were
 # protected; the 32 that had since drifted from their originals were no longer identical
-# and escaped it, putting ten definitions -- `mensor`, `mensores` and `Society of
-# Mensores` among them -- into the glossary from a directory that is not the project.
+# and escaped it, putting ten definitions -- `lictor`, `lictores` and `Comitia of
+# Lictores` among them -- into the glossary from a directory that is not the project.
 #
 # The marker is read off the disk and is never a question asked of a VCS: a worktree
 # carries a `.git` *file*, a clone a `.git` *directory*, and `.hg` and `.svn` are the

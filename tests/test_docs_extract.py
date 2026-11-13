@@ -1,7 +1,7 @@
 """Documentation is the other half of the input, and it lies differently from code.
 
 Every test here exists because of something real. The counter-examples are all drawn
-from the Society of Mensores corpus: a research paper that reads exactly like a naming
+from the Comitia of Lictores corpus: a research paper that reads exactly like a naming
 standard, a naming standard whose title made every section look like a glossary, a
 placeholder in prose that a tag-stripper ate, and three hundred copies of the same
 document sitting in agent worktrees.
@@ -23,7 +23,7 @@ NAMING_STANDARD = '''# Acme Naming System — house vocabulary
 ## Naming rules (BINDING)
 
 1. **Latin-only** — no Greek borrowings, ever.
-2. **Always the binomial** — `acme quaestor`, never bare `quaestor`.
+2. **Always the binomial** — `acme tribunus`, never bare `tribunus`.
 
 ## Identifiers
 
@@ -34,12 +34,12 @@ Every module name uses snake_case.
 
 **Action before any filing:** a registered attorney must run full clearance.
 
-## The pantheon
+## The rollcall
 
 | Component | Latin name | Role / meaning |
 |---|---|---|
 | Harness (the fork: `/acme-*`) | **groma** | the instrument, invoked as `acme-<role>` |
-| Audit tools | **quaestor** | the magistrate who audits the records |
+| Audit tools | **tribunus** | the magistrate who audits the records |
 '''
 
 RESEARCH_PAPER = '''---
@@ -65,10 +65,10 @@ title: Glossary
 
 # Glossary
 
-## Mensor
+## Lictor
 
 <dl>
-<dt>mensor <em>(noun)</em></dt>
+<dt>lictor <em>(noun)</em></dt>
 <dd>A vector with applied measurement metadata — provenance and audit trail.</dd>
 </dl>
 '''
@@ -158,7 +158,7 @@ def test_a_status_section_states_no_rules(tmp_path: Path) -> None:
 def test_definition_table_yields_every_term_column(tmp_path: Path) -> None:
     facts = _extract(tmp_path, "NAMING.md", NAMING_STANDARD)
     terms = {d.term for d in facts.definitions}
-    assert "groma" in terms and "quaestor" in terms
+    assert "groma" in terms and "tribunus" in terms
 
 
 def test_a_placeholder_in_prose_is_not_an_html_tag(tmp_path: Path) -> None:
@@ -171,8 +171,8 @@ def test_a_placeholder_in_prose_is_not_an_html_tag(tmp_path: Path) -> None:
 def test_html_definition_lists_are_read(tmp_path: Path) -> None:
     facts = _extract(tmp_path, "glossary.md", GLOSSARY)
     assert facts.doc_class is DocClass.GLOSSARY
-    mensor = [d for d in facts.definitions if d.term.startswith("mensor")]
-    assert mensor and "provenance and audit trail" in mensor[0].definition
+    lictor = [d for d in facts.definitions if d.term.startswith("lictor")]
+    assert lictor and "provenance and audit trail" in lictor[0].definition
 
 
 def test_a_fenced_block_is_code_and_yields_nothing(tmp_path: Path) -> None:
@@ -292,12 +292,12 @@ def test_a_prose_rule_change_discards_only_the_document_store(tmp_path: Path) ->
 #
 # `.claude` and `.groma` are admitted for documents because that is where a project
 # files its charter. Nothing scoped that admission below the top level, so two stale
-# agent worktrees under `.claude/worktrees/` put 335 May-era copies of Mensores' own
+# agent worktrees under `.claude/worktrees/` put 335 May-era copies of Lictores' own
 # governance documents into the corpus -- 14% of it. The duplicate detector caught 303
 # and every consumer filters `duplicate_of`, so most numbers were protected. The 32
 # that had drifted from their originals were no longer identical and escaped it,
-# putting ten definitions into the glossary -- `mensor`, `mensores` and `Society of
-# Mensores` among them -- sourced from a directory that is not the project.
+# putting ten definitions into the glossary -- `lictor`, `lictores` and `Comitia of
+# Lictores` among them -- sourced from a directory that is not the project.
 #
 # Each test below is written against a specific way this can half-work, because a
 # guard that has only ever passed is a claim nobody has tested (rule 37).
@@ -448,15 +448,15 @@ CONVENTION_TABLE = """\
 
 # The most dangerous near-miss in the corpus: a **glossary** table, in a naming
 # standard, under a naming heading, already mined as definitions.
-PANTHEON_TABLE = """\
+ROLLCALL_TABLE = """\
 # Naming
 
-## The pantheon
+## The rollcall
 
 | Component | Latin name | Role / meaning |
 |---|---|---|
-| Interview engine | `disceptator` | the one who debates |
-| Ledger | `quaestor` | the one who audits |
+| Interview engine | `conciliator` | the one who debates |
+| Ledger | `tribunus` | the one who audits |
 | Surveyor | `groma` | the surveying instrument |
 """
 
@@ -596,14 +596,14 @@ def test_a_row_naming_no_identifier_class_is_kept_and_not_checkable(
 
 
 def test_a_glossary_table_in_a_naming_standard_states_no_rules(tmp_path: Path) -> None:
-    """The near-miss that would have put ten pantheon mappings into the standard.
+    """The near-miss that would have put ten rollcall mappings into the standard.
 
     It is a table, in a NAMING_STANDARD, under a heading matching `naming_headings`, and
     every cell is a name. What it is not is a *spelling* rule: no column shows a pattern,
     so the pattern half is missing and the table yields nothing. It is already mined as
     definitions, which is the right lane for it.
     """
-    facts = _extract(tmp_path, "NAMING.md", PANTHEON_TABLE)
+    facts = _extract(tmp_path, "NAMING.md", ROLLCALL_TABLE)
     assert facts.doc_class is DocClass.NAMING_STANDARD
     assert _form(facts) == [], (
         "a glossary table was read as a naming standard — the pattern half was not required"
@@ -718,7 +718,7 @@ def test_a_map_beside_the_docs_is_not_documentation(tmp_path: Path) -> None:
 
     (tmp_path / "README.md").write_text("# Real prose", encoding="utf-8")
     out = tmp_path / "output"
-    for prog in ("mensores", "dunneflow"):
+    for prog in ("lictores", "dunneflow"):
         d = out / prog
         d.mkdir(parents=True)
         (d / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
@@ -728,7 +728,7 @@ def test_a_map_beside_the_docs_is_not_documentation(tmp_path: Path) -> None:
     notes.mkdir()
     (notes / "decisions.md").write_text("# Ours", encoding="utf-8")
 
-    exclude = frozenset({out / "mensores"}) | revisions.program_dirs(out)
+    exclude = frozenset({out / "lictores"}) | revisions.program_dirs(out)
     found = {p.relative_to(tmp_path).as_posix()
              for p in discover_docs(tmp_path, exclude=exclude)}
     assert "README.md" in found
@@ -736,7 +736,7 @@ def test_a_map_beside_the_docs_is_not_documentation(tmp_path: Path) -> None:
         "hand-written prose beside the maps was dropped — the name `output` was "
         "blacklisted rather than the maps recognised"
     )
-    assert not [f for f in found if f.startswith("output/mensores")], (
+    assert not [f for f in found if f.startswith("output/lictores")], (
         "the program's own generated report was read as its documentation"
     )
     assert not [f for f in found if f.startswith("output/dunneflow")], (
@@ -764,7 +764,7 @@ def test_a_map_nested_deeper_than_one_level_is_pruned(tmp_path: Path) -> None:
     from dunneflow.walk import discover_docs
 
     (tmp_path / "README.md").write_text("# Real prose", encoding="utf-8")
-    buried = tmp_path / "a" / "b" / "c" / "mensores"
+    buried = tmp_path / "a" / "b" / "c" / "lictores"
     buried.mkdir(parents=True)
     (buried / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
     (buried / "06-governance.md").write_text("# Generated", encoding="utf-8")
@@ -791,7 +791,7 @@ def test_a_docs_root_that_is_itself_a_map_yields_nothing(tmp_path: Path) -> None
     """
     from dunneflow.walk import discover_docs
 
-    prog = tmp_path / "mensores"
+    prog = tmp_path / "lictores"
     prog.mkdir()
     (prog / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
     (prog / "06-governance.md").write_text("# Generated", encoding="utf-8")
@@ -807,7 +807,7 @@ def test_a_docs_root_that_is_itself_a_map_yields_nothing(tmp_path: Path) -> None
 def test_a_pruned_map_is_named(tmp_path: Path) -> None:
     """Design rule 1, and the number is larger here than for a checkout.
 
-    A pruned worktree was 14% of Mensores' corpus. A pruned map was **122 of 147
+    A pruned worktree was 14% of Lictores' corpus. A pruned map was **122 of 147
     documents** of DunneFlow's own, so the version that prunes correctly and says nothing
     reports a corpus 83% smaller than what the reader can see in the directory -- and
     across two points in time, a project that deleted most of its documentation.
@@ -815,7 +815,7 @@ def test_a_pruned_map_is_named(tmp_path: Path) -> None:
     from dunneflow.walk import discover_docs
 
     (tmp_path / "README.md").write_text("# Real prose", encoding="utf-8")
-    prog = tmp_path / "output" / "mensores"
+    prog = tmp_path / "output" / "lictores"
     prog.mkdir(parents=True)
     (prog / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
     (prog / "06-governance.md").write_text("# Generated", encoding="utf-8")
@@ -886,7 +886,7 @@ Each write tool runs validation BEFORE store or lock calls:
 def test_a_constraint_is_not_a_definition(tmp_path: Path) -> None:
     """A validation list, written in the shape a gloss is written in.
 
-    `definition: 1 ≤ len ≤ 5000 chars` reached Society's glossary as one of sixty
+    `definition: 1 ≤ len ≤ 5000 chars` reached Comitia's glossary as one of sixty
     defined terms, so the page said the program defines the word *definition* and meant
     a bound on a string's length. The section admits definitions because its heading
     mentions the glossary, which is left standing deliberately; what is refused is the
@@ -901,7 +901,7 @@ def test_a_constraint_is_not_a_definition(tmp_path: Path) -> None:
 def test_the_test_is_on_the_opening_not_on_the_numbers(tmp_path: Path) -> None:
     """A sentence that reaches a bound partway through is prose about a budget.
 
-    Three of Society's definitions quote a number in that way and all three are kept; the
+    Three of Comitia's definitions quote a number in that way and all three are kept; the
     refusal fires only where the gloss *begins* by stating a shape. Without that the rule
     takes real definitions with it, which is how a precision fix becomes a recall defect.
     """

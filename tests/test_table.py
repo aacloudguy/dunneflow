@@ -59,7 +59,7 @@ def test_a_table_declared_once_hands_the_source_pane_a_place_to_open(analyzed):
 
 
 def test_a_table_this_program_only_touches_is_described_not_refused(analyzed):
-    """A program that reads somebody else's schema declares nothing, and 12 of Society's
+    """A program that reads somebody else's schema declares nothing, and 12 of Comitia's
     65 tables are exactly that. Refusing them would blank the pane on the tables a reader
     most wants explained (design rule 21)."""
     got = analyzed.query(

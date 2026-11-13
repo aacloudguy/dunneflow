@@ -9,7 +9,7 @@ program does not carry -- and each would need a filter it must remember. The rul
 `standards.db` instead, so the isolation is structural rather than remembered.
 
 **Rule 57, one directory further out.** That rule was paid for by two stale worktrees
-putting 335 of Mensores' 2,381 documents into the map. Letting a reader *name* a root opens
+putting 335 of Lictores' 2,381 documents into the map. Letting a reader *name* a root opens
 three more ways for a program to be read as its own standard, and the refusals are asserted
 here **by their sentence**, not merely by their exit code: a refusal nobody can read is a
 refusal they will work around.
@@ -81,7 +81,7 @@ def test_the_tools_own_output_is_refused_and_says_it_would_mint_rules(
     already names for the document corpus, arriving through a flag instead of a walk.
     """
     tree, docs_root, out_root, _ = _roots(tmp_path)
-    why = standards_refusal(out_root / "mensores", tree=tree, out_root=out_root,
+    why = standards_refusal(out_root / "lictores", tree=tree, out_root=out_root,
                             docs_root=docs_root)
     assert why and "output root" in why and "mint rules" in why, \
         f"the sentence must say what reading a map back would do, got {why!r}"

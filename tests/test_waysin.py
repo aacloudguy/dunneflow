@@ -1,7 +1,7 @@
 """Ways in: what each one *is*, and what a command tree does when you open it.
 
-Tom, reading Mensores' cover: *"they don't make sense in the way that code does… Are these
-packages, modules, or applications? What is `mensores`, `mensores-mcp`, `run`?"*
+Tom, reading Lictores' cover: *"they don't make sense in the way that code does… Are these
+packages, modules, or applications? What is `lictores`, `lictores-mcp`, `run`?"*
 
 They are none of those three as a class. A way in is **how the outside world starts this
 program** — a name you can type, a request that arrives, a module you can run — and the
@@ -14,7 +14,7 @@ Two properties matter here.
 **Declared and guessed must be separable by a query, not only by eye** — a row that cannot
 say which it is is the reason five rows called `main` were unreadable.
 
-**A tree is not one of the things it holds** (rule 74). `mensores` names `mensores.cli:app`,
+**A tree is not one of the things it holds** (rule 74). `lictores` names `lictores.cli:app`,
 which is a Typer object with no definition site, and expands to 107 commands across 44 files.
 Clicking it selected all 107 and landed on whichever a query returned first. Which of the two
 a way in is arrives as a declared field, because "this is a tree" and "this happens to start
@@ -158,9 +158,9 @@ def test_an_application_object_has_no_definition_site_and_says_what_it_spans(
 def test_opening_an_application_returns_its_tree(tree: Store) -> None:
     """The pane behind the click: the sub-applications, and the commands hung directly on it.
 
-    This is what clicking `mensores` could not do. It selected 107 routines at once and the
-    centre opened whichever the query returned first — `mensores.cli.examples.list_cmd` from
-    one query and `mensores/cli/_root.py` from another. Arbitrary, and unexplained.
+    This is what clicking `lictores` could not do. It selected 107 routines at once and the
+    centre opened whichever the query returned first — `lictores.cli.examples.list_cmd` from
+    one query and `lictores/cli/_root.py` from another. Arbitrary, and unexplained.
     """
     d = waysin.describe(tree, "demo")
     assert d["found"] is True and d["app"] is True
@@ -186,7 +186,7 @@ def test_a_group_accounts_for_what_the_tree_starts(tree: Store) -> None:
     """Design rule 1: told "starts N" and shown one command, the reader is owed the rest.
 
     `unlisted` counts routines named by neither the entry, a listed command, nor a listed
-    group. Counting a group by its *direct* children read `telemetry 0` on Mensores for a
+    group. Counting a group by its *direct* children read `telemetry 0` on Lictores for a
     group holding nine commands one mount further down, so groups are counted with
     `app_command_routines` — the same function `ways_in` counts the whole tree with (rule 13).
     """
@@ -201,7 +201,7 @@ def test_the_front_door_is_not_reported_as_a_limitation(tree: Store) -> None:
     named by nothing, so `unlisted` counted it — and the pane's sentence for `unlisted` calls
     it *a registration idiom DunneFlow followed far enough to count and not far enough to
     name*. That is a limitation confessed where there is none (rule 32), about the single
-    most interesting routine in the tree. `mensores-mcp` has two.
+    most interesting routine in the tree. `lictores-mcp` has two.
     """
     d = waysin.describe(tree, "demo")
     assert "entry" in d
@@ -241,7 +241,7 @@ def test_a_sub_application_can_be_opened(tree: Store) -> None:
 def test_every_count_is_recomputed_for_the_sub_application(tree: Store) -> None:
     """Rule 24: a measurement must measure the thing it names.
 
-    Carried down unchanged, `starts`, `files` and `reach` read 107, 44 and 1,381 on Mensores
+    Carried down unchanged, `starts`, `files` and `reach` read 107, 44 and 1,381 on Lictores
     under a heading naming a group of 34 — three numbers each true of something the reader is
     not looking at.
     """

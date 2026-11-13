@@ -203,8 +203,8 @@ identifier_classes:
   - env var
 
 # A concrete spelling pattern also makes a rule FORM. Deliberately narrow: a
-# backticked token is not a pattern unless it looks like one, or `mensores
-# disceptator` would be read as a spelling rule when it is a vocabulary rule.
+# backticked token is not a pattern unless it looks like one, or `lictores
+# conciliator` would be read as a spelling rule when it is a vocabulary rule.
 pattern_tokens:
   - '(?i)\b(snake_case|camelCase|PascalCase|kebab-case|SCREAMING_SNAKE_CASE|UPPER_SNAKE|screaming snake|title case|lower ?case|upper ?case|mixed ?case)\b'
   # A glob, and only a glob: no spaces, so it cannot run from one backtick across a
@@ -262,7 +262,7 @@ rule_bearing_classes:
 # Sections of a naming-standards document that report findings rather than state
 # rules. Every one of these is evidence-led, from NAMING.md itself: its trademark
 # status, its registry availability results, and its runner-up list are all normative
-# in voice -- "Action before any filing", "prefix `mensores-<role>` if ever standalone"
+# in voice -- "Action before any filing", "prefix `lictores-<role>` if ever standalone"
 # -- and none of them is a rule anyone follows when naming a function. A rule stated
 # inside one of these is lost; that is precision bought at the cost of recall, and the
 # model pass exists to recover the remainder.
@@ -273,7 +273,7 @@ excluded_headings: '(?i)\b(status|availability|results?|runner.?ups?|trademark|d
 #
 # `- `definition`: 1 <= len <= 5000 chars` is a validation rule for a field, written in
 # the shape a gloss is written in, inside a section whose heading mentions the glossary.
-# It reached the glossary of Society as one of 60 defined terms, glossing the word
+# It reached the glossary of Comitia as one of 60 defined terms, glossing the word
 # `definition` -- so the page said the program defines that word and meant a bound on a
 # string's length. Rule 12's family: prose-shaped is not the same as prose.
 #
@@ -281,7 +281,7 @@ excluded_headings: '(?i)\b(status|availability|results?|runner.?ups?|trademark|d
 # *begins* by stating a bound, a bare type, a regex or a placeholder value is stating a
 # shape; a sentence that mentions "<=30s p95" halfway through is prose about a budget, and
 # three such definitions in this corpus are correctly kept. Measured over all 240
-# definitions Society yields: 5 refused, every one of them a field constraint or a
+# definitions Comitia yields: 5 refused, every one of them a field constraint or a
 # reserved-future null, and no definition anybody wrote is among them.
 #
 # What it deliberately does not do is judge the *section*: a heading that merely mentions
@@ -305,7 +305,7 @@ naming_domain_words: '(?i)\b(nam(e|es|ed|ing)|term|terms|word|words|vocabulary|n
 # Words that need no glossary entry.
 #
 # A glossary is for the words a reader cannot look up. `handler`, `config` and `queue`
-# are ordinary programming vocabulary; `disceptator`, `groma` and `tabularium` are not,
+# are ordinary programming vocabulary; `conciliator`, `groma` and `vestiarium` are not,
 # and neither is `oscal`. Rather than ship a dictionary, this lists the vocabulary a
 # working programmer already has -- which is the smaller list, and the one a project can
 # usefully edit when its domain says otherwise.

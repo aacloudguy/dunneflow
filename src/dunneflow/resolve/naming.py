@@ -90,7 +90,7 @@ def styles_of(name: str, private_prefix: bool = False) -> set[str]:
     The five regexes are used exactly as they were written, which is load-bearing rather
     than lazy: `SNAKE` is `[a-z0-9_]+` and so tolerates the leading underscore that marks a
     routine private. Decomposing it into "lowercase words joined by underscores" dropped
-    `_helper` to `other` and cost Mensores 1,811 false exceptions in one population.
+    `_helper` to `other` and cost Lictores 1,811 false exceptions in one population.
     """
     if private_prefix and name.startswith("_") and not DUNDER.fullmatch(name):
         # **A leading underscore read as a privacy mark rather than part of the spelling**,
@@ -180,7 +180,7 @@ def resolve_styles(sets: list[set[str]]) -> tuple[list[str], bool]:
     TypeScript program and on `snake_case` in a Python one, from the same rule.
 
     `other` never votes. It is the absence of a style rather than one of them, and letting
-    it into the order made Mensores' 1,811 private routines outvote its 1,611 unambiguous
+    it into the order made Lictores' 1,811 private routines outvote its 1,611 unambiguous
     snake_case ones and reported the program as having no convention.
 
     Returns the styles and **whether anything unambiguous was found**, because a population
@@ -380,7 +380,7 @@ POPULATIONS: dict[str, tuple[str, str, str, str]] = {
 }
 
 # Populations whose names are dotted paths. A dot separates segments and is not a
-# violation of anything; reading `mensores.cli.main` as one identifier made every module
+# violation of anything; reading `lictores.cli.main` as one identifier made every module
 # in the program an exception to its own convention.
 DOTTED = frozenset({"modules"})
 
@@ -529,7 +529,7 @@ def mine_case_conventions(
 
     `langs` empty means **do not split**, and that is what a map holding one language
     passes. A one-language map has no language axis to state, so its report is untouched
-    -- which is also what keeps every figure recorded against Mensores reproducible.
+    -- which is also what keeps every figure recorded against Lictores reproducible.
     """
     conventions: list[Convention] = []
     gaps: list[Gap] = []
@@ -646,7 +646,7 @@ def _routine_properties(store: Store) -> dict[str, set[str]]:
 
 # Above this many terms the exact tail is replaced by a normal approximation. Chosen so
 # every corpus this tool had read before C++ stays on the exact path and reproduces its
-# recorded numbers exactly: the largest population Society offers is in the low thousands.
+# recorded numbers exactly: the largest population Comitia offers is in the low thousands.
 _EXACT_TERMS = 4_000
 
 
@@ -664,7 +664,7 @@ def _beats_coincidence(holds: int, total: int, base_rate: float, tests: int) -> 
     **It was written as an exact binomial tail and that stops working at scale.**
     `math.comb(total, i)` is an exact integer, and past a few thousand it is an integer with
     more digits than a float has range — so multiplying it by a probability raises
-    `OverflowError: int too large to convert to float`. It never fired on Society, DunneNote
+    `OverflowError: int too large to convert to float`. It never fired on Comitia, DunneNote
     or DunneCorp, whose largest populations are in the low thousands; it killed a run of
     Unreal's `Runtime` **fourteen minutes in**, after every fact had been extracted, resolved
     and written, in the last pass before the map was rendered.
@@ -765,7 +765,7 @@ def _affix_conventions(
 
     The useful sentence is the *precision* one -- "a routine ending `_cmd` is registered
     as a command, 97 of 99" -- and the two that break it are worth looking at. Coverage
-    is the other direction, and on Mensores it is 63%: most commands do end in `_cmd`,
+    is the other direction, and on Lictores it is 63%: most commands do end in `_cmd`,
     but plenty do not. Reporting only one of the two numbers is how an affix convention
     flatters itself, so both are printed and the claim is made in the direction that
     actually holds.
@@ -1007,8 +1007,8 @@ def mine_house_prefix(store: Store, langs: Sequence[str] = ()) -> list[Conventio
             exceptions = [Exception_(n, w) for n, w in rows if n not in keep]
             column = NAME_COLUMN[label]
             named = population_name(label, lang)
-            # A module is `mensores.cli`, a table is `mensores_audit`, an environment
-            # variable is `MENSORES_HOME`: the house token is followed by whichever
+            # A module is `lictores.cli`, a table is `lictores_audit`, an environment
+            # variable is `LICTORES_HOME`: the house token is followed by whichever
             # separator that population uses, or by nothing at all when the name is
             # exactly the token.
             where = _scoped(

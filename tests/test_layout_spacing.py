@@ -1,7 +1,7 @@
 """Node separation, and the law that makes it a guarantee rather than a hope.
 
 A dot's size used to be a pixel constant and a plate's size a world quantity, so a node
-knew nothing about the room its own plate had. Measured on Society at the default framing,
+knew nothing about the room its own plate had. Measured on Comitia at the default framing,
 **4,990 of 10,052 drawn nodes touched or overlapped a neighbour** and the smallest plate was
 5.5 px across holding six of them.
 

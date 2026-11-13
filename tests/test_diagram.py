@@ -432,7 +432,7 @@ def test_the_counts_a_panel_prints_do_not_change(analyzed: Store) -> None:
 def test_a_way_in_holds_what_it_starts_here_not_what_it_reaches(analyzed: Store) -> None:
     """Rule 24: a measurement must measure the thing it names.
 
-    On Mensores `mensores` reaches 1,381 routines and starts 106 of them in `pkg:cli`. A box
+    On Lictores `lictores` reaches 1,381 routines and starts 106 of them in `pkg:cli`. A box
     on `pkg:cli` labelled with the first number would be a fact about somewhere else.
     """
     model = build(analyzed)
@@ -464,7 +464,7 @@ def test_the_arrow_bound_is_per_way_in_and_is_stated(analyzed: Store) -> None:
 
 
 def test_a_compartment_with_no_way_in_draws_exactly_what_it_did(analyzed: Store) -> None:
-    """46 of Mensores' 53 compartments are entered from nowhere, and must be untouched."""
+    """46 of Lictores' 53 compartments are entered from nowhere, and must be untouched."""
     model = build(analyzed)
     plain = diagram.build(model)
     withways = diagram.build(model, _ways_for(analyzed))

@@ -208,7 +208,7 @@ def test_the_printed_figures_add_up_to_the_total_and_match_the_store(tmp_path):
     `certain + inferred + external` was **not** the total from the chunk 6 split until chunk
     10, and nothing noticed for three chunks. v1 counted an external call in the tail every
     no-target path fell through; the split gave each `NoEdge` its own branch and kept the
-    count only on the boundary one. Society read *4,063 external* over 30,544 calls of which
+    count only on the boundary one. Comitia read *4,063 external* over 30,544 calls of which
     24,103 leave the program — 4,063 being the `at_boundary` count wearing another word.
 
     It was found by chunk 10's gate rather than by a test, because a resolution rate is the

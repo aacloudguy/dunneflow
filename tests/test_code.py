@@ -53,7 +53,7 @@ def test_the_file_list_is_not_bounded(tmp_path: Path) -> None:
 
     Written against a store built here rather than against the sample program, which has
     exactly one file -- so the obvious version of this guard passed against a `[:2]` that
-    would have hidden 624 of Mensores' 626. A guard whose fixture is smaller than the bound
+    would have hidden 624 of Lictores' 626. A guard whose fixture is smaller than the bound
     it is checking for has not checked anything.
     """
     store = Store(tmp_path / "many.db")
@@ -223,7 +223,7 @@ def test_a_boundary_no_other_detector_saw_keeps_its_mark(tmp_path: Path) -> None
 
     Excluding the general record must not lose what only the general record saw. Two cases
     the sample program cannot produce -- every DATABASE boundary in it sits on a SQL line,
-    and no other kind does -- so the rows are written here. 43 of Mensores' routines open a
+    and no other kind does -- so the rows are written here. 43 of Lictores' routines open a
     connection and run nothing, and a coarser rule blanks every one of their cards.
     """
     store = Store(tmp_path / "b.db")

@@ -25,7 +25,7 @@ comes back with a `band` and a `why`, and the surface decides what to draw.
 to a boundary, because such a table would be a second copy of a fact the two already
 state between them (rule 40).
 
-**A move is counted once at a line, and the parts are kept.** 569 of Society's 991 SQL
+**A move is counted once at a line, and the parts are kept.** 569 of Comitia's 991 SQL
 operations sit on a line that is also a `boundaries` row, and 29 of its 32 network calls
 do -- summing the three tables reports a loop holding one write as holding two, and it
 did, in the sentence that gives 28 of the 250 rates their number. What is deduplicated is
@@ -41,7 +41,7 @@ arm written below it would be a position mistaken for a meaning (rule 1).
 
 **And an iterable is not a body.** `for row in conn.execute(q).fetchall():` runs one
 query, before the first pass -- but it is written on a line inside the loop's own span, so
-the range join above read it as one query *per* pass and said so, about 11 of Society's
+the range join above read it as one query *per* pass and said so, about 11 of Comitia's
 261 rates, in the sentence that is this feature's headline. **A span cannot tell what a
 loop is over from what it does** (rule 85), which is why `ControlPoint` records the lines
 it evaluates once and why `Point.repeated` -- never `Point.moves` -- is what the band and the
@@ -89,7 +89,7 @@ def places(moves: list[Move]) -> int:
     """How many *acts* these rows describe, which is not how many rows there are.
 
     `boundaries`, `sql_ops` and `net_calls` describe one statement at two altitudes: an
-    `INSERT` is a `DATABASE` row and a `SQL` row on the same line, and 569 of Society's
+    `INSERT` is a `DATABASE` row and a `SQL` row on the same line, and 569 of Comitia's
     991 SQL operations sit on a line that is also a boundary. Counting rows says *two
     things move here* about one write -- and it said so about **28 of the 250** loops this
     feature exists to report, in the sentence that gives their rate.
@@ -158,7 +158,7 @@ class Point:
     why: str = ""
     # The loop this point is written inside, in this routine, or "". **Not `depth > 1`**:
     # `depth` counts every enclosing control point, so a loop inside an `if` has depth 2
-    # and is not nested at all. On Society the two answers are 98 and 9, and the second
+    # and is not nested at all. On Comitia the two answers are 98 and 9, and the second
     # is the one worth reading -- a boundary reached once per pass of a loop that is
     # itself once per pass is a quadratic reach into the outside world, which the first
     # number quietly buries under a hundred `if`s.
@@ -179,7 +179,7 @@ class Point:
         """What this point is *over*, evaluated before the first pass.
 
         Empty for everything but a `for` or a comprehension whose iterable moves
-        something -- 11 of Society's loops. Kept rather than discarded (design rule 1):
+        something -- 11 of Comitia's loops. Kept rather than discarded (design rule 1):
         the query is really written there, the ribbon draws it where it stands, and the
         loop's own sentence names it. What it must not do is count as a rate.
         """
@@ -193,7 +193,7 @@ class Point:
 
         `moves` minus the iterable, and minus a `for ... else`, which runs once when the
         loop was never broken out of. The `else` comes off through the arm that already
-        records its span rather than through a second fact (rule 40); Society has 2 such
+        records its span rather than through a second fact (rule 40); Comitia has 2 such
         loops and neither is a rate either way, which is why this is two lines and not a
         feature.
 
@@ -404,7 +404,7 @@ def _judge_loop(point: Point) -> None:
 
     Counted over `repeated`: what a loop is *over* runs once, before the first pass, and
     `for row in conn.execute(q).fetchall():` is one query however many rows come back.
-    Read over the whole span it was 11 of Society's 261 rates, each of them saying *once
+    Read over the whole span it was 11 of Comitia's 261 rates, each of them saying *once
     per pass* about a thing that happens once.
     """
     n = places(point.repeated)
@@ -425,7 +425,7 @@ def _judge_loop(point: Point) -> None:
         point.significant = True
         per = "once per pass" if n == 1 else f"{n} of them, once per pass"
         # Named from the enclosing *loop* and never from `depth`, which counts every
-        # enclosing control point: 98 of Society's 250 boundary loops sit at a depth
+        # enclosing control point: 98 of Comitia's 250 boundary loops sit at a depth
         # above 1, and **10** of them are inside another loop. The first number reads as
         # the second and is not it.
         nested = " \u2014 and it is inside another loop" if point.in_loop else ""
@@ -440,7 +440,7 @@ def _judge_loop(point: Point) -> None:
 def _judge_decision(point: Point) -> None:
     """A decision is a subject where its arms differ in what moves, or where it is a
     ladder: three ways out is a shape a reader has to hold in their head, whatever is in
-    them. The two tests find near-disjoint sets -- 7 of Society's 78 forks are also
+    them. The two tests find near-disjoint sets -- 7 of Comitia's 78 forks are also
     ladders -- which is why both are here and neither is a special case of the other.
     """
     if point.forks:
@@ -469,7 +469,7 @@ def _judge_decision(point: Point) -> None:
 def _judge_handler(point: Point) -> None:
     """A `try` is a subject where the recovery itself moves something.
 
-    Not where the *body* does: 742 of Society's 1,531 handlers guard something that
+    Not where the *body* does: 742 of Comitia's 1,531 handlers guard something that
     touches a boundary, which is what a `try` is for and says nothing a reader did not
     expect. 396 of them do something on the way out -- write a row, post a message,
     delete a file -- and that is a second act nobody reading the happy path will see.
@@ -490,7 +490,7 @@ def _judge_handler(point: Point) -> None:
 def _judge_guard(point: Point) -> None:
     """A guard is never a worklist item, and that is not a measure of its importance.
 
-    3,931 of Society's 6,144 branches are refusals -- 62%, the largest shape in the
+    3,931 of Comitia's 6,144 branches are refusals -- 62%, the largest shape in the
     program -- and a worklist of them would be a list of the whole program. A guard is
     read where it belongs, in the shape of the routine it stands at the top of, and
     that is why it is recorded rather than skipped at extraction.
@@ -528,7 +528,7 @@ def measure(store: Store) -> ShapeReport:
     """Every control point in the program, joined to what moves inside it and judged.
 
     A whole-corpus pass, like `naming.measure`: four statements, and then arithmetic
-    over what they returned. On Society that is 9,625 points, 2,269 arms and 4,174
+    over what they returned. On Comitia that is 9,625 points, 2,269 arms and 4,174
     moving things.
     """
     moves = _moves_by_routine(store)
@@ -673,13 +673,13 @@ def outline(store: Store, routine_id: str) -> list[Point]:
 # doors, and guessing which from the shape of a string is rule 30's defect.
 #
 # `sql_ops.tbl` rides `ix_sqlops_table`. `boundaries(kind, target)` has no index and is
-# a scan of 4,070 rows, measured at under 20 ms on Society -- an index kept up to date
+# a scan of 4,070 rows, measured at under 20 ms on Comitia -- an index kept up to date
 # for that is a fact to maintain for nothing (rule 24 in the mirror: measure before
 # spending).
 #
 # The `EXISTS` is the bound on the work and not on the answer (rule 55). `enclosing`
 # pays one `outline` per routine, so the routines that touch the thing at no enclosing
-# line at all are the ones worth never loading: 524 routines touch Society's unnamed
+# line at all are the ones worth never loading: 524 routines touch Comitia's unnamed
 # `FILE` boundary and 389 of them hold a point around it.
 _TOUCH_TABLE = """
 SELECT o.routine_id, o.line FROM sql_ops o
@@ -739,7 +739,7 @@ def enclosing(store: Store, *, table: str | None = None,
         for point in outline(store, routine_id):
             # **Inside, and not what it is over.** A loop whose only touch of this table
             # is its own iterable does not reach it once per pass; it reaches it once,
-            # before the first pass. Two of Society's 64 tables have such a loop, and
+            # before the first pass. Two of Comitia's 64 tables have such a loop, and
             # without this the pane says *"reached from inside 1 loop"* about a query the
             # loop is written over -- `_judge_loop`'s defect arriving at the sentence
             # chunk 5 built, which is why the same `once` span decides both (rule 51).
@@ -761,7 +761,7 @@ def nesting(points: list[Point]) -> dict[str, int]:
 
     Counted by following `in_loop`, which is a containment answer, and **never from
     `depth`** -- `depth` counts every enclosing control point, so a loop written inside
-    an `if` reads as nested when it is nested in nothing. On Society the two answers
+    an `if` reads as nested when it is nested in nothing. On Comitia the two answers
     over the rates are 98 and 9, and only the second is the quadratic reach into the
     outside world a reader is being warned about.
 

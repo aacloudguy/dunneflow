@@ -287,7 +287,7 @@ path (rule 49, in a file name). It reads the dist-info the spec bundles — the 
 `tool_version()` stamps into every map.
 
 **The 1,447 tests prove the source tree, not the artifact**, so the ground truth is run
-*through the binary*. Taken 2026-09-09 on `../society-2026-08-29/src` with
+*through the binary*. Taken 2026-09-09 on `../comitia-2026-08-29/src` with
 `--standards ../dunnecorp-standards`, 628 files in **37.7 s**: the four executables at
 **1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP` fixture with its three
 rules in the checked lane, the research paper yielding **zero** naming rules, and the

@@ -4,7 +4,7 @@
 `ingest/dotted.py`), so `conn.execute(q).fetchone()` is spelt `conn.execute.fetchone` and
 `http.Get(u).Body.Close()` is `http.Get.Body.Close`. The fold is deliberate -- it is how
 `Path(p).read_text()` is seen at all -- but it also means the outer name *extends* the
-inner one, and a rule that matched the inner call matches the outer one again. Society had
+inner one, and a rule that matched the inner call matches the outer one again. Comitia had
 259 DATABASE boundaries that were a `fetchone` or a `fetchall` on the `execute` written on
 the same line; rain's Go had `http.Get(...)` recorded as two network calls.
 

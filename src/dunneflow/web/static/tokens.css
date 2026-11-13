@@ -96,7 +96,7 @@
   /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
      claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
      is nothing having been asked -- the stack draws boundaries, constants, structures and
-     artefacts, and the comparison's id-carrying bands are routines only, so on Mensores
+     artefacts, and the comparison's id-carrying bands are routines only, so on Lictores
      about 5,300 of 10,015 drawn nodes are in the second state. An unstated absence is
      design rule 1's defect, and these two must never be one colour.
 
@@ -111,7 +111,7 @@
   --graph-unclaimed: #738aab;   /* 3.11:1 on the ground */
   /* **More than one thing happened in this file**, and only the module level can be in
      that state: a routine is in one band or none, a file holding 63 of them is not. On
-     Mensores 14 modules carry the whole comparison and 7 of those are mixed, so this is
+     Lictores 14 modules carry the whole comparison and 7 of those are mixed, so this is
      a small population saying something no single band can.
 
      Here rather than in the colour sets, on the same argument as the two above: a set
@@ -130,7 +130,7 @@
   --graph-mixed:     #00007a;   /* 14.47:1 on the ground */
   /* **What a box does in the compartment's flow**, on the diagram's *colour by* control:
      it only receives, it only emits, it does both, or nothing reaches it either way.
-     Measured on four maps -- Mensores 930 boxes, DunneNote 244, DunneFlow 169, gstack 163
+     Measured on four maps -- Lictores 930 boxes, DunneNote 244, DunneFlow 169, gstack 163
      -- where the split runs 9-23% emits, 25-40% receives, 15-26% both and **30-44%
      nothing**, which is why the fourth state is the untinted ground rather than a fourth
      hue: it is the largest population and the least interesting, and tinting it would put
@@ -256,7 +256,7 @@
     /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
        claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
        is nothing having been asked -- the stack draws boundaries, constants, structures and
-       artefacts, and the comparison's id-carrying bands are routines only, so on Mensores
+       artefacts, and the comparison's id-carrying bands are routines only, so on Lictores
        about 5,300 of 10,015 drawn nodes are in the second state. An unstated absence is
        design rule 1's defect, and these two must never be one colour.
 
@@ -339,7 +339,7 @@
   /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
      claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
      is nothing having been asked -- the stack draws boundaries, constants, structures and
-     artefacts, and the comparison's id-carrying bands are routines only, so on Mensores
+     artefacts, and the comparison's id-carrying bands are routines only, so on Lictores
      about 5,300 of 10,015 drawn nodes are in the second state. An unstated absence is
      design rule 1's defect, and these two must never be one colour.
 
@@ -1263,7 +1263,7 @@ body {
  * truncated from the *left*, because the distinguishing end of a dotted path is the last
  * segment, never the first. */
 /* `direction: rtl` was used here to clip from the left, and it mangles any path with
- * punctuation in it -- `mensores._internal._cwd_guard` rendered as
+ * punctuation in it -- `lictores._internal._cwd_guard` rendered as
  * "...ores_internal_cwd_guard", which is not a string that exists in the program. The
  * shortening is chosen in JS now (`moduleTail`), so this only has to not overflow. */
 /* **It yields its width to the name, and it is the only thing in the row that may.**
@@ -1907,7 +1907,7 @@ body {
  *
  * The space goes to the name, which is the whole reason to turn them off. Measured on a
  * 315px row: columns `140.8px | 51.2px | 104px`, and inside that 140.8 the `CLI` and
- * `DECLARED` tags left the name **29px** -- `mensores-signator` drawn as `me...r`. The
+ * `DECLARED` tags left the name **29px** -- `lictores-cantator` drawn as `me...r`. The
  * numbers stay in both lists; it is the picture of the number that goes.
  *
  * `data-coverbars="off"` and no `="on"`, for the reason `data-palette` has no `="default"`:
@@ -2174,18 +2174,18 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
  * It was `<code>name<span class=dim>  module</span></code>` inside a clipped button: one
  * width between the two, and the stylesheet cut whatever reached the end -- always the
  * module, always at its tail, always losing the leaf. **7 of 11 rows overflowed** a 242px
- * box, and `mensores.chaos.chaos_scriba_kill` and `mensores.chaos.chaos_broker_kill` both
- * read `mensores.chaos.cha…`: two different modules drawn as one string.
+ * box, and `lictores.chaos.chaos_praeco_kill` and `lictores.chaos.chaos_broker_kill` both
+ * read `lictores.chaos.cha…`: two different modules drawn as one string.
  *
  * Two boxes side by side fixed the *tail* and could not fix the *room*. On a 344px pane a
  * 26-character name and a 31-character module do not both fit on one line, and every split
  * measured was a trade rather than a fix: protect the name and
- * `mensores.disceptator._architect_dispatch` reduces to `dis…tch`; floor the module at 6rem
+ * `lictores.conciliator._architect_dispatch` reduces to `dis…tch`; floor the module at 6rem
  * and the name goes to `resolve_a…_dispatch`. Neither field is worth having in those
  * states, and no arithmetic makes 344px into the 500 the row wants.
  *
  * Stacked, both are whole -- `resolve_architect_dispatch` over
- * `disceptator._architect_dispatch` -- at 36px a row instead of 18. Tom's call, put to him
+ * `conciliator._architect_dispatch` -- at 36px a row instead of 18. Tom's call, put to him
  * with the three measured against each other. Each half is still its own box, so
  * `fitFields` measures and elides each in its **middle** when a genuinely long one arrives. */
 .gotonode { background: none; border: 0; padding: 0; font: inherit; color: inherit;
@@ -2249,7 +2249,7 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .argi { font-family: var(--f-mono); font-size: .68rem; color: var(--text-faint);
         text-align: right; overflow: hidden; text-overflow: ellipsis; }
 /* **Wrapped, not elided.** An argument is the subject of this pane, and a 1,347-line
- * `frozenset` literal is real -- one is in Mensores. Rule 8 allows abbreviation only where
+ * `frozenset` literal is real -- one is in Lictores. Rule 8 allows abbreviation only where
  * the complete value sits beside it, and there is nothing beside it here, so the long ones
  * wrap and the row grows. `break-word` rather than `break-all`: an expression breaks at a
  * dot or a bracket before it breaks mid-identifier. */
@@ -2285,7 +2285,7 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
  * `max-height` rather than a character bound, because nothing is being cut: the box is a
  * window onto the whole string, and a reader who scrolls reaches the end. 28rem is about
  * twenty lines at this size -- enough to see a value has structure, short of filling the
- * pane with one field. 23 of Mensores' 2,638 values need it; the median is 34 characters
+ * pane with one field. 23 of Lictores' 2,638 values need it; the median is 34 characters
  * and never reaches it.
  *
  * `pre-wrap`, not `pre`: **not one value in the corpus contains a newline** -- `_literal`
@@ -2645,7 +2645,7 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .wl-stripe { width: .1875rem; height: 1.6rem; border-radius: 0 2px 2px 0; }
 /* **Two lines, then a mark**, where it was one clipped line.
  *
- * Measured on Mensores: a 172px box, a median title of 73 characters needing about 420px,
+ * Measured on Lictores: a 172px box, a median title of 73 characters needing about 420px,
  * and **94 of 94 rows clipped**. Every finding showed its first thirty characters and none
  * of them showed the predicate -- `` `self.citation_validator.va… `` for a row whose point
  * is *could not be connected: 7 definitions share the name*. A worklist is the surface Tom
@@ -2878,7 +2878,7 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    its container ever overflows. Three steps in a 404px bar were squeezed to fit it and the
    stylesheet clipped their tails, which looked like a shortening rule and was a layout.
 
-   The tell came from `fitFields`: `mensores` came out as `men…res`, eight characters cut to
+   The tell came from `fitFields`: `lictores` came out as `men…res`, eight characters cut to
    seven. A shortening that saves one character is not a shortening, and the box was the
    thing that was wrong. Bounded by `max-width: 12rem` on the step and by the number of steps
    the bar draws at once, so "it can scroll" is not "it can grow without limit". */

@@ -4,7 +4,7 @@ A store records what a caller **wrote** -- `call_args.expr` is a byte slice of t
 never re-rendered, so a reader who goes looking for the string a panel showed them finds it
 (rules 8 and 75). That is the right answer for display and the wrong one for a comparison,
 which asks a different question about the same string: are these two the same expression.
-Mensores has a `typer.echo` whose message was re-wrapped across two lines with not one
+Lictores has a `typer.echo` whose message was re-wrapped across two lines with not one
 character of its content changed, and comparing what was written puts its caller in
 *behaves differently* -- the band that promises what a routine **does** moved.
 

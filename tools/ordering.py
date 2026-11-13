@@ -8,14 +8,14 @@ could only reach `reverse_rows` by loading this one by path. A third mode, `--su
 lists the statements no `ORDER BY` defends, so the population is a reproducible count
 rather than a number in a commit message (rule 13).
 
-    uv run python tools/ordering.py output/mensores            # the map
-    uv run python tools/ordering.py output/mensores --api      # every GET route, twice
+    uv run python tools/ordering.py output/lictores            # the map
+    uv run python tools/ordering.py output/lictores --api      # every GET route, twice
     uv run python tools/ordering.py --survey                   # what to look at
 
 ## The map
 
 It did, for a year, and nobody noticed — including every session that diffed two maps by
-hand. **Two analyses of Society by the same build, minutes apart, differ**: 1,488 lines in
+hand. **Two analyses of Comitia by the same build, minutes apart, differ**: 1,488 lines in
 `06-governance.md`, 656 in `12-traceability.md`, and every difference is *order* and never
 content. `analyze_tree` collects facts through `as_completed`, so which file is written
 first varies per run and so does every rowid; a query with no `ORDER BY`, or one ordering
@@ -77,9 +77,9 @@ whose `WHERE` equates **a whole declared key**. The keys are read out of the thr
 `SCHEMA_SQL` constants rather than guessed at from the shape of a column name (rule 51):
 `id = ?` is exempt because `routines.id` is a primary key, and would not be if it were not.
 
-    uv run python tools/ordering.py output/mensores
-    uv run python tools/ordering.py output/mensores --show 06-governance.md
-    uv run python tools/ordering.py output/mensores --api
+    uv run python tools/ordering.py output/lictores
+    uv run python tools/ordering.py output/lictores --show 06-governance.md
+    uv run python tools/ordering.py output/lictores --api
     uv run python tools/ordering.py --survey
 """
 
@@ -598,7 +598,7 @@ def choose(live: Any) -> dict[str, list[dict[str, list[str]]]]:
     imported = _first(live, "SELECT file FROM imports WHERE file <> '' GROUP BY file"
                             " ORDER BY COUNT(*) DESC, file") or path
     # A table this program **touches**, if it declares none. `web/table.py` answers for
-    # both on purpose — "12 of Society's 65 tables are read and never declared" — so a
+    # both on purpose — "12 of Comitia's 65 tables are read and never declared" — so a
     # probe that only ever asked about a declared one would leave the commoner half unasked.
     table = (_first(live, "SELECT name FROM db_tables ORDER BY name")
              or _first(live, "SELECT tbl FROM sql_ops WHERE tbl <> '' ORDER BY tbl"))
@@ -651,7 +651,7 @@ def choose(live: Any) -> dict[str, list[dict[str, list[str]]]]:
     # `kind=boundary&key=` and answered *"a thread needs both"*, identically, twice.
     #
     # Every routine, not the first one: a cohort thread fires rarely by design — the table
-    # thread on 8 routines of Society's 4,823 — so asking one routine is how a lane that
+    # thread on 8 routines of Comitia's 4,823 — so asking one routine is how a lane that
     # exists goes unprobed.
     subjects: set[tuple[str, str]] = set()
     for rid in _all(live, "SELECT id FROM routines ORDER BY id"):

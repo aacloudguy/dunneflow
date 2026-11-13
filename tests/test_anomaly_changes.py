@@ -31,7 +31,7 @@ def _f(ident: str, *, kind: str = "LOST_EDGE", count: int = 1,
 
 
 def test_a_finding_in_both_versions_is_one_finding():
-    """The whole point. Measured on Mensores: 106 of 106 paired, one genuinely new."""
+    """The whole point. Measured on Lictores: 106 of 106 paired, one genuinely new."""
     built = anomalychanges.build(base=[_f("a"), _f("b")], compared=[_f("a"), _f("b")])
     assert built["identical"]
     assert built["counts"]["only_in_base"] == 0

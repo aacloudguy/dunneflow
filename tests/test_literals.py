@@ -5,7 +5,7 @@ language, so one scanner could not disagree with a second one, and `_owner()`'s 
 could not be disturbed by a question nobody was asking. Each test below is the point where
 the accident stops being one — and the sharpest of them, `the module scope is claimed only
 by a string that turned out to be a fact`, pins a defect this split created and measured:
-**65 of Society's 628 files** gained a `<module>` routine owning nothing at all.
+**65 of Comitia's 628 files** gained a `<module>` routine owning nothing at all.
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ def _facts(**kw: object) -> FileFacts:
 def test_the_reader_reports_strings_and_judges_none_of_them(tmp_path):
     """The whole of the split, in the one assertion that says it happened."""
     facts = _read(tmp_path, 'DDL = "CREATE TABLE widgets (id TEXT)"\n'
-                            'DB = "tabularium.db"\n')
+                            'DB = "vestiarium.db"\n')
     assert [lit.text for lit in facts.literals] == [
-        "CREATE TABLE widgets (id TEXT)", "tabularium.db",
+        "CREATE TABLE widgets (id TEXT)", "vestiarium.db",
     ]
     assert facts.sql == [] and facts.artefacts == []
     assert facts.tables == [] and facts.indexes == []
@@ -52,10 +52,10 @@ def test_the_reader_reports_strings_and_judges_none_of_them(tmp_path):
 
 def test_the_host_judges_what_the_reader_reported(tmp_path):
     facts = _judged(tmp_path, 'DDL = "CREATE TABLE widgets (id TEXT)"\n'
-                              'DB = "tabularium.db"\n')
+                              'DB = "vestiarium.db"\n')
     assert [op.operation for op in facts.sql] == ["CREATE TABLE"]
     assert [t.name for t in facts.tables] == ["widgets"]
-    assert [a.name for a in facts.artefacts] == ["tabularium.db"]
+    assert [a.name for a in facts.artefacts] == ["vestiarium.db"]
 
 
 def test_nothing_under_extractors_decides_what_a_string_means():
@@ -110,7 +110,7 @@ def test_the_bound_is_the_union_of_what_either_judgement_can_accept():
     """Six is SQL's own and is applied in `_sql`; three is the shortest a file can be named.
 
     Taking six for both would be a bound written for one question quietly deciding another
-    (rule 49). On Society it happens to cost nothing — the shortest artefact literal there
+    (rule 49). On Comitia it happens to cost nothing — the shortest artefact literal there
     is seven characters — which is not the same claim as *it cannot cost anything*.
     """
     assert literals.LITERAL_MIN == 3
@@ -150,7 +150,7 @@ def test_an_interpolated_stem_names_nothing_a_reader_could_look_up(tmp_path):
 def test_a_question_mark_somebody_typed_is_a_glob_and_not_a_placeholder(tmp_path):
     """`LiteralKind`'s whole job, and until it existed the glob lost (rule 30).
 
-    Measured before it was taken: the artefact rows of Society are byte-identical either
+    Measured before it was taken: the artefact rows of Comitia are byte-identical either
     way, so this reading costs the golden nothing and gains the case it was written for.
     """
     facts = _judged(tmp_path, 'PATTERN = "chaos_?.py"\n')
@@ -162,17 +162,17 @@ def test_an_interpolated_string_still_names_its_table_and_its_file(tmp_path):
     facts = _judged(tmp_path, '_TABLE = "work_items"\n'
                               'ROOT = "/var"\n'
                               'DDL = f"CREATE TABLE {_TABLE} (id TEXT PRIMARY KEY)"\n'
-                              'P = f"{ROOT}/tabularium.db"\n')
+                              'P = f"{ROOT}/vestiarium.db"\n')
     assert [t.name for t in facts.tables] == ["work_items"]
-    assert [a.name for a in facts.artefacts] == ["tabularium.db"]
+    assert [a.name for a in facts.artefacts] == ["vestiarium.db"]
     assert facts.literals[2].kind is LiteralKind.INTERPOLATED
 
 
 def test_an_interpolated_string_is_reported_before_the_parts_it_was_built_from(tmp_path):
     """The order is a contract: one naming act per line keeps the fuller literal."""
-    facts = _judged(tmp_path, 'P = f"{root}/tabularium.db"\n')
+    facts = _judged(tmp_path, 'P = f"{root}/vestiarium.db"\n')
     assert facts.literals[0].kind is LiteralKind.INTERPOLATED
-    assert [a.literal for a in facts.artefacts] == ["?/tabularium.db"]
+    assert [a.literal for a in facts.artefacts] == ["?/vestiarium.db"]
 
 
 def test_a_docstring_is_never_reported_as_a_string_to_judge(tmp_path):
@@ -192,7 +192,7 @@ def test_the_module_scope_is_claimed_only_by_a_string_that_turned_out_to_be_a_fa
     `_owner()` minted the synthetic `<module>` routine for whichever fact asked first, so a
     file with nothing at module level got none — by accident, because nothing had asked. A
     *string* has to name an owner before anybody knows whether it is a fact, so asking there
-    minted **65 of Society's 628 files** a routine owning nothing: a 1.3% inflation of every
+    minted **65 of Comitia's 628 files** a routine owning nothing: a 1.3% inflation of every
     routine count in the map, decided by whether a string cleared a bound that exists to
     save wire (rule 96).
     """
@@ -201,7 +201,7 @@ def test_the_module_scope_is_claimed_only_by_a_string_that_turned_out_to_be_a_fa
     assert [r.name for r in prose.routines] == []
     assert prose.module_scope is not None, "prepared, and left unclaimed"
 
-    fact = _judged(tmp_path, 'DB = "tabularium.db"\n')
+    fact = _judged(tmp_path, 'DB = "vestiarium.db"\n')
     assert [r.name for r in fact.routines] == ["<module>"]
     assert fact.artefacts[0].routine_id == fact.module_scope.id
 
@@ -221,7 +221,7 @@ def test_a_routine_that_owns_the_string_is_claimed_the_way_it_always_was(tmp_pat
 def test_the_claim_is_not_repeated_when_a_file_has_both_kinds_of_fact(tmp_path):
     facts = _judged(tmp_path, 'import os\n'
                               'HOME = os.environ["HOME"]\n'
-                              'DB = "tabularium.db"\n')
+                              'DB = "vestiarium.db"\n')
     names = [r.name for r in facts.routines]
     assert names == ["<module>"], names
 
@@ -247,7 +247,7 @@ def test_the_walk_judges_what_a_reader_brought_back(tmp_path):
 def test_the_stored_sql_and_artefacts_are_the_hosts(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
-    (src / "m.py").write_text('DB = "tabularium.db"\n'
+    (src / "m.py").write_text('DB = "vestiarium.db"\n'
                               'Q = "SELECT id FROM widgets"\n', encoding="utf-8")
     from dunneflow.store import Store
     store = Store(tmp_path / "g.db")

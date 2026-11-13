@@ -51,7 +51,7 @@ def _slug(text: str) -> str:
 # every one of them had nothing left to strip.
 #
 # They were removed rather than left as harmless no-ops, because they were not harmless:
-# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# `Path("lictores/cli.py").resolve()` resolves against the *working directory*, so run from
 # anywhere inside the analysed tree the strip would succeed and silently prepend the
 # intervening directories to every path on the page.
 

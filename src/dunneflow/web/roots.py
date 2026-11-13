@@ -3,7 +3,7 @@
 The application writes to whatever this platform calls an application's own data
 directory -- `~/Library/Application Support/DunneFlow`, `%LOCALAPPDATA%\\DunneFlow`,
 `$XDG_DATA_HOME/DunneFlow` -- which is the right place for it and is on the boot disk.
-Maps are not small -- one Society snapshot is 168 MB, and `source.db` and `docsource.db`
+Maps are not small -- one Comitia snapshot is 168 MB, and `source.db` and `docsource.db`
 grow with every revision captured -- so a reader with disk pressure needs them somewhere
 else, and until this module existed there was no way to say so short of a terminal.
 

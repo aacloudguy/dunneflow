@@ -6,7 +6,7 @@ here as a **shadow** -- a proxy at its own position on this disk, taking part in
 disk's forces like any other node -- while the real node lives on its own disk. A
 **transposition** line joins the two across Z.
 
-This is what makes ten thousand nodes legible. A single plane holding all of Mensores is
+This is what makes ten thousand nodes legible. A single plane holding all of Lictores is
 a hairball at any zoom; the same graph cut into fifty-five disks is fifty-five pictures,
 the largest of which holds 645 nodes. Decomposition, not filtering, is the fix -- and it
 is the fix precisely because nothing is thrown away: every cross-disk edge is still drawn,
@@ -43,7 +43,7 @@ LEVELS = ("routine", "module")
 # and a plate with one node on it tells the reader nothing that a list would not.
 #
 # **What a plate holds changes with the level, so the threshold does too.** 8 is right for
-# routines and wrong for modules: applied at module level on Mensores it folds 21 of the 45
+# routines and wrong for modules: applied at module level on Lictores it folds 21 of the 45
 # packages away, because a package with six modules is a real package while a package with
 # six routines is not much of a plate. These are the defaults; the reader owns the value
 # (design rule 2), and the count of what it merged is always stated.
@@ -132,7 +132,7 @@ class GraphModel:
 def root_package(store: Store) -> str:
     """The program's own root package, taken from the data rather than assumed.
 
-    `mensores.cli` and `dunneflow.cli` are both one dotted segment deep; hard-coding a
+    `lictores.cli` and `dunneflow.cli` are both one dotted segment deep; hard-coding a
     prefix length would work on exactly one program.
 
     **A root has to account for every file, and `""` is a real answer.** This used to
@@ -354,7 +354,7 @@ def _fold_small_disks(m: GraphModel, disk_of: dict[str, str], min_disk: int) -> 
     because a shorter stack and a smaller program look identical.
 
     **A plate is merged into its own band**, and that is a fix rather than a precaution.
-    Everything used to land on `pkg:<small>`, which is a *package* plate -- so on Mensores
+    Everything used to land on `pkg:<small>`, which is a *package* plate -- so on Lictores
     the four QUEUE targets, the unnamed QUEUE touch and the one LLM_API endpoint have been
     drawn among the code that reaches them since the day `<small>` existed, above the
     boundary line, badged as ours. Design rule 8 says an external is a first-class node at

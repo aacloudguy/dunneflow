@@ -9,7 +9,7 @@
  * `layout.structural` puts nodes on a sunflower spiral ordered by degree. It is even,
  * instant and deterministic, and it knows nothing about which nodes are *connected*, so a
  * plate of any size is a field of dots with edges crossing it at every angle. Measured on
- * Mensores' busiest plate: 1,519 nodes, 1,675 within-plate edges, **331,466 crossings**.
+ * Lictores' busiest plate: 1,519 nodes, 1,675 within-plate edges, **331,466 crossings**.
  * The same plate solved here: **27,312**, a 91.8% reduction.
  *
  * This is the layout `layout.py` has named in its own docstring since it was written —
@@ -209,7 +209,7 @@ const ForceLayout = (() => {
      * Every member of a group of 39 computes the same mean, which is redundant and is
      * cheaper than not being: the cost is the sum of the squares of the group sizes, a few
      * tens of thousands of operations against 12.8 million for repulsion. Measured on
-     * Mensores: 4,050 entities carry a shadow, 9,905 slots between them, the biggest group
+     * Lictores: 4,050 entities carry a shadow, 9,905 slots between them, the biggest group
      * 39, the median 2.
      */
     const key = new Int32Array(N);

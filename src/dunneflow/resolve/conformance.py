@@ -5,7 +5,7 @@ wrote and counts nothing. This is the third question -- *does the program do wha
 says* -- and it is the one both of those were careful not to answer.
 
 **Which population a rule governs is the whole feature, and getting it wrong is worse than
-not answering.** Measured on Mensores before a line of this was written: all six of its
+not answering.** Measured on Lictores before a line of this was written: all six of its
 `checkable` rules come from a *harness* standard, and not one of them is a question about
 `graph.db`. Checked against the graph, *"Files: kebab-case"* scores **0 of 628** Python
 files -- a confident, catastrophic claim about a rule whose own document scopes it to
@@ -240,7 +240,7 @@ def _paths(store: Store | None, docs: DocStore | None) -> list[tuple[str, str]]:
     module folds byte-identical copies because a rule quoted twice out of two copies of one
     file is one rule counted as two. This counts *paths*, and two paths holding identical
     bytes are still two distinct filenames, each of which the rule governs. Dropping them
-    made Mensores' `src/**/*.md` population **1 document instead of 3** -- both ADRs there
+    made Lictores' `src/**/*.md` population **1 document instead of 3** -- both ADRs there
     are byte-identical to copies under `.groma/adrs/`, and their names break the convention
     exactly as much for being copies.
     """
@@ -404,7 +404,7 @@ def check_rule(rule: StatedRule, frontmatter: dict[str, str], source: str,
             continue
 
         # **A dotted name is a path, not an identifier**, and `naming.py` paid for this
-        # once already: reading `mensores.cli.main` as one word made every module in the
+        # once already: reading `lictores.cli.main` as one word made every module in the
         # program an exception to its own convention. Reusing `POPULATIONS` without reusing
         # `DOTTED` reproduced it exactly -- `modules / snake_case` reported **1 of 628**.
         #

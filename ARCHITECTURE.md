@@ -203,7 +203,7 @@ reads a source tree into a new directory under the output root and puts it in th
 **A map records whether its own analysis finished, and every reader that vouches for one
 checks.** `analyze` commits `complete = ""` as it opens the graph and `"yes"` as its last
 act, and commits the **step** as it goes. This is not housekeeping: a killed `analyze` leaves
-a graph that *opens perfectly and lies* — one stopped twelve seconds into Society reported
+a graph that *opens perfectly and lies* — one stopped twelve seconds into Comitia reported
 628 files, 4,786 routines and **`resolved_calls = 0`**, over a timestamp, a tool version and
 the determinism guarantee. Reachable with no stop button anywhere: Ctrl-C, a sleeping laptop,
 an OOM kill.
@@ -212,7 +212,7 @@ an OOM kill.
 existed* and is fine, `""` means *started and never finished*, `"yes"` means finished.
 Refusing on absence would refuse every map made before it. `UnfinishedMapError` is raised on
 **read** paths only — `_Live.open`, `_open_store` and so `check`, and `serve`'s boot — with
-`analyze` deliberately exempt, because opening one is how it recovers (34 s on Society, since
+`analyze` deliberately exempt, because opening one is how it recovers (34 s on Comitia, since
 the extraction is content-hashed). `query` is the one reader that proceeds, and **warns**:
 its contract is that you get the rows that are there. Every other one proceeds only when the
 reader's Setting says so (rule 109): `--allow-unfinished` on `_open_store`'s commands, `serve`
@@ -364,7 +364,7 @@ the legend, which states what the altitude costs: what is drawn, what it stands 
 what the threshold merged.
 
 `migrate` rewrites a program directory written before paths were relative (rule 60), **in
-place** — 115,546 paths across five stores in 1.2 s on Mensores. In place rather than by
+place** — 115,546 paths across five stores in 1.2 s on Lictores. In place rather than by
 re-analysis, because a sealed snapshot exists to be readable after its source tree is
 gone and rebuilding would orphan exactly those. A reader refuses an unmigrated store and
 names this command; it never repairs one on the way past (rule 20).
@@ -381,7 +381,7 @@ line that carries neither.
 
 **Diagram mode has two levels too**, and the second is asked on demand rather than built
 with the others: a compartment is fifty-three drawings from one pass over the model, and a
-*box* is one of nine thousand. Measured on Mensores 2026-08-31:
+*box* is one of nine thousand. Measured on Lictores 2026-08-31:
 
 | Measure | Budget | Measured |
 |---|---|---|
@@ -425,7 +425,7 @@ queries know a language exists.
 - `schema.py` — the fact contract. Every extractor, in any language, emits these types.
   A **call site has an identity** (`call_site_id`) and carries the arguments the caller
   wrote (`CallArg`), because two identical expressions in one routine are two calls and
-  the arguments of one must not land on the other — 287 such pairs on Mensores. The id
+  the arguments of one must not land on the other — 287 such pairs on Lictores. The id
   holds no position, like every other id here: an ordinal among identical expressions in
   the same caller, with the residue stated in the docstring rather than hidden.
 
@@ -516,7 +516,7 @@ queries know a language exists.
   below. **`acts.py` is the other judgement made there for every reader**: `one_act` drops a
   boundary or a remote call whose spelling extends another one's on the same line, in the
   same routine and of the same kind, because the dotted contract folds `f(x).g()` into
-  `f.g` and a rule that matched `f` matched the chain again (rule 40). Society had 257 such
+  `f.g` and a rule that matched `f` matched the chain again (rule 40). Comitia had 257 such
   DATABASE rows.
 
   **`stamp_lang` is the one place a language is written onto a record**, and it refuses a
@@ -662,7 +662,7 @@ queries know a language exists.
   **A constraint is not a definition, and the judgement is on the opening.**
   `- `definition`: 1 ≤ len ≤ 5000 chars` is a validation rule for a field, written in the
   shape a gloss is written in, inside a section whose heading reads *"AC-19: Performance
-  budget for glossary tools"* — and it reached Society's glossary as one of sixty defined
+  budget for glossary tools"* — and it reached Comitia's glossary as one of sixty defined
   terms, saying this program defines the word *definition* and meaning a bound on a string's
   length. A gloss that **begins** with a bound, a bare type, a regex or a placeholder value
   states a shape; a sentence that reaches a number partway through is prose about a budget.
@@ -678,7 +678,7 @@ queries know a language exists.
   measured, offered, and Tom's call was to refuse the constraint alone.
 
   **A naming standard is usually a table, and `_table()` reads one.** The FORM lane was
-  empty across all 2,064 of Mensores' documents — 5 rules, all VOCABULARY, none
+  empty across all 2,064 of Lictores' documents — 5 rules, all VOCABULARY, none
   `checkable` — because `_table()` consumes a table whole and the loop `continue`s, so the
   prose rule detector is never offered its lines. `table_rule_columns()` decides which
   column names the thing and which gives its spelling, on the model of
@@ -687,7 +687,7 @@ queries know a language exists.
   cells** — headers vary between organisations, and cells alone miss a column headed
   `Convention` whose contents are too terse to score. Measured over 5,230 tables: it fires
   on **one**, `harness/rules/style.md:30`, and mints its seven rows; the 100-row *Key
-  Decisions* table and the pantheon glossary do not fire. A row whose scope names no
+  Decisions* table and the rollcall glossary do not fire. A row whose scope names no
   identifier class is **kept, not dropped** (design rule 1) with `scope=""`, so it is a
   rule this tool has no population for rather than a rule that vanished.
 
@@ -745,7 +745,7 @@ queries know a language exists.
   under every coverage figure the tool prints. Words are mined from the names a person chose
   for a *thing* — a package, a way in, a table, a constant — and a constant is split on
   underscores, which is where the recall goes wrong: `_GLOSSARY_DEFINITION_MAX_LEN` is one
-  name, and three of its four words are its type and its unit. **889 of Society's 1,154
+  name, and three of its four words are its type and its unit. **889 of Comitia's 1,154
   undefined words were fragments like that**, so the worklist opened with `DDL`, `EXTRAS`,
   `REASON`, `KEYS`, `BYTES`, `CHARS` and buried `witness`, `posture`, `claim` and `probe`
   beneath them (rule 1, in the mirror).
@@ -759,7 +759,7 @@ queries know a language exists.
   **890 held back**.
 
   **Held back, never dropped** (design rule 1), and the reason is that the split cannot tell
-  `MENSORES_MAX_LEN`'s subject from its unit. The report lists all 890 with the reason, the
+  `LICTORES_MAX_LEN`'s subject from its unit. The report lists all 890 with the reason, the
   command says how many and where to read them, and the dashboard draws them in a band where
   each says *a word* — one click, persisted per program beside `triage`, with *hold back* on
   the way out. The judgement is offered, not taken.
@@ -816,7 +816,7 @@ queries know a language exists.
   `naming.py` counts and quotes nobody; `stated.py` quotes and counts nothing; this asks
   whether the program does what a rule says. **The population is never inferred from the
   scope word**, and that is the whole feature. *Measured 2026-09-06, before `--standards`
-  existed:* all six of Mensores' `checkable` rules came from a harness standard and **none**
+  existed:* all six of Lictores' `checkable` rules came from a harness standard and **none**
   was a question about `graph.db`. Checked against the graph, *"Files: kebab-case"* is
   **0 of 628** Python files — a catastrophic claim about a rule its own document scopes to
   `src/**/*.md`, three documents. *Retaken 2026-09-08, with a standards directory admitted:*
@@ -870,14 +870,14 @@ queries know a language exists.
   state between them (rule 40).
 
   **A place is one act; a row is one description of it.** An `INSERT` is a `DATABASE` row
-  *and* a `SQL` row on one line, and 569 of Mensores' 991 SQL operations are such a pair —
+  *and* a `SQL` row on one line, and 569 of Lictores' 991 SQL operations are such a pair —
   so counting rows said *two things move here* about one write, in the sentence that gives
   28 of the 250 rates their number. `places()` is the one place a count is taken; the rows
   stay as the descriptions, and a surface draws a place once, led by the row that says the
   most about it.
 
   **`in_loop`, and not `depth > 1`.** `depth` counts every enclosing control point, so a
-  loop written inside an `if` has depth 2 and is nested in nothing. On Mensores the two
+  loop written inside an `if` has depth 2 and is nested in nothing. On Lictores the two
   answers are **98 and 9**, and the nine are the quadratic reaches into the outside world
   this feature exists to find. Filled by a stack sweep per routine, with `depth` breaking
   the one tie lines cannot — `[a for a in [b for b in c]]` is two comprehensions on one
@@ -888,9 +888,9 @@ queries know a language exists.
   so a point cannot be banded one way at a pane and another way on a page. `nesting()`
   follows `in_loop` and never `depth`. The bound is the routines that touch the thing, and
   the `EXISTS` is a bound on the *work* rather than on the answer (rule 55) — 524 routines
-  touch Society's unnamed `FILE` boundary and 389 hold a point around it.
+  touch Comitia's unnamed `FILE` boundary and 389 hold a point around it.
 
-  Measured over Mensores: 211 loops + 39 comprehensions reach a boundary · 470 only call ·
+  Measured over Lictores: 211 loops + 39 comprehensions reach a boundary · 470 only call ·
   1,230 move nothing · 78 of 2,213 decisions fork · 69 are ladders of three or more ·
   396 of 1,531 handlers recover by moving something · 3,931 guards · 0 `match`. 105 ms warm
   for all 9,625 points.
@@ -904,7 +904,7 @@ queries know a language exists.
   ask two questions — the navigator, the document row and the ribbon want the table
   *selected*, and the inspector wants it *described*. Where it is declared is three answers
   and not two (design rule 21): declared once, declared in more than one file, and never
-  declared here — 12 of Society's 65 tables are the third, and only the first can hand the
+  declared here — 12 of Comitia's 65 tables are the third, and only the first can hand the
   source pane a place to open.
 - `web/shape.py` — the same facts served twice, for two questions. **`/api/algorithms`** is
   the whole program in five lanes, held on the base and computed on the first ask; each
@@ -1041,7 +1041,7 @@ queries know a language exists.
 - `call_args` — what a caller passed, **as written**, hanging off `calls.site_id` rather
   than off a rowid: an argument has to stay attached to its call site across two versions
   of the same program. Sliced out of the file's own text on **byte** offsets (rule 75),
-  never re-rendered by `ast.unparse`, and never shortened — one argument on Mensores is a
+  never re-rendered by `ast.unparse`, and never shortened — one argument on Lictores is a
   1,347-line `frozenset` and is stored whole (rule 8). 43,926 arguments over 30,544 call
   sites. `forget_file` deletes them *through* `calls`, before emptying it.
 - `detectors/*.yaml` — **the extension point.** Teaching the tool a new framework is a
@@ -1136,7 +1136,7 @@ queries know a language exists.
   and a re-render is where they come apart by a fortnight.
 - `web/layout.py` — where things sit, and **how big a thing is drawn on it**. A node's
   radius was a pixel constant and a plate's width a world quantity, so a dot knew nothing
-  about the room it had: **4,990 of Society's 10,052 drawn nodes touched a neighbour** at
+  about the room it had: **4,990 of Comitia's 10,052 drawn nodes touched a neighbour** at
   the default framing, and the smallest plate was 5.5 px across holding six. The fix is one
   measured fact — the tightest pair on a phyllotaxis disk of `n` points is
   `PHYLLOTAXIS_TIGHTEST * R / sqrt(n)` and that constant is **1.546 at every `n` from 6 to
@@ -1202,7 +1202,7 @@ queries know a language exists.
   entity is pulled toward their common middle, so **twice as many cross-plate links stand
   upright** (749 → 1,539 of 5,101) for about a point of the crossing reduction. **The
   residual is the measurement**: a link that stays diagonal is one two plates each want
-  somewhere different, and the worst case on Mensores has *two* shadows, not thirty-nine.
+  somewhere different, and the worst case on Lictores has *two* shadows, not thirty-nine.
   Stated above the picture, and per node on the hover card.
 
   **The coupling needs one coordinate frame, and that is the whole of why it works.**
@@ -1233,7 +1233,7 @@ queries know a language exists.
   spreads, the width dial and collapsed plates all apply to it untouched and no payload is
   refetched.
 - `web/plateorder.py` — **which order to stack the plates in**, so a crossing does not have
-  to travel far. The stack ordered by size until 2026-09-08 and **73.3% of Society's 5,101
+  to travel far. The stack ordered by size until 2026-09-08 and **73.3% of Comitia's 5,101
   cross-plate crossings spanned more than twenty plates** — a line no reader can follow to
   its other end. The force layout made those crossings *upright*; this makes them **short**,
   and the two are orthogonal because uprightness is a fact about X/Y and this moves only Z.
@@ -1256,7 +1256,7 @@ queries know a language exists.
   never claimed to be optimal, only better by a stated amount than the order it started from.
 
   **Both variants are built** (design rule 2). Interleaved is the best order and it puts
-  `ext:DATABASE` beside `storage` and `ext:STDIO` between `scriba` and `cli`, which reads
+  `ext:DATABASE` beside `storage` and `ext:STDIO` between `praeco` and `cli`, which reads
   well and overturns what the current default *means*; holding packages above externals
   keeps 31.5% of the saving. Neither is the default: `by size` still is, so this is opt-in
   exactly as the force layout is. The control calls them **"by what they link to"** and
@@ -1359,7 +1359,7 @@ queries know a language exists.
   other, and two branching on the same written test are coupled through a decision. Both
   new cohort kinds resolve to **exactly the population they counted** (rule 32,
   commit `3cfce1b`): `looped_table` is not `table`, because the figure counts the routines
-  that *loop* over a table — 15 on Society against 190 that touch one at all. A decision is
+  that *loop* over a table — 15 on Comitia against 190 that touch one at all. A decision is
   compared by its header **as written**, which is the whole blind spot and is stated on the
   thread: `x == 1` and `x==1` are two values here. Measured: the table thread fires on 8
   routines of 4,823 and the decision thread on 660, and a thread that fires rarely states
@@ -1418,7 +1418,7 @@ queries know a language exists.
   *edited only* or as *"No differences found"*, depending only on whether the file had
   module-level code. `explained_only` holds what would otherwise be in no band and a routine
   already in one carries a `comments` tag instead, so the four bands stay a partition. They
-  are compared **joined in line order and collapsed**, never as written: 86% of Mensores'
+  are compared **joined in line order and collapsed**, never as written: 86% of Lictores'
   18,731 comment lines live in a run of two or more, and a corpus-wide re-wrap that changes
   no word reports 1,561 false differences as written and none joined. Bounded to the files
   whose `content_hash` differs — 41 ms to 5.2 ms, same answer — which is why it costs
@@ -1430,7 +1430,7 @@ queries know a language exists.
   *internal computation, the one thing this tool exists not to report*. So what is corrected
   is the reason a row gives, not its absence: `docstring` rides beside `comments` and neither
   decides a band. The **canonical form differs from the comment lane's, and the difference is
-  measured rather than preferred** — paragraphs are kept. Over Mensores' 3,769 docstrings,
+  measured rather than preferred** — paragraphs are kept. Over Lictores' 3,769 docstrings,
   re-wrapping every one at three widths without altering a word reports 2,060 · 1,652 · 1,602
   as written and **none** under either canonical form; merging every docstring's paragraphs,
   which destroys the separation PEP 257 gives the summary line, is reported by a full
@@ -1438,7 +1438,7 @@ queries know a language exists.
   the noise, 1,996 more on the signal — which is what chose it.
 
   **A module docstring is a third subject, and it is a file.** `files.doc` states what a
-  module *is* — 619 of Mensores' 628 files — and belongs to no routine. `modules_explained`
+  module *is* — 619 of Lictores' 628 files — and belongs to no routine. `modules_explained`
   carries a path, because a row must be able to open something (rule 30) and the code
   browser's route already does. Both new lanes together are **+3 ms** (451 → 454, median of
   eight alternating builds on a warm disk), and `_changed_files` is one bound three lanes

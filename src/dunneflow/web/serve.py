@@ -423,7 +423,7 @@ class _Base:
     # The two lanes of the naming standard. Not lazily, and the reason is where they are
     # *used*: a vocabulary thread is part of `/api/threads`, which is asked on every
     # selection, so a lazy first call would stall the reading loop on the first click of
-    # every session. Measured on Mensores at 0.4 s for the naming pass and 2.1 s for the
+    # every session. Measured on Lictores at 0.4 s for the naming pass and 2.1 s for the
     # glossary, which reads a 176 MB document store.
     naming: dict[str, Any]
     # The stated lane, beside the derived one rather than inside it. Two fields because
@@ -505,7 +505,7 @@ class _Base:
     curiosities: dict[str, Any] = field(default_factory=dict)
     # The loops and decisions worth reading, on the same bargain as the curiosities
     # above: one pass over this version's graph, paid on the first ask and thrown away
-    # with the base. 105 ms warm on Mensores for the judgement over 9,625 control points,
+    # with the base. 105 ms warm on Lictores for the judgement over 9,625 control points,
     # and a cold first ask is the external volume rather than the work (rule 24).
     algorithms: dict[str, Any] = field(default_factory=dict)
 
@@ -701,7 +701,7 @@ class _Live:
         # the boot has already warmed, that is **62 ms** per request against 0.9 ms held
         # -- worth having and not the reason. The reason is the other end of a
         # comparison, which is a 31 MB file this process has never opened: **1.3 s to
-        # 4.1 s** for the first pairing on Mensores, stated as a range because that is
+        # 4.1 s** for the first pairing on Lictores, stated as a range because that is
         # what it is -- two runs of identical work, differing by how much of the file the
         # operating system still had. It is the disk as much as the work, which is the
         # caveat every other cold row in this project carries. Bounded by the number of
@@ -840,7 +840,7 @@ class _Live:
         store = Store(graph_db, writable=False, shared=True)
         # **A map that never finished being written is refused here**, before anything is
         # built from it and before anything is swapped. It opens perfectly -- that is the
-        # whole problem: one killed twelve seconds into the Society tree reports 4,786
+        # whole problem: one killed twelve seconds into the Comitia tree reports 4,786
         # routines and *no internal calls at all*, over a timestamp and a determinism
         # guarantee. Closed by hand rather than by the `try` below, which does not start
         # until the build does.
@@ -1081,7 +1081,7 @@ class _Live:
         **Every cache goes**, and the two that survive a revision switch are the reason this
         cannot reuse `COMPARISON_CACHES`:
 
-        * `findings` is keyed on `graph_db.name` -- a **basename**. `output/mensores/
+        * `findings` is keyed on `graph_db.name` -- a **basename**. `output/lictores/
           graph@X.db` and `output/dunneflow/graph@X.db` key identically, so one program's
           anomaly findings would be served for the other, confidently and wrongly.
         * `filepairs` is keyed on a pair of revision strings, and an unrevisioned program
@@ -1384,7 +1384,7 @@ class _Live:
         actually changed.** A timestamp refreshed on every identical report would say a run
         was moving because it was being watched, which is the one thing a silence detector
         must not do -- and silence is exactly what tells a hang from a long step. Resolution
-        on the Society tree is quiet for tens of seconds and is perfectly healthy.
+        on the Comitia tree is quiet for tens of seconds and is perfectly healthy.
 
         **`residue` is carried across too, and that is a term of `--progress-json`'s
         contract rather than a convenience here.** The child sends what the walk left out
@@ -1632,7 +1632,7 @@ class _Handler(BaseHTTPRequestHandler):
         """The stack, at the altitude asked for.
 
         Two levels of one model, never two models: `?level=module` folds each file into one
-        node and each boundary kind into one, which takes Mensores from 10,015 nodes to 578
+        node and each boundary kind into one, which takes Lictores from 10,015 nodes to 578
         without dropping a single fact -- every folded node says what it stands for. It is a
         second way to look at the same program, so both are cached side by side and the
         reader moves between them.
@@ -1680,7 +1680,7 @@ class _Handler(BaseHTTPRequestHandler):
         at it.
 
         **The climb is not `_r_graph`'s ~120 ms on a program this size.** Measured on
-        Mensores, 2026-09-05: `build_payload` takes **1.31 s** for 15,870 drawn nodes over
+        Lictores, 2026-09-05: `build_payload` takes **1.31 s** for 15,870 drawn nodes over
         53 plates on a warm store, and 10.0 s on the first open of a cold one -- the
         external volume and nothing else, per `PERFORMANCE.md`. Written down rather than
         inherited, because a figure taken on a smaller program and repeated here would be
@@ -2090,7 +2090,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         Held per graph rather than recomputed. This route ran all thirteen detectors on
         every request, under the lock, for an answer that cannot change while the served
-        file does not: 62 ms a time on Mensores, against 0.9 ms held. Small, and the same
+        file does not: 62 ms a time on Lictores, against 0.9 ms held. Small, and the same
         cache is what makes the comparison affordable, where the other end is a graph
         nothing has opened.
         """
@@ -2122,7 +2122,7 @@ class _Handler(BaseHTTPRequestHandler):
         `-shm` index and re-derives it per query. Where it is not, it is a file nothing
         here holds, so an ordinary read-only open is the cheap path and it is closed
         again. The lock is held across the served build for the reason `_r_changes` holds
-        it: that connection belongs to every other request too. Measured on Mensores: 62
+        it: that connection belongs to every other request too. Measured on Lictores: 62
         ms on the served graph, 1.3-4.1 s on the other one, which is a 31 MB file being
         read for the first time -- a range, because it is mostly the disk.
         """
@@ -2233,7 +2233,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _r_curiosities(self, q: dict[str, list[str]]) -> None:
         """The doorway panel: what came out furthest from the middle, program-wide.
 
-        Held on the base and computed on the first ask. 140 ms warm on Mensores for all
+        Held on the base and computed on the first ask. 140 ms warm on Lictores for all
         twelve measures -- 106 ms when there were ten; the first ask of a session is the
         external volume reading a 28 MB graph and is 1.7 s, which is the caveat every
         other cold row in this product carries and not a property of the queries.
@@ -2379,7 +2379,7 @@ class _Handler(BaseHTTPRequestHandler):
         `normalise` and nothing else (rule 51).
 
         A node that carries no governance id gets `ids: []` and a sentence -- 59% of
-        Mensores' routines, so it is the common case rather than the edge, and an empty list
+        Lictores' routines, so it is the common case rather than the edge, and an empty list
         with no reason would read as *"nothing was found"* instead of *"there is nothing to
         find"* (design rule 21).
         """
@@ -2396,7 +2396,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         **Answered on demand, because a way in is only sometimes a tree.** A single-routine
         way in needs nothing this does not already have on the cover; a command tree costs a
-        recursive walk per mounted sub-application -- 22 of them on Mensores -- and a reader
+        recursive walk per mounted sub-application -- 22 of them on Lictores -- and a reader
         who never clicks one must not pay for it at every boot (rule 45).
 
         The name is the identity because the name is what the row printed and the cover has
@@ -2485,7 +2485,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         A table is not a node in the graph, so selecting one means selecting the code
         that reads and writes it. Answered on demand rather than shipped with the cover:
-        Mensores has 1,042 operations across its tables and most sessions never click a
+        Lictores has 1,042 operations across its tables and most sessions never click a
         table at all.
         """
         name = (q.get("name") or [""])[0]
@@ -2532,7 +2532,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         Two answers behind one route, and the difference is `path`. Without it: which files
         hold a match and how many lines each -- complete, and cheap enough to run on a
-        keystroke (20-30 ms over all 184,722 of Mensores' lines). With it: that one file's
+        keystroke (20-30 ms over all 184,722 of Lictores' lines). With it: that one file's
         hits, each carrying its margin, its links and the routine it sits in.
 
         Split that way because the expensive half is the margin -- ten queries per file --
@@ -2597,7 +2597,7 @@ class _Handler(BaseHTTPRequestHandler):
         version on screen"; every store below reads `revision=None` as "the current one".
         Passed on, the newer meaning wins and the newest snapshot's bytes are served under
         this version's line numbers -- which is rule 70 exactly, and is what the document
-        sidecar did on Mensores' older base before anybody looked.
+        sidecar did on Lictores' older base before anybody looked.
         """
         path = (q.get("path") or [""])[0]
         if not path:
@@ -3069,7 +3069,7 @@ class _Handler(BaseHTTPRequestHandler):
         lines, which is the only place `difflib` ever runs.
 
         Split that way because the cheap half says which files the expensive half is
-        worth running on: twelve of Mensores' 628. Running the text lane over all of them
+        worth running on: twelve of Lictores' 628. Running the text lane over all of them
         behind one request would be rule 45 exactly -- work proportional to the whole
         program for an answer about one file.
 
@@ -3187,7 +3187,7 @@ class _Handler(BaseHTTPRequestHandler):
         # which is not a program; adding it would invent a row for a directory that holds
         # no map (rule 30). Sorted by name so the order is total and does not move between
         # polls — and **total means the spelling too**, because `found` is a set and
-        # `.lower()` alone ties `Mensores` against `mensores`, which are two directories on
+        # `.lower()` alone ties `Lictores` against `lictores`, which are two directories on
         # a case-sensitive volume and one hash seed's opinion apart in this list (rule 105).
         rows = []
         for d in sorted(found | ({here} if opened else set()),

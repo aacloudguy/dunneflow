@@ -60,7 +60,7 @@ def _analyze(tmp_path: Path, files: dict[str, str]) -> Store:
 #
 # The negatives are the point. `LOOPED_BOUNDARY`'s blind spots are only worth the words
 # if the cases they name are actually exercised: read as a plain range join over
-# `net_calls`, this detector fired twice on Society and *both* were poll loops -- two of
+# `net_calls`, this detector fired twice on Comitia and *both* were poll loops -- two of
 # two findings, false. Each routine below is one of the answers the query has to give.
 LOOPING = '''
 import sqlite3
@@ -121,7 +121,7 @@ def test_a_loop_that_queries_on_every_pass_is_reported(tmp_path):
 def test_a_query_the_loop_is_over_is_not_a_query_per_pass(tmp_path):
     """`for row in conn.execute(q).fetchall():` runs one query, not one per row.
 
-    9 of Society's 74 are this shape, and reporting them would be reporting the
+    9 of Comitia's 74 are this shape, and reporting them would be reporting the
     detector's own defect back at the reader.
     """
     found = _looped(_analyze(tmp_path, {"m.py": LOOPING}))
@@ -258,7 +258,7 @@ def test_every_detector_declares_what_identifies_its_finding():
 def test_no_finding_is_identified_by_where_it_sits():
     """A key holding a position renders the comparison as noise.
 
-    Measured on Mensores' pair: keyed with `file`, three of the 106 pairings are lost and
+    Measured on Lictores' pair: keyed with `file`, three of the 106 pairings are lost and
     reported as a removal plus an addition. For a detector that groups, `file` is
     `MIN(file)` -- it names one member of the group arbitrarily and moves when an
     unrelated file changes. `line` moves whenever anything above it does, for anyone.
@@ -442,7 +442,7 @@ def test_a_finding_can_never_wear_a_routine_s_identity():
     the id of the routine of that name, and a click would land on whichever the lookup
     reached first. The prefix is the same namespacing `make_id("ep", ...)` already uses.
     """
-    name = "mensores.cli.main"
+    name = "lictores.cli.main"
     finding = anomalies.Anomaly(
         kind="DEAD_CODE", severity=INFO, confidence="POSSIBLE",
         title="t", detail="d", blind_spot="b", ident_parts=(name,),
@@ -506,7 +506,7 @@ def test_the_declared_keys_need_no_tie_breaking_on_this_corpus(tmp_path):
     `REDEFINITION`'s key survived every guard here.
 
     So this asserts the stronger thing: on a corpus with no genuine repeat in it, no
-    finding falls back on the ordinal at all. Measured the same way on Mensores, both
+    finding falls back on the ordinal at all. Measured the same way on Lictores, both
     versions: zero. If a fixture is ever added that *does* hold a legitimate repeat --
     two indexes of one name, a language reporting two errors in a file -- this test has
     to say so out loud rather than be relaxed quietly.

@@ -56,7 +56,7 @@ SNIPPETS: dict[str, str] = {
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
 
-export const DB_FILE = "tabularium.db";
+export const DB_FILE = "vestiarium.db";
 
 export interface Widget {
   id: string;
@@ -117,7 +117,7 @@ export const load = async () => {
     # Prose that is not a fact, so the module scope must stay unclaimed (rule 96).
     "prose.ts": 'export const GREETING = "hello there, reader";\n',
     # A string that is a fact, so it must be claimed.
-    "named.ts": 'export const DB = "tabularium.db";\n',
+    "named.ts": 'export const DB = "vestiarium.db";\n',
 }
 
 
@@ -401,7 +401,7 @@ def test_the_reader_reports_strings_and_the_host_says_what_they_mean(facts):
     shop = facts["shop.ts"]
     assert [op.operation for op in shop.sql] == ["INSERT"]
     assert [op.tables for op in shop.sql] == [["widgets"]]
-    assert [a.name for a in shop.artefacts] == ["tabularium.db"]
+    assert [a.name for a in shop.artefacts] == ["vestiarium.db"]
     assert any(lit.text.startswith("INSERT INTO") for lit in shop.literals)
 
 

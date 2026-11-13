@@ -422,7 +422,7 @@ class DocStore:
     def mark_duplicates(self) -> int:
         """Point every copy of a document at the one canonical path.
 
-        A corpus is rarely a set of distinct documents. Mensores keeps 335 documents
+        A corpus is rarely a set of distinct documents. Lictores keeps 335 documents
         inside agent worktrees -- copies of the project's own research and plans -- and
         counting them twice would double a definition, a governance id, and any measure
         built on either. Content-addressing settles it without a heuristic: identical

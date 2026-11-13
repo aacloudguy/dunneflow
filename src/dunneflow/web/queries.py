@@ -20,7 +20,7 @@ from __future__ import annotations
 # pictures; external systems are decomposed by boundary kind, because a database
 # and a message queue are not the same sphere of influence.
 #
-# `substr(module, 10)` drops a leading "mensores." -- the program's own root
+# `substr(module, 10)` drops a leading "lictores." -- the program's own root
 # package, whose length is passed in rather than assumed, since it differs per
 # program.
 # --------------------------------------------------------------------------- #
@@ -43,7 +43,7 @@ def package_expr(col: str = "module") -> str:
     **`<outside the root>` was `<external>`, and the rename is the finding.** Every row this
     expression sees is the program's own -- `routines` and `structures` hold what was
     extracted from its files, and nothing else is in them. On a healthy map the branch never
-    fires at all: **0 of 4,786** on Mensores. It fired only when the root was wrong, and
+    fires at all: **0 of 4,786** on Lictores. It fired only when the root was wrong, and
     what it then said was not *"this module is not under the root"* but *"this is somebody
     else's code"* -- 750 routines of 752, on the largest plate in the picture (rules 26
     and 30). It is now unreachable by construction, because a root either accounts for every
@@ -154,11 +154,11 @@ GROUP BY kind
 ORDER BY kind
 """
 
-# A file the program *names*: `tabularium.db`, `groma.json`, `STATUSQUO.md`. Rule 17 --
+# A file the program *names*: `vestiarium.db`, `groma.json`, `STATUSQUO.md`. Rule 17 --
 # a program names its files and those names are vocabulary. They reach no other detector,
-# because a path assembled as `root / ".mensores" / "tabularium.db"` is not a boundary
+# because a path assembled as `root / ".lictores" / "vestiarium.db"` is not a boundary
 # target, not a table and not a module, so without this they are absent from the map
-# entirely. Searching the graph for `tabularium` is what showed they were missing.
+# entirely. Searching the graph for `vestiarium` is what showed they were missing.
 #
 # One node per distinct name rather than per mention: 350 mentions collapse to ~150 files,
 # and drawing the same file once per reference would draw it fifty-two times.
@@ -368,7 +368,7 @@ ORDER BY d.site_id, r.qualname, r.file, r.line_start, r.id
 # (rule 66).
 #
 # **Which of them a probe could actually make move, and which are defence in depth.**
-# Measured by reverting each and re-running `tools/ordering.py --api` over Society's 628
+# Measured by reverting each and re-running `tools/ordering.py --api` over Comitia's 628
 # files, DunneFlow's own mixed tree and the fixture: `ROUTINE_SQL_OPS`, `ROUTINE_BOUNDARIES`,
 # `ROUTINE_ANNOTATIONS`, `ROUTINE_CALLEES`, `CODE_IMPORTS` and `CODE_BOUNDARIES` each moved
 # a route. The rest did not on any corpus to hand, and they are kept anyway rather than
@@ -719,7 +719,7 @@ WHERE r.id = :id
 # counted again.** This was found by looking at the card rather than by any test:
 # `write_spec_seal_atomic` showed three tables *and* "DATABASE 20", which reads as
 # twenty-three database things and is in fact the same seventeen statements seen by
-# two detectors. Measured across Mensores it is not an oddity of one routine -- 991
+# two detectors. Measured across Lictores it is not an oddity of one routine -- 991
 # of 1,316 DATABASE boundaries sit on a line with a `sql_ops` row, and **all twenty**
 # NETWORK boundaries sit on a `net_calls` row. A summary that states the same act
 # twice is rule 32 in miniature: two correct numbers, neither of them saying what it
@@ -817,7 +817,7 @@ WHERE a.routine_id = :id
 # planner happened to reach first.
 #
 # The card has room for four of these, so the order decides which four a reader sees
-# and it may not be alphabetical: sorted by value, Mensores' 3,713 TICKETs beginning
+# and it may not be alphabetical: sorted by value, Lictores' 3,713 TICKETs beginning
 # `AC-` crowd out every PLAN and ADR on the routine. The order is by what the id
 # *is* -- a decision, then the record of one, then the plan, then the issue -- and
 # then by how often this routine cites it. It is a stated ranking rather than a
@@ -836,7 +836,7 @@ ORDER BY CASE MIN(kind)
 # The WHY, and it has to say which kind of WHY it is.
 #
 # A comment above a `def` is about the routine; a comment forty lines inside it is
-# about a statement. `leading` tells them apart -- and on Mensores only 243 of
+# about a statement. `leading` tells them apart -- and on Lictores only 243 of
 # 18,414 comments are leading ones, so a card that accepted nothing else would be
 # blank on the overwhelming majority of routines that are in fact well explained.
 #
@@ -1147,7 +1147,7 @@ ORDER BY r.qualname, r.file, r.line_start, r.id
 # Every routine whose name uses one of the program's own words.
 #
 # **Whole segments, never substrings**, and this is rule 5 in its most literal form. A
-# term matched anywhere inside a name matches half the program: `mensor` would claim
+# term matched anywhere inside a name matches half the program: `lictor` would claim
 # every `dimensions` and `groma` every `programmatic`. Rule 18 found the same defect in
 # the walk's test rule (`DiscoveryRules.is_test` now, `walk.is_test_path` then), where
 # `test_` as a substring dropped the real `_test_stage.py` out of the map entirely -- a
@@ -1253,7 +1253,7 @@ ORDER BY r.module, r.line_start, r.file, r.qualname, r.id
 """
 
 # Every structure, for the navigator's own group and for the search across it. 671 rows on
-# Mensores against `NAV_ROUTINES`' 4,786, riding with them because both are wanted at the
+# Lictores against `NAV_ROUTINES`' 4,786, riding with them because both are wanted at the
 # same moment and a second request would be a second round trip for a seventh of the weight.
 #
 # `kind` is carried because it is what separates one of these from another: a vanished
@@ -1444,8 +1444,8 @@ ORDER BY kind
 # centre pane says "Nothing to show." with no explanation available to it.
 #
 # Measured, which is how it stopped being a stylistic point: on a map analysed at the parent
-# directory the two agree except for the root module itself -- Mensores had **1 dead row of
-# 46**, `mensores`, whose plate is `<root>` -- and on a map analysed at the package the
+# directory the two agree except for the root module itself -- Lictores had **1 dead row of
+# 46**, `lictores`, whose plate is `<root>` -- and on a map analysed at the package the
 # second segment is a *module*, giving **36 dead rows of 48**. Tom found the second by
 # clicking them.
 #
@@ -1528,7 +1528,7 @@ ORDER BY file, line, idx, name
 # `line BETWEEN line_start AND line_end` and no third table records it.
 #
 # `LOOP` and `COMPREHENSION` together, because a comprehension issuing one call per item is
-# a rate exactly as a `for` is -- 39 of Society's 250 rates are comprehensions, and a lane
+# a rate exactly as a `for` is -- 39 of Comitia's 250 rates are comprehensions, and a lane
 # that counted only the word `for` would drop them without saying so (design rule 1).
 #
 # **What a loop is *over* is not what it does on a pass**, and these statements have to
@@ -1589,7 +1589,7 @@ ORDER BY node
 # is stated on the thread rather than hidden: `x == 1` and `x==1` are two values here.
 # Canonicalising would mean an extractor change and a schema bump for a comparison the
 # reader can make by eye, and a `canonical/` pass at query time is not something SQL can
-# do. 887 of Society's 2,213 decisions share a header with another; the largest group is
+# do. 887 of Comitia's 2,213 decisions share a header with another; the largest group is
 # `TYPE_CHECKING` at 321, which sorts **last** because threads are ordered rarity-first.
 #
 # `GUARD` is excluded because a refusal is not a decision about what leaves -- the same
@@ -1685,14 +1685,14 @@ JOIN routines r ON r.id = e.routine_id
 #
 # `COVER_PACKAGES` says it takes the second segment "without knowing the program root", and
 # this is that root, asked for directly. It exists because a field that shortens a module
-# has to know which end carries information: **all 566 of Mensores' modules begin
-# `mensores.`**, so a rule keeping both ends of a name spends its head on a word that is
+# has to know which end carries information: **all 566 of Lictores' modules begin
+# `lictores.`**, so a rule keeping both ends of a name spends its head on a word that is
 # identical on every row -- and, for a three-segment module, elides the *package* to keep
 # it.
 #
 # Grouped rather than assumed. One row means every module agrees and the segment is a root;
 # more than one means the program has several top-level names and there is nothing to strip.
-# `mensores` is itself a package id in `COVER_PACKAGES` -- top-level modules belong to it --
+# `lictores` is itself a package id in `COVER_PACKAGES` -- top-level modules belong to it --
 # which is exactly why "a segment that names a package" is the wrong test and this one is
 # right.
 COVER_ROOT = """
@@ -1859,7 +1859,7 @@ ORDER BY t.line, t.name
 # A call that left this program, pinned by an import rather than guessed.
 #
 # `calls.external` is set for three genuinely different things and only one of them earns a
-# mark in the gutter. **Builtins**: 11,256 of Mensores' 23,829, and `len(x)` is internal
+# mark in the gutter. **Builtins**: 11,256 of Lictores' 23,829, and `len(x)` is internal
 # computation, which CLAUDE.md says in as many words is not the subject. **Boundary
 # touches**: 3,943, every one of which already has a boundary or a `sql_ops` row on the same
 # line, so marking them here is rule 40 for the third time. What is left is a call into
@@ -2030,7 +2030,7 @@ GROUP BY c.callee_id, c.caller_id
 # picture wants the connection; this returns one row per **call site**, because the
 # question an edge answers is "what actually passes along here" and an aggregate
 # cannot say it. `site_id` comes back so the arguments can be hung off the right one:
-# two identical expressions on one line are two calls (287 of them on Mensores).
+# two identical expressions on one line are two calls (287 of them on Lictores).
 # --------------------------------------------------------------------------- #
 
 FLOW_CALL_SITES = """
@@ -2069,7 +2069,7 @@ ORDER BY a.site_id, a.idx
 # wearing one name.
 
 # The boundaries of a set of routines that **no more specific record already names**.
-# Rule 40, set-scoped: 991 of Mensores' 1,316 DATABASE boundaries sit on a line with a
+# Rule 40, set-scoped: 991 of Lictores' 1,316 DATABASE boundaries sit on a line with a
 # `sql_ops` row and all twenty NETWORK boundaries sit on a `net_calls` row, so listing
 # both is listing one act twice. The exclusion is per line and not per routine, because
 # 43 routines open a connection and run nothing -- the boundary is the only record of
@@ -2311,7 +2311,7 @@ FROM top
 #
 # **Places and not rows**, which is `resolve/shape.places` in SQL and has to stay that way
 # (rule 51's shape for a statement that cannot import it): an `INSERT` is a `DATABASE` row
-# *and* a `SQL` row on one line, and 569 of Society's 991 SQL operations are such a pair.
+# *and* a `SQL` row on one line, and 569 of Comitia's 991 SQL operations are such a pair.
 # The `UNION` deduplicates the line, which is exactly what `places` does -- so the card and
 # the worklist count the same thing, and `test_every_cards_own_query_returns_exactly_what_
 # the_card_prints` re-runs this and would catch it if they ever stopped.

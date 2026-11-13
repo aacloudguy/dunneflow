@@ -14,7 +14,7 @@ that increments a counter is still the internal computation nobody asked for. Wh
 recorded is a `ControlPoint` -- **a span, and nothing more**: no variable, no operator, no
 value. What a loop *does* is reached by joining the tables that already exist, so a loop
 holding a network call is `line BETWEEN line_start AND line_end` rather than a new fact.
-A loop is a subject only where something moves inside it, and on Mensores that is 250 of
+A loop is a subject only where something moves inside it, and on Lictores that is 250 of
 1,950. See `schema.ControlPoint`.
 
 Uses the standard library only -- `ast` for structure, `tokenize` for comments. No
@@ -83,7 +83,7 @@ _STRUCTURE_BASES = {
 # How a guard clause leaves. Four ways out, and the difference between them is the whole
 # reason `ControlPoint.exits` is recorded rather than read back off the header: `if not x:
 # return` and `if not x: raise` are the same sentence and opposite facts. 3,937 of
-# Mensores' 6,293 branches are one of these -- 62.6% of this program's decisions are
+# Lictores' 6,293 branches are one of these -- 62.6% of this program's decisions are
 # refusals, which is the largest single shape in it.
 _EXITS = (ast.Return, ast.Raise, ast.Continue, ast.Break)
 
@@ -155,7 +155,7 @@ def collect_comments(src: str) -> dict[int, str]:
     ingest as the tag-stripper that ate `<role>` in rule 12, and the same discipline as
     rule 5: a marker only counts at an edge, so the test is position, not presence.
 
-    1,698 of Mensores' comments carry the marker, across 117 files, and 323 constants
+    1,698 of Lictores' comments carry the marker, across 117 files, and 323 constants
     took their WHY through it. Left alone they read as ": Keychain service name", and a
     blank `#:` line read as a bare colon.
     """
@@ -314,7 +314,7 @@ class _Extractor(ast.NodeVisitor):
         than by rule: whichever fact asked first did the minting, so a file with nothing at
         module level got no such routine because nothing had asked. It stopped being true
         the moment a *string* asked -- `_literal` has to name an owner for every string it
-        reports, and a string is not yet a fact. Measured: 65 of Society's 628 files gained
+        reports, and a string is not yet a fact. Measured: 65 of Comitia's 628 files gained
         a `<module>` routine owning nothing at all, a 1.3% inflation of every routine count
         in the map, decided by whether a string cleared a bound that exists to save wire.
         Rule 96.
@@ -363,7 +363,7 @@ class _Extractor(ast.NodeVisitor):
         """Module-level names bound to a plain string, for resolving f-strings.
 
         `CREATE TABLE {_TABLE} (...)` in an f-string left the table unnamed, so
-        Mensores' migration 0028 created `work_items` and the database map went on
+        Lictores' migration 0028 created `work_items` and the database map went on
         reading 40 tables at both points in time -- a table arrived and nothing said
         so. The value was never missing: rule 19 records `_TABLE = "work_items"` as a
         constant six lines above, in the same module.
@@ -423,7 +423,7 @@ class _Extractor(ast.NodeVisitor):
 
         `visit_Assign` caught only CLI app objects and `_class_fields` caught only
         class bodies, so module level produced nothing at all: `JTBD_OPENERS` was
-        declared, read six times, and absent from the map. 3,072 of these on Mensores.
+        declared, read six times, and absent from the map. 3,072 of these on Lictores.
 
         Walked from the statement list rather than through the visitor, because module
         level is exactly "runs at import" and that is a property of position, not of a
@@ -528,7 +528,7 @@ class _Extractor(ast.NodeVisitor):
 
         Comments were collected per function: the block above a definition, and
         everything inside its line span. Anything else was dropped on the floor --
-        **9,659 of Mensores' 18,208 comments, 53%** -- because the synthetic `<module>`
+        **9,659 of Lictores' 18,208 comments, 53%** -- because the synthetic `<module>`
         routine is created on demand by `_owner()` and was never handed any.
 
         That is not a readability loss, it is a governance one. Comments are the only
@@ -545,7 +545,7 @@ class _Extractor(ast.NodeVisitor):
 
         Called once, after the walk, so "claimed" means claimed by anybody. A comment
         leading a nested definition is legitimately owned by both the inner routine and
-        the enclosing one (187 such on Mensores); it is claimed either way and is not
+        the enclosing one (187 such on Lictores); it is claimed either way and is not
         duplicated here.
         """
         claimed = {c.line for r in self.routines for c in r.comments}
@@ -597,7 +597,7 @@ class _Extractor(ast.NodeVisitor):
         hover card began printing the invocation line, and a printed signature that is not
         the one in the file is exactly what rule 13 forbids.
 
-        Neither Mensores nor DunneFlow uses `/` in any of 4,724 definitions between them,
+        Neither Lictores nor DunneFlow uses `/` in any of 4,724 definitions between them,
         so this fixes nothing visible today. That is the argument for doing it now rather
         than against: the cost is three lines while nothing depends on the old shape, and
         the alternative is a renderer that is silently wrong on the first codebase that
@@ -981,7 +981,7 @@ class _Extractor(ast.NodeVisitor):
             repeats=[*node.body, *node.orelse],
         )
         # `for ... else` runs when the loop was never broken out of, which is a second
-        # way through and the one most readers have to look up. 4 of Society's 976 loops
+        # way through and the one most readers have to look up. 4 of Comitia's 976 loops
         # have one; a loop without an `else` records no arms at all, because its body is
         # its span. `arms` stays 1 either way -- what a loop is *over* is one thing, and
         # the ways out of it are the rows.
@@ -1001,7 +1001,7 @@ class _Extractor(ast.NodeVisitor):
 
         Counted separately rather than folded into `LOOP` because a reader scanning for
         loops does not see one here, which is exactly why a boundary inside one is worth
-        saying out loud: 39 of Mensores' comprehensions reach a boundary.
+        saying out loud: 39 of Lictores' comprehensions reach a boundary.
         """
         gens = getattr(node, "generators", [])
         # **Only the first generator's iterable runs once.** `[f(x) for x in a for y in b]`
@@ -1096,7 +1096,7 @@ class _Extractor(ast.NodeVisitor):
     def visit_Match(self, node: ast.Match) -> None:
         """`match` is a decision that already knows how many ways out it has.
 
-        Mensores has **none** -- the population is zero and stays named rather than
+        Lictores has **none** -- the population is zero and stays named rather than
         dropped (design rule 1), because a lane that silently vanishes cannot be told from
         one that looked and found nothing.
         """
@@ -1138,7 +1138,7 @@ class _Extractor(ast.NodeVisitor):
 
         The body is an arm here where a loop's body is not, because a `try` genuinely has
         more than one way through it and the reader is asking which of them moves
-        something -- 396 of Society's 1,531 handlers recover by moving something, and
+        something -- 396 of Comitia's 1,531 handlers recover by moving something, and
         that question cannot be put to the `try` span, which contains both answers.
         """
         arms: list[tuple[ArmKind, ast.AST | str | None, list[ast.stmt]]] = [
@@ -1166,7 +1166,7 @@ class _Extractor(ast.NodeVisitor):
         """`except*` groups, which are a `Try` in every way this fact cares about.
 
         Its own method rather than `visit_TryStar = visit_Try`: `TryStar` is a separate
-        node type and the alias is a signature the checker is right to refuse. Mensores
+        node type and the alias is a signature the checker is right to refuse. Lictores
         has none, and it is handled anyway because an extractor that silently walks past a
         language construct reports a smaller program (rule 15's shape).
         """
@@ -1530,7 +1530,7 @@ class _Extractor(ast.NodeVisitor):
     def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
         """An f-string, with its interpolations stood in for.
 
-        `f"{root}/tabularium.db"` still names the file and `f"CREATE TABLE {t} (...)"`
+        `f"{root}/vestiarium.db"` still names the file and `f"CREATE TABLE {t} (...)"`
         still names its table, so the text has to be assembled -- and assembling it needs
         the module's own constant table and the tree that holds it, which is why this half
         stays with the reader while the judgement does not. What leaves is marked

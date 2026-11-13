@@ -438,7 +438,7 @@ def test_the_cover_counts_lines_in_the_revision_it_is_reading(tmp_path: Path) ->
 
     `_lines` asked for `WHERE p.revision = ''` — the legacy revision, from before a
     snapshot had a name — so from the day revisions landed the cover reported **0 lines**
-    for every program analysed since. Mensores is 186,786. Nothing failed and nothing was
+    for every program analysed since. Lictores is 186,786. Nothing failed and nothing was
     empty: a zero on the first screen reads as "this program has no source", which is a
     claim and a wrong one.
 

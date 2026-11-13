@@ -24,7 +24,7 @@ strip states; this module says only which side a line is on. `only_in_base` and
 **`autojunk=False`, and that is measured rather than preferred.** `SequenceMatcher`'s
 heuristic treats a line appearing in more than 1% of a sequence longer than 200 lines as
 junk, and in source that is every blank line, every bare `)` and every `return` -- so it
-aligns worse where source is most repetitive. On Mensores' twelve modified files it cost
+aligns worse where source is most repetitive. On Lictores' twelve modified files it cost
 10 ms with the heuristic and 59 ms without, and without it `cli/scribe.py` reports 57
 removed lines rather than 60 and `_migrations.py` 13 rather than 15. Three false removals
 in one file for 49 ms across the whole set is not a trade worth taking, and the worst
@@ -42,7 +42,7 @@ from ..sourcedb import SourceStore
 # What a path is, across two snapshots. Named for **where it is**, never for what befell
 # it -- rule 65, and the same four words the change worklist uses, so a reader meets one
 # vocabulary rather than two. `same` is a real answer and the commonest one: 613 of
-# Mensores' 628 files, and a comparison that could not say so would be reporting only the
+# Lictores' 628 files, and a comparison that could not say so would be reporting only the
 # exceptions and calling it a comparison.
 SAME = "same"
 MODIFIED = "modified"

@@ -15,7 +15,7 @@ label (rule 24).
 An absent row is absent rather than estimated. Rule 38: a browser-automation tab is given
 no animation frames, so anything needing a rendered frame does not exist there.
 
-## Performance budget (measured on mensores: 623 files, 184k lines)
+## Performance budget (measured on lictores: 623 files, 184k lines)
 
 | Measure | Budget |
 |---|---|
@@ -24,7 +24,7 @@ no animation frames, so anything needing a rendered frame does not exist there.
 | Orientation query (touches / impact) | < 1 s |
 | Peak memory | < 1 GB, flat as file count grows |
 
-The interactive map (`dunneflow serve`), measured on Mensores: 52 disks, largest 959,
+The interactive map (`dunneflow serve`), measured on Lictores: 52 disks, largest 959,
 **9,874 nodes drawn**, 13,935 edges in the model, plus 5,727 shadows that are *never*
 drawn — they are placement devices only (rule 23). *These are the 2026-08-27 corpus, and
 the tree has grown under them: the live payload now reports **10,052 nodes and 5,855
@@ -51,7 +51,7 @@ The second **level of detail**, measured 2026-08-31 on the same corpus. A module
 | …the same again, cached on the base | < 50 ms | 10 ms |
 | First paint at module level | < 2 s | **not measured — see below** |
 
-**Arranging a plate by connection** — the force layout, measured 2026-09-07 on Mensores at
+**Arranging a plate by connection** — the force layout, measured 2026-09-07 on Lictores at
 routine level: 53 plates over **15,907** placed things, 14,254 within-plate edges, the
 largest plate holding 1,519 once its shadows are counted. Fruchterman–Reingold, 100
 iterations, all-pairs repulsion within each plate.
@@ -82,7 +82,7 @@ plate, spiral against solved:
 | Plate | Nodes | Within-plate edges | Spiral | Solved | |
 |---|---:|---:|---:|---:|---|
 | `pkg:cli` | 1,519 | 1,675 | 328,531 | 27,291 | **−91.7%** |
-| `pkg:quaestor` | 1,320 | 1,292 | 181,064 | 16,725 | **−90.8%** |
+| `pkg:tribunus` | 1,320 | 1,292 | 181,064 | 16,725 | **−90.8%** |
 | `pkg:governance` | 600 | 500 | 25,533 | 2,132 | **−91.7%** |
 
 **The two backends agree on quality and not on coordinates**, which is stated rather than
@@ -100,7 +100,7 @@ answerable to what the other plates want. `upright` counts drawn crossings leani
 a quarter of a plate-width; the plate columns are what the force layout removes against the
 spiral, which is what the coupling spends.
 
-| | upright, of 5,101 | median lean | `pkg:cli` | `pkg:quaestor` | `pkg:governance` |
+| | upright, of 5,101 | median lean | `pkg:cli` | `pkg:tribunus` | `pkg:governance` |
 |---|---:|---:|---:|---:|---:|
 | no coupling | 749 | 0.571 | 91.7% | 90.8% | 91.7% |
 | coupled, per-plate frame | 1,539 | 0.367 | 90.6% | 89.2% | 90.2% |
@@ -156,7 +156,7 @@ the axis to an offset of **0**, every plate ending at exactly **1000**, and 0 pl
 the disc — so `PLATE_R`, `rimPoint` and `fitView` are untouched, and the natural sizes reach
 the picture through the plate-width dial that already existed (ratios span 1.0 to 0.086).
 
-**One plate, opened** — `/api/plate`, measured 2026-09-05 on Mensores at routine level:
+**One plate, opened** — `/api/plate`, measured 2026-09-05 on Lictores at routine level:
 53 plates over 15,870 drawn things, the largest holding 991.
 
 | Measure | Budget | Measured 2026-09-05 |
@@ -168,7 +168,7 @@ the picture through the plate-width dial that already existed (ratios span 1.0 t
 
 **The two bands cost differently and the reason is in the query, not the size.** A package
 asks `FOLD_CALLS_IN`/`OUT` over its own member ids, so it scales with what it holds — 2.4 ms
-for `pkg:mensor`'s 12 nodes, 9.7 ms for `pkg:quaestor`'s 926. A plate *outside* the program
+for `pkg:lictor`'s 12 nodes, 9.7 ms for `pkg:tribunus`'s 926. A plate *outside* the program
 cannot: a boundary node's id is `bnd:<kind>:<target>`, which those queries do not match at
 all, so it scans `BOUNDARY_EDGES` and `ARTEFACT_EDGES` whole and lands at a flat ~15 ms
 whatever it holds. `ext:STDIO` with 991 nodes and `ext:NETWORK` with 9 cost the same.
@@ -233,7 +233,7 @@ The dots row stands: nothing about it depended on the shading.
 Kept because the *method* survives even though the numbers did not. The edge run could not
 have been taken at all before the second session: the orbit set the moving flag, which
 stripped the edges, so the benchmark measured nodes only while printing an edge count beside
-the number (rule 24). Its selection is eight plates — `disceptator`, `STDIO`, `quaestor`,
+the number (rule 24). Its selection is eight plates — `conciliator`, `STDIO`, `tribunus`,
 `_internal`, `storage`, `cli`, `governance`, `DATABASE` — giving 2,199 within-plate links
 and 2,054 crossings, with both layers confirmed present in the frame. Reproduce that
 selection when retaking the row, or it is a different measurement wearing the same label.
@@ -272,7 +272,7 @@ of which the two vocabulary lanes are 2.5 s:
 | …of which the glossary pass | | 2.1 s |
 
 **Switching the base pays that start again**, because one payload set is live at a time.
-Measured 2026-08-30 on Mensores' two revisions, six steps reported by name as they run:
+Measured 2026-08-30 on Lictores' two revisions, six steps reported by name as they run:
 
 | Measure | Budget | Measured 2026-08-30 |
 |---|---|---|
@@ -338,8 +338,8 @@ in a pane. A map built once with the payload is the whole fix. Reported as *lag 
 obvious*, and that is exactly right: two and a half seconds reads as a slow page, not as a
 defect.
 
-The code browser, measured on Mensores' largest file (`mensores/mcp/_server.py`, 5,838
-lines, 1.37 MB of markup) and on `mensores/cli/audit.py` (4,820 lines):
+The code browser, measured on Lictores' largest file (`lictores/mcp/_server.py`, 5,838
+lines, 1.37 MB of markup) and on `lictores/cli/audit.py` (4,820 lines):
 
 | Measure | Budget | Measured 2026-08-29 |
 |---|---|---|
@@ -444,7 +444,7 @@ Nothing here is cached per file. The worst file is 42 ms and every body it reads
 in the sidecar's inflate cache from having been opened; holding the compared version's text
 for every file a reader visits would be a second copy of the program in memory to save that.
 
-The change worklist, comparing two revisions of Mensores (4,733 routines against 4,786):
+The change worklist, comparing two revisions of Lictores (4,733 routines against 4,786):
 
 | Measure | Budget | Measured 2026-09-01 |
 |---|---|---|
@@ -476,15 +476,15 @@ of forty on the same query and the same files, which is why it is stated as a ra
 dashboard already holds open — see rule 58, and note that measured standalone it was
 242 ms the whole time.
 
-Documentation (2,041 documents on Mensores, 44 MB):
+Documentation (2,041 documents on Lictores, 44 MB):
 
-**These were 2,381 and 310 definitions, and the difference is not a change to Society.**
+**These were 2,381 and 310 definitions, and the difference is not a change to Comitia.**
 335 of those documents were two stale agent worktrees under `.claude/worktrees/`, holding
 a May-era copy of the project's own governance documents under the old `.paul` name. See
 rule 57. The duplicate detector caught 303 and every consumer filters `duplicate_of`, so
 most recorded numbers were protected; the 32 that had drifted from their originals were
-no longer identical, escaped it, and put ten definitions — `mensor`, `mensores` and
-`Society of Mensores` among them — into the glossary from a directory that is not the
+no longer identical, escaped it, and put ten definitions — `lictor`, `lictores` and
+`Comitia of Lictores` among them — into the glossary from a directory that is not the
 project.
 
 | Measure | Budget | Measured |
@@ -520,7 +520,7 @@ cost a subtree cache cannot save — the cache holds a node and the parse happen
 is one — so the 40–72 ms of markdown parsing is paid on the fetch and every repaint after it
 is 2 ms.
 
-**The document renderer** (`prose.js` + `markdown-it`), measured 2026-09-03 on Mensores.
+**The document renderer** (`prose.js` + `markdown-it`), measured 2026-09-03 on Lictores.
 It is cheap, and the interesting thing about it is that it is cheap:
 
 | Measure | Budget | Measured 2026-09-03 |
@@ -540,7 +540,7 @@ of 41 — including 27 documents carrying YAML frontmatter, which is the case mo
 break it silently.
 
 **Document mode, lane 2** — the map's own eight documents, measured 2026-09-03 on
-Mensores. The pane's whole cost is **layout**, and the numbers say so plainly: on
+Lictores. The pane's whole cost is **layout**, and the numbers say so plainly: on
 `routines`, 4,786 rows over 566 groups, building the markup is **73 ms**, parsing it into a
 detached node **329 ms**, and laying it out **2.0 s**.
 
@@ -575,7 +575,7 @@ load-bearing here** — a narrow centre wraps every cell and makes each row 70px
 wider window lays out fewer pixels for the same rows, not more.
 
 **Serving the corpus** — the document list and one document, measured 2026-09-03 on
-Mensores' 2,064 documents, 38.7 MB of prose held in a 17 MB sidecar:
+Lictores' 2,064 documents, 38.7 MB of prose held in a 17 MB sidecar:
 
 | Measure | Budget | Measured 2026-09-03 |
 |---|---|---|
@@ -599,7 +599,7 @@ cold row in this file is: 1.7 s and 2.3 s on two first reads, 18 ms on every one
 |---|---|---|
 | `/api/programs` | < 50 ms | **1.0–1.2 ms** warm, 1.0 s cold |
 | `/api/cover`, beside it | — | 0.54–0.72 ms |
-| a switch, `mensores` → `dunneflow` | < 30 s | **5.0 s** server-side, then a reload |
+| a switch, `lictores` → `dunneflow` | < 30 s | **5.0 s** server-side, then a reload |
 
 **The cold second is the external volume**, as every cold row here is: four directory
 listings and a `glob` apiece on a disk that has not been touched. It is paid once, at boot,
@@ -658,7 +658,7 @@ The `sidecars` block adds a shallow copy of a five-key dict and two `serving()` 
 payload that is otherwise built once at boot — which is why the route stays at its old figure.
 
 **ALGORITHMS: the judgement, the lanes and one ribbon** — **retaken 2026-09-07** after
-chunk 6, on `output/mensores` at 628 files, 9,625 control points and 4,125 arms. Median of
+chunk 6, on `output/lictores` at 628 files, 9,625 control points and 4,125 arms. Median of
 five, warm, in one process.
 
 `judge` walks a second list per point now — `Point.repeated`, which is `moves` minus what
@@ -716,7 +716,7 @@ warm ones. That is expected and is not a regression.
 ## The plate order, and the second it costs once
 
 `/api/plateorder` chooses the order the plates are stacked in so a cross-plate crossing does
-not have to travel far. Measured 2026-09-08 on Mensores at 2026-09-08T13:39:50Z, 53 plates
+not have to travel far. Measured 2026-09-08 on Lictores at 2026-09-08T13:39:50Z, 53 plates
 and 403 connected pairs at routine level, 38 and 223 at module.
 
 | Measure | Budget | Measured |
@@ -762,11 +762,11 @@ tests prove the source tree and not the artifact. `DunneFlow.app` built with
 | Build, cold (no PyInstaller cache) | — | 23 s |
 | Build, warm | — | 7 s |
 | Bundle on disk | — | **31 MB** |
-| Full analysis of Society, through the binary | < 90 s | **37.7 s** |
+| Full analysis of Comitia, through the binary | < 90 s | **37.7 s** |
 | Cold start to a served page, no map anywhere | < 3 s | ~1 s |
 
 **Conditions, and two of them are load-bearing** (rule 24). The analysis is
-`../society-2026-08-29/src` — 628 files, 2,064 documents — with
+`../comitia-2026-08-29/src` — 628 files, 2,064 documents — with
 `--standards ../dunnecorp-standards`, into a **temporary output directory on the internal
 disk**, with every store written from cold: `parsed 628, cached 0` and
 `documents read 2064, cached 0`. It is *not* comparable to the checkout's warm re-analysis
@@ -847,7 +847,7 @@ protocol's overhead against in-process extraction, measured on the Python test d
 the one comparison where both sides produce provably identical facts. They do: 628 files,
 zero differing, seven of seven golden digests identical.
 
-Society (`../society-2026-08-29/src`, 628 files, 21.5 MB of JSON), Apple M1, warm disk,
+Comitia (`../comitia-2026-08-29/src`, 628 files, 21.5 MB of JSON), Apple M1, warm disk,
 median of three alternating runs. Extraction only — no store, no resolution, no documents.
 
 | | Total | Per file |
@@ -893,7 +893,7 @@ not grow a field between two files.*
 ### What the string-literal split cost the wire (chunk 8, measured 2026-09-17)
 
 Retaken on the same corpus and the same machine, by the same method, because chunk 8 puts
-every string a file spells out **on the wire** — 42,502 of them for Society, where before
+every string a file spells out **on the wire** — 42,502 of them for Comitia, where before
 they never left the reader. A figure taken against a different payload under the same
 label would be a different measurement (rule 24), so the whole table is retaken rather than
 one row appended.
@@ -1133,7 +1133,7 @@ OverflowError: int too large to convert to float
 
 `math.comb(total, i)` is an exact integer, and past a few thousand it has more digits than a
 float has range. The affix-convention test has computed an exact binomial tail since it was
-written and never met a population big enough — Society's largest is in the low thousands.
+written and never met a population big enough — Comitia's largest is in the low thousands.
 It is three paths now: below the mean the answer needs no arithmetic, the exact tail is
 summed in **log space** through `lgamma` while the term count is under 4,000 so every figure
 already recorded reproduces unchanged, and beyond that a normal approximation with a

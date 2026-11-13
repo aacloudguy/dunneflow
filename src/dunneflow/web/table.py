@@ -18,7 +18,7 @@ strip the prefix before asking a question about it.
 
 **Where it is declared is a real absence, not a miss.** `db_tables` is filled by `sql.py`
 reading the `CREATE TABLE` statements the code *contains*, so a program that only ever
-reads somebody else's schema declares nothing -- and 12 of Society's 65 tables are that.
+reads somebody else's schema declares nothing -- and 12 of Comitia's 65 tables are that.
 Three states and not two (design rule 21): declared once, declared in more than one file,
 and never declared here. Only the first can hand the source pane a place to open, and it
 is the only one that does.

@@ -30,7 +30,7 @@ patterns:
     regex: '\b(TODO|FIXME|XXX|HACK)\b\s*:?'
   # A bare LETTERS-DIGITS pattern is rule 5's failure in a new place: it matches every
   # standard, cipher and encoding a program names. SHA-256, UTF-8, ISO-8601, RFC-3161 and
-  # IEEE-29148 accounted for 121 phantom tickets on Mensores, found by joining code
+  # IEEE-29148 accounted for 121 phantom tickets on Lictores, found by joining code
   # annotations against the same ids in project documentation. The denylist is
   # evidence-led, not guessed, and extended with the standards bodies most likely to
   # appear elsewhere.
@@ -47,7 +47,7 @@ patterns:
 # `68-03-PLAN.md` declares itself as `phase: 68-front-door-extraction` and `plan: 03`
 # in YAML frontmatter, and the string `Plan 68-03` appears nowhere in the corpus. The
 # document plainly exists; the traceability join could not see it, and reported the
-# work as built against no plan. 15 of 29 such findings on Mensores were this.
+# work as built against no plan. 15 of 29 such findings on Lictores were this.
 #
 # Every id composed here is INFERRED, never CERTAIN. The document does not say this in
 # words -- the tool assembled it from a naming convention, and a convention can be
@@ -62,7 +62,7 @@ patterns:
 document_identity:
   - kind: PLAN
     format: "Plan {0:0>2}-{1:0>2}"
-    # One pattern per part, applied positionally. Mensores writes `plan:` two ways --
+    # One pattern per part, applied positionally. Lictores writes `plan:` two ways --
     # `plan: "1"` and `plan: "06-02"` -- so the plan segment must take the LAST number
     # and the phase segment the first. A single pattern read `06-02` as `06` and
     # composed `Plan 06-06`, an id that does not exist. Rule 1: a false trace is worse

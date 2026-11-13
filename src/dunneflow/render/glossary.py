@@ -2,7 +2,7 @@
 
 Not a list of definitions a model wrote. A list of definitions **the project already
 wrote**, bound to the code that uses the word, each opening onto the file and line it
-came from. Nine of Mensores' eleven opaque terms were already defined in its own
+came from. Nine of Lictores' eleven opaque terms were already defined in its own
 documentation; the tool simply could not see them, because it read only source.
 
 The terms nothing defines are the last section and the most useful one. That list is a
@@ -33,7 +33,7 @@ BADGE = {
 # every one of them had nothing left to strip.
 #
 # They were removed rather than left as harmless no-ops, because they were not harmless:
-# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# `Path("lictores/cli.py").resolve()` resolves against the *working directory*, so run from
 # anywhere inside the analysed tree the strip would succeed and silently prepend the
 # intervening directories to every path on the page.
 

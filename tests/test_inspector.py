@@ -14,14 +14,14 @@ from dunneflow.web.detail import classify, describe
 def test_a_constant_id_splits_at_the_last_dot() -> None:
     """A module path holds dots and an identifier does not, so no other split is right.
 
-    `const:mensores.disceptator._prompts.JTBD_OPENERS` is one module and one name, and
+    `const:lictores.conciliator._prompts.JTBD_OPENERS` is one module and one name, and
     splitting anywhere else looks up a constant that does not exist -- which the store
     answers with "no such node" rather than with an error, so getting this wrong would be
     invisible.
     """
-    kind, params = classify("const:mensores.disceptator._prompts.JTBD_OPENERS")
+    kind, params = classify("const:lictores.conciliator._prompts.JTBD_OPENERS")
     assert kind == "CONSTANT"
-    assert params == {"module": "mensores.disceptator._prompts", "name": "JTBD_OPENERS"}
+    assert params == {"module": "lictores.conciliator._prompts", "name": "JTBD_OPENERS"}
 
 
 def test_a_boundary_target_may_hold_colons() -> None:
@@ -39,9 +39,9 @@ def test_an_unnamed_boundary_keeps_its_empty_target() -> None:
 
 
 def test_an_artefact_name_may_hold_dots() -> None:
-    kind, params = classify("art:tabularium.db")
+    kind, params = classify("art:vestiarium.db")
     assert kind == "ARTEFACT"
-    assert params == {"name": "tabularium.db"}
+    assert params == {"name": "vestiarium.db"}
 
 
 def test_an_unprefixed_id_is_left_opaque() -> None:

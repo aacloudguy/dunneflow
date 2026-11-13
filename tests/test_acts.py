@@ -66,7 +66,7 @@ def python_map(tmp_path: Path) -> Store:
 
 
 def test_a_string_s_replace_is_not_a_file(python_map: Store) -> None:
-    """Rule 5. `replace` as a bare method made 175 FILE boundaries in Society, most of them
+    """Rule 5. `replace` as a bare method made 175 FILE boundaries in Comitia, most of them
     a timestamp or a piece of text being edited."""
     files = [e for k, e, _ in _boundaries(python_map) if k == "FILE"]
     assert files == ["Path.replace", "os.replace"], files

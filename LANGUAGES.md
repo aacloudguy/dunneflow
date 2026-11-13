@@ -35,7 +35,7 @@ it, and the guard failed saying so — which is how a residue held at a number g
 rather than forgotten. The assertion is zero now.
 
 **The measurement is worth carrying, because the honest headline is that it moved nothing.**
-Removing the exclusion outright changes no verdict on any of four corpora — Mensores 1,463
+Removing the exclusion outright changes no verdict on any of four corpora — Lictores 1,463
 graded ids, DunneNote 391, DunneFlow 28, DunneCorp 0. The case for the fix is rule 98: on a
 TypeScript-only map the words it struck were `hex`, `round` and `set`, and the ones waiting
 in a larger tree are `id`, `set`, `type`, `format`, `next`, `open`, `filter`, `map`. A
@@ -341,11 +341,11 @@ brings a new population to old judgements, and Rust's idioms reached three that 
 wrong all along:
 - **A chain on a call was a second act.** The dotted contract folds `f(x).g()` into `f.g`
   (clause 2), so a rule that matched `f` matched `f.g` again. `ingest/acts.one_act` drops the
-  extension, per routine, line and kind: 257 doubled DATABASE rows in Society, and Go's
+  extension, per routine, line and kind: 257 doubled DATABASE rows in Comitia, and Go's
   `http.Get(u).Body.Close()` was two network calls. Rust is cleaner still: a method's
   receiver is a value, so the reader matches a method site by `method:` rules alone, which is
   how `rsa.then(…)` on a `bool` stopped being CRYPTO.
-- **`replace` was a FILE method** — rule 5's own example, 175 times in Society.
+- **`replace` was a FILE method** — rule 5's own example, 175 times in Comitia.
 - **A sentence ending in a full stop was SQL** when it began with `delete` and had a bracket
   in it, and pdfcraft's MCP tool descriptions minted three tables.
 
@@ -548,7 +548,7 @@ macro's token, so it cannot detect what a macro wrote; rule 110 has the rest.
 
 ## LOCAL_IPC, and four rule keys a reader must say it reads
 
-*Written 2026-11-02, for Society2.* A Unix-domain socket was NETWORK/TCP in every reader,
+*Written 2026-11-02, for Comitia2.* A Unix-domain socket was NETWORK/TCP in every reader,
 because the dotted name cannot see what tells it apart: `net.Dial("unix", p)` and
 `net.Dial("tcp", a)` are one spelling. The kind is `LOCAL_IPC` (`schema.py`), and the
 rules file says when it applies with four new keys on a boundary rule:
@@ -592,11 +592,11 @@ Rust, Java and Node recorded no Unix socket at all.
 
 ## A method by its receiver's type, and why the types are declared
 
-*Written 2026-11-07, for Society2.* Every file operation Society2 makes through an `os.Root`
+*Written 2026-11-07, for Comitia2.* Every file operation Comitia2 makes through an `os.Root`
 was missing, because a Go boundary was matched on the spelling a file writes and `r.ReadFile`
 names no package. `os.Root` is how Go code that must not follow a symlink out of a folder
 reads and writes, so the gap hid the file boundaries that mattered most. The same gap hid
-`net.Dialer.DialContext(ctx, "unix", p)`, Society2's own IPC client.
+`net.Dialer.DialContext(ctx, "unix", p)`, Comitia2's own IPC client.
 
 **The facts pass now asks `go/types` what a receiver is** (`plugins/go/typed.go`). A method
 of a declared type is spelled with its type, `os.Root.ReadFile`, matched against `exact`

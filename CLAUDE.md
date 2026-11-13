@@ -55,6 +55,15 @@ about which spelling is correct.
 | **Identifiers** — `dunneflow analyze`, `analyze.js`, `Analyze.OPTION`, `analyze_tree`, a CSS `color:` | **Never touched.** They are addresses, like the rule numbers: something types them, imports them or matches them, and a spelling change is a rename with no warning. |
 | **Quotations** — a person's words quoted in a comment, test or record, a sentence read out of somebody else's document, a library's own name | **Never touched, in either direction.** Evidence is quoted as written or it is not evidence. |
 
+**One exception, and it is to the third row.** A quotation from the unpublished program
+most of this tool's rules were learned on carries stand-in names: the project is written
+`Comitia`, its package `lictores`, and its components likewise, each the same length as
+the word it stands for and used for nothing else. Tom's decision of 2026-11-12, before
+release 0.3.0: a public repository does not name a private one. The table between the two
+is the evidence, it is kept outside this repository, and
+`tests/test_no_corpus_names.py` holds the real names out of every tracked file without
+spelling them. Do not "correct" a stand-in, and never write a real one here.
+
 **The dated record is not rewritten.** The development record says what was built and what
 it was called at the time. Correcting a spelling there would be editing the record to agree
 with the present, which is the one thing a record may not do. Live surfaces — the product,
@@ -142,11 +151,11 @@ it must reproduce:
 | `render/`, `resolve/` | `tools/ordering.py`, and `--api` for `web/` | the map may not depend on the order its rows happen to be in (rules 66 and 105) |
 | anything at all, before it is called done | the real-code ground truth in `GROUND-TRUTH.md` | unit tests on a toy program cannot catch a resolution defect that only appears at scale |
 
-**Society is unpublished.** It is a 628-file Python application, package `mensores`, and the
+**Comitia is unpublished.** It is a 628-file Python application, package `lictores`, and the
 real-code gate runs against snapshots of it that only the maintainer has. A contributor
 without them reports that gate as not run, never as passed.
 
-**The four Society clones are read-only and only two of them are the pair.** Naming the
+**The four Comitia clones are read-only and only two of them are the pair.** Naming the
 wrong one cost a whole analysis once and the result looked perfectly healthy —
 `GROUND-TRUTH.md` says which is which, and never restate a figure measured on another
 machine as though it had been reproduced (rule 24).

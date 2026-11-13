@@ -1,15 +1,15 @@
 """A reader refuses a path that is not there, and never brings one into being.
 
 **The defect, and it was done rather than imagined.** `sqlite3.connect` creates. A
-one-line probe opened `output/mensores/graph.db` with `writable=False` -- a path that does
-not exist in that directory, because mensores keeps only `graph@<revision>.db` -- and
+one-line probe opened `output/lictores/graph.db` with `writable=False` -- a path that does
+not exist in that directory, because lictores keeps only `graph@<revision>.db` -- and
 sqlite made one: a 0-byte file, in the output tree, invisible to `git status` because
 `output/` is untracked. The query that followed raised `no such table: files`, so nothing
 answered wrongly *that* time; what remained was the file.
 
 **The file is the harm.** `revisions.py` reads a bare `graph.db` as "a directory written
 before this layout existed" -- the one legacy revision of that program. So a *read* had
-given mensores a fifth revision holding nothing at all, and every listing, every `newest`
+given lictores a fifth revision holding nothing at all, and every listing, every `newest`
 and every `program_dirs` would have gone on believing it. Rule 20 from the side nobody
 expects: the read repaired nothing, it wrote.
 

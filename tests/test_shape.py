@@ -181,7 +181,7 @@ def test_a_loop_that_only_calls_something_is_kept_and_is_not_promoted(store):
     """Three bands and never two (design rule 1).
 
     Dropping it would lose a fact about the program; promoting it would put 470 of
-    Society's 1,950 loops on a worklist on the strength of a call nobody followed.
+    Comitia's 1,950 loops on a worklist on the strength of a call nobody followed.
     """
     loop = [p for p in _by_routine(shape.measure(store))["calling"]
             if p.kind == ControlKind.LOOP][0]
@@ -195,7 +195,7 @@ def test_a_query_a_loop_is_over_is_not_a_rate(store):
     """`for row in conn.execute(q).fetchall():` runs one query, not one per pass.
 
     It is written on a line inside the loop's own span, so the range join read it as a
-    rate and said *once per pass* about it -- 11 of Society's 261, in the sentence that
+    rate and said *once per pass* about it -- 11 of Comitia's 261, in the sentence that
     is this feature's headline. A span cannot tell what a loop is over from what it
     does, which is why `ControlPoint` records the lines it evaluates once.
     """
@@ -226,7 +226,7 @@ def test_a_loop_written_on_one_line_excludes_nothing(store):
 
     A line cannot choose between them, so the range stays empty and the judgement is
     exactly what it was. Taking the iterable's span *without* subtracting the repeated
-    lines reclassifies 45 of Society's loops and 34 of them wrongly -- comprehensions
+    lines reclassifies 45 of Comitia's loops and 34 of them wrongly -- comprehensions
     reaching a boundary would read 42 -> 5 rather than 42 -> 39. Rule 49: a plausible
     value is what hides the failure.
     """
@@ -269,7 +269,7 @@ def test_a_table_is_not_reached_from_inside_the_loop_it_is_the_subject_of(store)
     A reader standing at a table asks what loops over it. A loop whose only touch of that
     table is its own iterable does not: it reaches the table once, before the first pass.
     Without this the pane says *"reached from inside 1 loop"* about a query the loop is
-    written over -- 2 of Society's 64 tables, and the same `once` span has to decide it
+    written over -- 2 of Comitia's 64 tables, and the same `once` span has to decide it
     here and in `_judge_loop`, or a table's sentence and the Algorithms page describe one
     loop two ways (rule 51).
     """
@@ -283,7 +283,7 @@ def test_a_table_is_not_reached_from_inside_the_loop_it_is_the_subject_of(store)
 
 def test_a_decision_forks_only_when_its_arms_differ_in_what_moves(store):
     """A branch whose arms both write is arithmetic; one that writes on one side is a
-    decision about what leaves the program. 78 of Society's 2,213 decisions fork."""
+    decision about what leaves the program. 78 of Comitia's 2,213 decisions fork."""
     pts = _by_routine(shape.measure(store))
     fork = [p for p in pts["forking"] if p.kind == ControlKind.DECISION][0]
     same = [p for p in pts["alike"] if p.kind == ControlKind.DECISION][0]
@@ -308,7 +308,7 @@ def test_a_boundary_in_the_test_does_not_make_a_fork(store):
 
 def test_a_ladder_is_a_subject_on_its_shape_alone(store):
     """Three ways out is a shape a reader has to hold in their head, whatever is in
-    them -- and the two decision tests are near-disjoint: 7 of Society's 78 forks are
+    them -- and the two decision tests are near-disjoint: 7 of Comitia's 78 forks are
     also ladders, so neither is a special case of the other."""
     point = [p for p in _by_routine(shape.measure(store))["ladder"]
              if p.kind == ControlKind.DECISION][0]
@@ -317,7 +317,7 @@ def test_a_ladder_is_a_subject_on_its_shape_alone(store):
 
 
 def test_a_handler_is_a_subject_when_the_recovery_moves_something(store):
-    """Not when the body does: 742 of Society's 1,531 handlers guard something that
+    """Not when the body does: 742 of Comitia's 1,531 handlers guard something that
     touches a boundary, which is what a `try` is for. 396 act on the way out."""
     pts = _by_routine(shape.measure(store))
     recovers = [p for p in pts["recovering"] if p.kind == ControlKind.HANDLER][0]
@@ -338,7 +338,7 @@ def test_a_finally_is_not_a_recovery(store):
 
 
 def test_a_guard_is_never_a_worklist_item_and_still_says_why(store):
-    """3,931 of Society's 6,144 branches are refusals -- a worklist of them is a list of
+    """3,931 of Comitia's 6,144 branches are refusals -- a worklist of them is a list of
     the program. It is recorded, banded and explained; it is just not offered."""
     guard = [p for p in _by_routine(shape.measure(store))["refusing"]
              if p.kind == ControlKind.GUARD][0]
@@ -369,7 +369,7 @@ def test_the_counts_are_counts_of_the_rows_beneath_them(store):
 
 
 def test_one_moving_thing_at_one_line_is_counted_once(store):
-    """569 of Society's 991 SQL operations sit on a line that is also a `boundaries`
+    """569 of Comitia's 991 SQL operations sit on a line that is also a `boundaries`
     row. Summing the three tables reports one write as two, and a loop's *rate* is the
     number a reader will act on."""
     rate = [p for p in _by_routine(shape.measure(store))["rate"]
@@ -399,7 +399,7 @@ def test_inside_another_loop_is_not_deeper_than_one(store):
     """The headline of this whole feature, and the number that impersonates it.
 
     `depth` counts every enclosing control point, so a loop written inside an `if` has
-    depth 2 and is nested in nothing. On Society 104 boundary loops sit deeper than 1
+    depth 2 and is nested in nothing. On Comitia 104 boundary loops sit deeper than 1
     and **10** are inside another loop -- and the ten are quadratic reaches into the
     outside world, which is a discovery, while the hundred are mostly `if`s.
     """
@@ -416,7 +416,7 @@ def test_inside_another_loop_is_not_deeper_than_one(store):
 def test_two_comprehensions_on_one_line_still_nest(store, tmp_path):
     """Lines cannot separate `[a for a in [b for b in c]]`; `depth` is what does.
 
-    Society has one -- a generator inside a list comprehension calling `is_file()` per
+    Comitia has one -- a generator inside a list comprehension calling `is_file()` per
     element, which is one of its ten quadratic reaches.
     """
     tree = tmp_path / "tree"
@@ -443,7 +443,7 @@ def test_one_statement_is_one_thing_that_moves(store):
     """An `INSERT` is a `DATABASE` row **and** a `SQL` row: one act at two altitudes.
 
     Counting rows says *two things move here* about one write, and it said so about 33 of
-    Society's 250 rates, in the very sentence that gives them their rate. A place is the
+    Comitia's 250 rates, in the very sentence that gives them their rate. A place is the
     unit a reader counts; the rows are what is known about it.
     """
     rate = [p for p in _by_routine(shape.measure(store))["rate"]

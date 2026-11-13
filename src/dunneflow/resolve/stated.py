@@ -95,7 +95,7 @@ def checkable_sentence(rule: StatedRule) -> str:
     never meant that one is run.
 
     **And then one was**, on 2026-09-06: `resolve/conformance.py` measures a checkable rule
-    against the population its own document declares -- 4 of Society's 12 are checked, and
+    against the population its own document declares -- 4 of Comitia's 12 are checked, and
     the rest report no population rather than passing quietly. So the sentence changed again
     on 2026-09-08, because *"DunneFlow does not yet run one"* had gone from careful to false
     while the surface that prints it went on printing it. A sentence about a capability has

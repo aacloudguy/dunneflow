@@ -503,7 +503,7 @@ class RuleSet:
         """The kind of file this extension names, or None if it names no file.
 
         An unknown extension is not an artefact. That is the whole precision defence:
-        without it `"1.2.3"` and `"mensores.cli"` both read as named files.
+        without it `"1.2.3"` and `"lictores.cli"` both read as named files.
         """
         return self.artefact_kinds.get(ext.lower())
 
@@ -1141,7 +1141,7 @@ def lang_fingerprint(lang: str) -> str:
 
     **Cached, and that is a measured decision rather than a habit.** `write_file_facts`
     stamps every row, so an uncached answer re-reads and re-hashes the whole reader once
-    per file -- 628 times over ten files on Society, for a value that cannot change while
+    per file -- 628 times over ten files on Comitia, for a value that cannot change while
     the process is running. `load_rules` and `resource_root` make the same assumption, in
     the same words: an application does not become a source checkout halfway through a
     run.

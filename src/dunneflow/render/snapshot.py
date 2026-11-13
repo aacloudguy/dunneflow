@@ -4,7 +4,7 @@ A sealed snapshot exists to be readable after its source tree is gone. Until map
 revision-named that promise was half-kept: the graph and the document store survived under
 their own names and the *written map* -- the half a reader who does not write code actually
 reads -- went flat into the program directory and was overwritten by the next analysis.
-Naming maps fixed it going forward and could not reach backwards, so `output/mensores` was
+Naming maps fixed it going forward and could not reach backwards, so `output/lictores` was
 left holding two sealed graphs and no map of either.
 
 **This is not analysis, and that is the whole of why it is allowed.** Nothing is extracted,

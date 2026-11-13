@@ -2,7 +2,7 @@
 
 The last surface the comparison did not reach, and the one that was blocked on a
 question rather than on effort: **what makes two findings in two versions the same
-finding.** A finding carried no identity at all, and 93 of Mensores' 106 are
+finding.** A finding carried no identity at all, and 93 of Lictores' 106 are
 `LOST_EDGE`, so pairing them on anything loose would have invented one -- rule 1's
 defect with a colour on it. `anomalies.py` answers that now: every detector declares
 what identifies its finding, and this module does nothing but pair on it.
@@ -26,7 +26,7 @@ one connection, because facts are rows. Findings are not rows: they are what thi
 query-driven detectors *conclude*, so the only way to have the compared version's
 findings is to run the detectors over the compared version's graph. That is the whole
 cost of this view, and it is why the caller holds them per **graph** rather than per
-pair: the findings of a graph are a property of that file. Measured on Mensores' pair --
+pair: the findings of a graph are a property of that file. Measured on Lictores' pair --
 107 findings against 106 -- the first request is **1.3 s to 4.1 s**, nearly all of it
 running the detectors over a 31 MB graph this process had never opened, and the spread is
 the disk rather than the work. Pairing the two ends once both are held is **0 ms**. The

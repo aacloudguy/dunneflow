@@ -10,15 +10,15 @@ rule and everything it set aside, and which languages the graph was read from. E
 band states what would make placing a term there wrong, every term carries the
 definition and the line it came from, and every claim ships the query behind it.
 
-Nothing here is bounded. There are 119 admitted terms on Mensores and 94 set-aside ones;
+Nothing here is bounded. There are 119 admitted terms on Lictores and 94 set-aside ones;
 all 213 are on the page.
 
 **The page says nothing about the program it was built on, and it once did** (BACKLOG 25).
 It is written into every map, and until 2026-10-02 three of its paragraphs were this
-module's history printed as findings: *"things Mensores was never asked to name"*, the
-story of `tabularium` -- glossed in Society's pantheon table, absent from its glossary, and
-in fact the database the whole program writes to, as `root / ".mensores" /
-"tabularium.db"`, which is why named files are joined at all -- and `Society of Mensores`
+module's history printed as findings: *"things Lictores was never asked to name"*, the
+story of `vestiarium` -- glossed in Comitia's rollcall table, absent from its glossary, and
+in fact the database the whole program writes to, as `root / ".lictores" /
+"vestiarium.db"`, which is why named files are joined at all -- and `Comitia of Lictores`
 as the example under the word cap. DunneFlow's own map said so about DunneFlow. The
 reasoning is kept here, where it belongs; the page states its rules in words that name no
 corpus.
@@ -59,7 +59,7 @@ def _esc(text: str | None) -> str:
 # every one of them had nothing left to strip.
 #
 # They were removed rather than left as harmless no-ops, because they were not harmless:
-# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# `Path("lictores/cli.py").resolve()` resolves against the *working directory*, so run from
 # anywhere inside the analysed tree the strip would succeed and silently prepend the
 # intervening directories to every path on the page.
 
@@ -195,7 +195,7 @@ def _definition_cell(t: MirroredTerm) -> str:
 def _evidence_cell(t: MirroredTerm) -> str:
     """Where the program uses the word, as names rather than as a count.
 
-    Bounded only where a name repeats: `mensores` is 623 modules and listing them is
+    Bounded only where a name repeats: `lictores` is 623 modules and listing them is
     not a listing. The count is given with the surface, and `08-boundaries.md` and the
     module index already hold every one of them.
     """

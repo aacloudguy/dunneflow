@@ -2,20 +2,20 @@
 
 Document mode was a **place**, not a view of the selection: `state.docPath` held whatever
 document had last been opened and nothing ever connected it to what the reader had picked.
-Tom selected `signator.__main__`, pressed Document, and got a document about PAUL style
+Tom selected `cantator.__main__`, pressed Document, and got a document about PAUL style
 rules -- opened twenty minutes earlier from a naming citation and never put away. The mode
 toggle's own sentence is *"five ways of reading one selection"*, and one of them was not.
 
 **The obvious relation does not exist, and that is worth writing down so nobody mines it
 again.** `doc_refs` holds 37,150 PATH and 114,067 CODE references, which sound exactly like
 the answer. They are not: the PATHs are *document* paths -- `INTENT.md`, `GLOSSARY.md` --
-and `mensores/signator/__main__.py` matches **zero** of them; the CODE refs are CLI flags and
+and `lictores/cantator/__main__.py` matches **zero** of them; the CODE refs are CLI flags and
 template placeholders (`--codebase`, `{{ crash_payload }}`), so `WitnessHandler` matches zero
 and `main` matches 38, which is rule 5 waiting to happen.
 
 **What does exist is the governance join**, and both halves were already ingested:
 `graph.db.annotations` against `docs.db.doc_annotations`, the pair `resolve/traceability.py`
-was built on. 6,976 of Mensores' 6,993 code annotations carry an id some document also names.
+was built on. 6,976 of Lictores' 6,993 code annotations carry an id some document also names.
 
 **But naming an id is not being related, and the numbers say so.** A routine carries a median
 of *two* ids, and those two reach a median of **281 documents** -- 14% of the corpus, p90
@@ -49,7 +49,7 @@ def _ids_of(store: Store, node_id: str) -> list[str]:
     """The governance ids this node carries, normalised and deduplicated.
 
     Both `routine` and `structure` owners, because a reader selects either and neither is
-    more entitled to an answer. Empty is the ordinary case -- 59% of Mensores' routines carry
+    more entitled to an answer. Empty is the ordinary case -- 59% of Lictores' routines carry
     no id at all -- and it is a fact about the code rather than a failure to look.
     """
     rows = store.query(

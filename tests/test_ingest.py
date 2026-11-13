@@ -140,14 +140,14 @@ def test_a_directory_holding_a_map_is_not_source(tmp_path):
     mattering the moment the walk began saying what it had passed over.
     """
     _write(tmp_path, "keep.py")
-    _write(tmp_path, "output/mensores/graph@2026-01-01T00-00-00Z.db", "not really sqlite")
-    _write(tmp_path, "output/mensores/notes.py")
+    _write(tmp_path, "output/lictores/graph@2026-01-01T00-00-00Z.db", "not really sqlite")
+    _write(tmp_path, "output/lictores/notes.py")
 
     stats = walk.WalkStats()
     found = sorted(walk.discover(tmp_path, rules=[PY], stats=stats))
 
     assert [p.name for p in found] == ["keep.py"]
-    assert [Path(d).name for d in stats.maps] == ["mensores"]
+    assert [Path(d).name for d in stats.maps] == ["lictores"]
     assert stats.unclaimed == {}
     assert "map" in " ".join(walk.walk_residue(stats))
 

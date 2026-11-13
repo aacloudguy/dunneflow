@@ -3,8 +3,8 @@
 Rule 9 keeps docstrings out of code-shaped detectors, because a sentence about a
 statement is not a statement -- reading them as code invented 248 phantom SQL
 statements. The glossary is the opposite case: being prose is the qualification.
-`disceptator/__init__.py` opens "Interview engine -- Y-combinator-style spec interview
-orchestrator", which is the answer to "what is a disceptator?" and is stated nowhere
+`conciliator/__init__.py` opens "Interview engine -- Y-combinator-style spec interview
+orchestrator", which is the answer to "what is a conciliator?" and is stated nowhere
 else in the program.
 
 These tests guard that the docstring survives extraction whole, that it never leaks
@@ -21,7 +21,7 @@ from dunneflow.store import Store
 
 WITH_DOC = '''"""Interview engine -- Y-combinator-style spec interview orchestrator.
 
-A quaestor is the audit substrate; this is not that. See ``_architect.py``
+A tribunus is the audit substrate; this is not that. See ``_architect.py``
 for the DISCUSS-time architect Protocol.
 """
 
@@ -57,7 +57,7 @@ def _extract(tmp_path: Path, src: str, name: str = "m.py"):
 def test_module_docstring_is_captured(tmp_path: Path) -> None:
     facts = _extract(tmp_path, WITH_DOC)
     assert facts.doc.startswith("Interview engine")
-    assert "quaestor is the audit substrate" in facts.doc
+    assert "tribunus is the audit substrate" in facts.doc
 
 
 def test_module_docstring_is_kept_whole(tmp_path: Path) -> None:
@@ -106,7 +106,7 @@ def test_docstring_does_not_change_identity(tmp_path: Path) -> None:
 
 # -- what a word has to be to count as one ----------------------------------- #
 #
-# 889 of the 1,154 words Society's glossary said nothing defines were fragments of
+# 889 of the 1,154 words Comitia's glossary said nothing defines were fragments of
 # compound constant names: `_GLOSSARY_DEFINITION_MAX_LEN` is one name a person chose, and
 # splitting it on underscores yields its subject, its type and its unit. `DDL`, `EXTRAS`,
 # `REASON`, `KEYS`, `BYTES`, `CHARS` were the head of the worklist and `witness`,
@@ -114,7 +114,7 @@ def test_docstring_does_not_change_identity(tmp_path: Path) -> None:
 
 VOCAB_SOURCE = '''"""A witness records what happened."""
 
-MENSORES_MAX_LEN = 100
+LICTORES_MAX_LEN = 100
 WITNESS_BYTES = 8
 witness = None
 '''
@@ -152,14 +152,14 @@ def test_the_program_s_own_word_is_held_back_and_that_is_why_it_is_offered(
         tmp_path: Path) -> None:
     """The case the reader has to settle, and the reason nothing decides it here.
 
-    `MENSORES_MAX_LEN` is the program's own word in front of a modifier and a unit, and
-    the split cannot tell the three apart. `MENSORES` may occur nowhere else at all --
+    `LICTORES_MAX_LEN` is the program's own word in front of a modifier and a unit, and
+    the split cannot tell the three apart. `LICTORES` may occur nowhere else at all --
     which is exactly when holding it back loses something, so it is *held*, listed, and
     offered back rather than dropped.
     """
     report = _bind(tmp_path)
     held = {t.term.lower() for t in report.set_aside}
-    assert "mensores" in held, (
+    assert "lictores" in held, (
         "the program's own word, standing in front of a modifier, was dropped rather than "
         "held -- and dropped is the one state a reader cannot overturn"
     )
@@ -172,7 +172,7 @@ def test_a_defined_word_is_never_held_back(tmp_path: Path) -> None:
     """The third condition, and the one that keeps this from costing a definition.
 
     A word somebody troubled to define is vocabulary whatever the code does with it. It is
-    why this rule takes 889 words off Society's worklist and no defined term with them.
+    why this rule takes 889 words off Comitia's worklist and no defined term with them.
     """
     from dunneflow.resolve.glossary import Sense, Term
     from dunneflow.schema import Provenance

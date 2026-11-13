@@ -17,7 +17,7 @@ exposure. Both were built, tested and reachable only from the command line -- th
 glossary and naming pages have said "not computed yet" since they were written, honestly,
 because no endpoint ever served them.
 
-**Computed once, at start.** Measured on Mensores: the naming pass is 0.4 s and the
+**Computed once, at start.** Measured on Lictores: the naming pass is 0.4 s and the
 glossary pass 2.1 s, the latter because it reads a 176 MB document store. Two seconds is
 tolerable on a page a reader deliberately opened and intolerable inside `/api/threads`,
 which is asked on **every selection** -- the reading loop would stall on the first click of
@@ -98,7 +98,7 @@ def measure_naming(store: Store, private_prefix: bool = False) -> dict[str, Any]
                 "sql": c.sql,
                 "note": c.note,
                 # **The exceptions are the product.** The three non-exception `*Error`
-                # classes on Mensores are frozen dataclasses carrying error information
+                # classes on Lictores are frozen dataclasses carrying error information
                 # that cannot be raised -- a real finding, verified against source, and the
                 # most interesting thing the whole lane produced. Sending the claim without
                 # them would be sending the boring half.
@@ -292,7 +292,7 @@ def bind_glossary(store: Store, docs: DocStore | None) -> dict[str, Any]:
         "undefined": [{"term": t.term, "uses": t.uses, "used_as": t.used_as()}
                       for t in report.undefined],
         # Sent, never withheld. The page draws them in their own band with the reason, and
-        # a reader can promote one back into the worklist -- `MENSORES_MAX_LEN` holds the
+        # a reader can promote one back into the worklist -- `LICTORES_MAX_LEN` holds the
         # program's own word beside a modifier and a unit, and only a person can say which
         # is which. Promotion is the reader's, so it lives in their settings and not here
         # (design rule 17); this end sends the same list to everybody.
@@ -351,7 +351,7 @@ def terms_in(glossary: dict[str, Any], name: str, module: str) -> list[dict[str,
     """The program's own words that this routine's name uses.
 
     Matched on whole segments, never on substrings. Rule 5 in its most literal form: a
-    term matched anywhere inside a name matches half the program -- `mensor` would claim
+    term matched anywhere inside a name matches half the program -- `lictor` would claim
     every `dimensions`, and `groma` every `programatic` -- and rule 18 caught the same
     defect in the walk's test rule (`DiscoveryRules.is_test` now, `walk.is_test_path`
     then), where `test_` as a substring dropped `_test_stage.py` out of the map

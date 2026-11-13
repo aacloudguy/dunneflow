@@ -89,7 +89,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     a statement. The same argument runs backwards: an example inside a fence is a
     statement, not a sentence, and mining a definition out of one is the same defect
     wearing the opposite uniform. Nothing prose-shaped is ever read from inside a fence.
-    The same care applies to markup: `<role>` in `mensores-<role>` is a placeholder, and
+    The same care applies to markup: `<role>` in `lictores-<role>` is a placeholder, and
     a tag-stripper that eats it has shortened a value at ingest.
 
 13. **A claim's query must return exactly what is printed beside it.** Every measured
@@ -124,22 +124,22 @@ rule of that number — a blank canvas must say why it is blank — which does e
     destructive fallback wearing the costume of a version upgrade. Both stores now stamp
     their kind and refuse the other, before anything is allowed to drop anything.
 
-17. **A program names its files, and those names are vocabulary.** `tabularium` is
-    glossed in Mensores' pantheon and appeared in the glossary nowhere, which read as a
+17. **A program names its files, and those names are vocabulary.** `vestiarium` is
+    glossed in Lictores' rollcall and appeared in the glossary nowhere, which read as a
     word the project had abandoned. It is the name of the database the whole program
     writes to -- 52 references across 25 files. It was invisible because the path is
-    assembled, `root / ".mensores" / "tabularium.db"`, so only the parts are literals:
-    not a module, not a table, not a boundary target. 155 such names on Mensores and
+    assembled, `root / ".lictores" / "vestiarium.db"`, so only the parts are literals:
+    not a module, not a table, not a boundary target. 155 such names on Lictores and
     DunneFlow recorded none of them. `schema.Artefact` now does, admitted only by an
     extension listed in `detectors/*.yaml` -- rule 5 again, because a trailing dotted
-    part is not an extension and without the list `1.2.3`, `utf-8` and `mensores.cli`
+    part is not an extension and without the list `1.2.3`, `utf-8` and `lictores.cli`
     all read as named files. `.org` was removed from that list on evidence: the only
     thing it ever matched was `host="freetsa.org"`.
 
 18. **Every comment must land on something, and the module scope owns what no function
     does.** Comments were collected per function -- the block above a definition and
     everything inside its span -- so everything else fell on the floor: **9,659 of
-    Mensores' 18,208 comments, 53%.** Whole files lost every comment they had. The
+    Lictores' 18,208 comments, 53%.** Whole files lost every comment they had. The
     synthetic `<module>` routine already owned module-level boundaries, calls and SQL;
     it was simply never handed any comments. A class body counts as module scope for
     the same reason it already does for every other fact type -- it runs at import.
@@ -161,7 +161,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
 19. **A constant is a name, and a `Literal` alias is an enum.** Module level produced no
     facts at all: `visit_Assign` caught only CLI app objects and `_class_fields` caught
     only class bodies, so `JTBD_OPENERS` was declared, read six times, and absent from
-    the map. 2,618 constants on Mensores carrying its configuration -- model names,
+    the map. 2,618 constants on Lictores carrying its configuration -- model names,
     token ceilings, directory names, the actual system prompts it sends -- and 1,030 of
     them carry a comment saying why. Module level means **runs at import**, taken from
     position rather than from a scope stack, which is the same boundary the module scope
@@ -265,7 +265,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     but never repaired away.
 
 26. **External is not inferred.** Every call that did not resolve to a local routine is
-    stored `INFERRED` -- 23,829 of Mensores' 30,209. But design rule 5 spends the dashed
+    stored `INFERRED` -- 23,829 of Lictores' 30,209. But design rule 5 spends the dashed
     edge on *we are not sure this call exists*, and that is not the claim: we are certain
     the call happens and simply cannot see the other end. Drawing the two the same way
     blurs exactly what rule 6 says never to blur, so an external carries its own mark and
@@ -376,12 +376,12 @@ rule of that number — a blank canvas must say why it is blank — which does e
 34. **Pinned data hides in prose, and that is the hiding place the guards missed.** Two
     guards kept the shell's top-level arrays empty and its `state` clean. Neither could see a
     *sentence*. Table mode's footer read "Showing **12** of **515** routines in
-    `mensores.quaestor`"; the breadcrumb's three centre modes were fixed pairs — "packages ›
-    system boundary", "quaestor › routines", "cli › interview" — shown on every screen for
+    `lictores.tribunus`"; the breadcrumb's three centre modes were fixed pairs — "packages ›
+    system boundary", "tribunus › routines", "cli › interview" — shown on every screen for
     every program; document mode was a page of hand-written narrative about
-    `mensores interview --extract`, formatted exactly as generated output with nothing
+    `lictores interview --extract`, formatted exactly as generated output with nothing
     marking it as a sample; the glossary asserted findings about specific `.groma` files; and
-    a citation path called `.replace("mensores.", "mensores/")`, silently wrong elsewhere.
+    a citation path called `.replace("lictores.", "lictores/")`, silently wrong elsewhere.
 
     Worst of them, and the one that says why this matters: **the egress consent surface**
     carried "4,568 routine names", "184,000 lines" and a manifest of "2,449" — one program's
@@ -477,7 +477,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
 40. **Two detectors recording one act is two numbers about one thing.** The hover card
     read three tables *and* "DATABASE 20" — which is the same seventeen statements seen by
-    the SQL reader and the boundary reader. Not an oddity of one routine: 991 of Mensores'
+    the SQL reader and the boundary reader. Not an oddity of one routine: 991 of Lictores'
     1,316 DATABASE boundaries sit on a line with a `sql_ops` row, and **all twenty** NETWORK
     boundaries sit on a `net_calls` row. A summary that states the same act twice is rule 32
     in a smaller box — two correct numbers, neither of them saying what it counted.
@@ -791,7 +791,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     project files its charter, its decisions and its naming standard, and skipping every
     dotted directory is right for code and hides the vocabulary. Nothing scoped that
     admission below the top level, so two stale agent worktrees under
-    `.claude/worktrees/` put **335 of Mensores' 2,381 documents** — 14% of the corpus —
+    `.claude/worktrees/` put **335 of Lictores' 2,381 documents** — 14% of the corpus —
     into the map: a complete second copy of the project's governance documents from May,
     under the old `.paul` name, from before the rename this file's ground truth rests on.
 
@@ -809,13 +809,13 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
     Found by pointing DunneFlow at two points in time for the first time. Neither number
     was wrong on its own; the *difference* between them was 340 removed documents that
-    Society had never removed, and a phantom is only obvious once something makes it move.
+    Comitia had never removed, and a phantom is only obvious once something makes it move.
 
 58. **A second read-only handle to a database this process already holds open is 36x
     slower, and it is only slow while the tool is doing its job.** The change diff
     attached both graphs with `mode=ro`, for the best reason there is: rule 20 says a
     read may refuse but may never repair, and one of the two is a snapshot somebody
-    sealed. One `calls` comparison on Mensores measured **8,855 ms with the dashboard
+    sealed. One `calls` comparison on Lictores measured **8,855 ms with the dashboard
     running and 242 ms with it stopped** — same query, same files, same page cache. A
     read-only connection has no write access to the `-shm`, so it cannot join the
     shared-memory WAL index the open handle maintains and re-derives it per query.
@@ -837,7 +837,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
     Two smaller things fell out of it, both silent. `PRAGMA query_only` buys the
     guarantee back and buys the slowdown with it, so it is not an escape. And a
-    **relative path inside a `file:` URI is not that path** — `file:output/mensores/…`
+    **relative path inside a `file:` URI is not that path** — `file:output/lictores/…`
     reports "unable to open database", naming the file it could not open and never
     saying why.
 
@@ -872,7 +872,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     The fourth is the one that mattered here. Two revisions read from two different trees
     give the same file **two unrelated keys**, so nothing can pair a file with itself
     across two points in time -- which is the one question two revisions exist to ask.
-    Joined as stored, Mensores' pair read **0 identical, 628 added, 625 removed**. The
+    Joined as stored, Lictores' pair read **0 identical, 628 added, 625 removed**. The
     truth is 613 identical, 12 modified, 3 added, 0 removed, and it costs one query and
     **zero body reads**, because the sidecar is content-addressed: a hash comparison *is*
     the file-level diff.
@@ -905,7 +905,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     rather than by checking the columns the change had touched. That is the difference
     between a check that confirms what you did and one that can tell you what you missed;
     the same scan is what proved the only absolute strings left anywhere are paths quoted
-    inside Society's own handoff documents, which are content and stay whole (rule 8).
+    inside Comitia's own handoff documents, which are content and stay whole (rule 8).
 
     Its companion, and the reason it is a rule about *one meaning per column*: those rows
     land in `COALESCE(r.file, e.file)`, the same payload column as a routine's file. A
@@ -1092,7 +1092,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     six readers went on asking the store rather than the base: the code browser, the file
     list, the search, `/api/source`, the inspector's definition and the cover's line count.
 
-    Serving Mensores' older graph returned `_queue.py` at **674 lines with the 595-line
+    Serving Lictores' older graph returned `_queue.py` at **674 lines with the 595-line
     version's marks laid over it** -- every link past the first divergence underlining the
     wrong characters, a margin describing lines that had moved under it, and a footer
     naming the revision the *bytes* came from while the facts came from another. Nothing
@@ -1119,7 +1119,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     rewrites is not the markup that renders.** `dressNavItems` gathers a row's loose text
     nodes into a `.navlabel` and re-inserts it immediately before `.n` -- so an element
     written between the file name and the count is moved *in front of the name*, and the row
-    read `mensores/scriba/ ○ _queue.py`, a glyph inside a path.
+    read `lictores/praeco/ ○ _queue.py`, a glyph inside a path.
 
     Both are the same instruction one level below where the checks look: what this function
     writes and what the reader sees are different questions, because a stylesheet and a
@@ -1207,9 +1207,9 @@ rule of that number — a blank canvas must say why it is blank — which does e
     Measured on the real tree rather than argued: **235 of 44,344 single-line call
     arguments would differ**, and they are the interesting ones —
     `f"must be a positive int ≤ {_TTL_MAX_SECONDS} (1 day)"`,
-    `f"  [red]•[/red] [{kind}] {msg}"`, `f"Society 5-layer reconstruction — {framework}"`.
+    `f"  [red]•[/red] [{kind}] {msg}"`, `f"Comitia 5-layer reconstruction — {framework}"`.
     Every one a message with a symbol in it, which is exactly what a reader opens a flow
-    panel to read. 613 of Mensores' 628 files hold a non-ASCII character somewhere.
+    panel to read. 613 of Lictores' 628 files hold a non-ASCII character somewhere.
 
     Rule 27 in a different alphabet — there a marker had to sit at an *edge* of a name;
     here an offset has to be measured in the units it was written in. And rule 8 at
@@ -1265,7 +1265,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     Both were unreachable until the doorway panel, which is the first surface in the
     product that can follow a subject with the stack **never mounted**. It showed the mount
     case immediately: a card naming `backup_cmd` opened the inspector on
-    `mensores.transport._envelope.<module>`, an unrelated node, and filed two trail steps
+    `lictores.transport._envelope.<module>`, an unrelated node, and filed two trail steps
     under its name. One predicate now covers all three sites and a guard asserts there is no
     fourth — because the failure to guard against is a *new* way to hand the engine a
     selection, which would look exactly like working code.
@@ -1281,7 +1281,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     implementation: one join, no new row shape, and the comment lane's own precedent for
     naming the right subject for free.
 
-    It covers **487 of Mensores' 628 files** while **619** of them state what the module is.
+    It covers **487 of Lictores' 628 files** while **619** of them state what the module is.
     `<module>` exists only where a file has module-level work, so for the other 141 there is
     no such routine — no `body_hash` moves, no fact moves, and a rewritten module docstring
     is reported by nothing at all while the page states **"No differences found."** That is
@@ -1308,10 +1308,10 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
 78. **A pane brought up to date by the control that moved it is only as correct as the last
     person to add a control.** Reported at the keyboard, mid-rabbit: *"When I change the
-    center panel to Code, that panel shows `mensores/_internal/_governed_gates.py` which is
+    center panel to Code, that panel shows `lictores/_internal/_governed_gates.py` which is
     not what I expect to see. Is this accurate, or is the center panel off?"*
 
-    It was off. `/api/node` gave `mensores/disceptator/_extraction_state.py` for that node
+    It was off. `/api/node` gave `lictores/conciliator/_extraction_state.py` for that node
     all along. What was on screen was `state.codeFile`, which is **persisted** — the file a
     session two days earlier had left open, in a package the reader had never opened, drawn
     with a title and a path and nothing whatever to say it was stale. A wrong answer wearing
@@ -1389,7 +1389,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     (`test_a_held_document_store_can_be_read_from_a_request_thread`).
 
 80. **A job that can be interrupted must leave something that cannot be mistaken for a
-    finished one.** Stopping `analyze` twelve seconds into the Society tree left a graph that
+    finished one.** Stopping `analyze` twelve seconds into the Comitia tree left a graph that
     opened perfectly and reported 628 files, 4,786 routines, 4,070 boundary touches — and
     `resolved_calls = 0`, because it died before `resolve_calls`. A program that calls
     nothing. It carried `analysed_at`, `tool_version` and `inference = none`, so the cover
@@ -1457,7 +1457,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     rule rather than an oversight.** `selectionSnapshot()` writes a trail step's subject and
     `sameSelection()` decides whether two steps are the same one; they were two hand-kept
     lists of the same fields, `wayIn` went into the first and not the second, and drilling
-    into a sub-application filed a step labelled `mensores ▸ quaestor` that was correct in
+    into a sub-application filed a step labelled `lictores ▸ tribunus` that was correct in
     every respect and deduplicated away. The comments on `diagramId`, `diagramBox` and
     `codeFile` each record paying that once — **in the snapshot**, where the lesson never
     reached the half that forgets.
@@ -1572,7 +1572,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
 85. **A span cannot tell what a loop is over from what it does.** `for row in
     conn.execute(q).fetchall():` runs **one** query, before the first pass. It is written on
     a line inside the loop's own span, so `line BETWEEN line_start AND line_end` reads it as
-    a query *per* pass — and said so, about **11 of Society's 261 rates**, in the sentence
+    a query *per* pass — and said so, about **11 of Comitia's 261 rates**, in the sentence
     that is the feature's headline: *"something moves inside this loop, once per pass"*
     about something that happens once.
 
@@ -1797,7 +1797,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
     Measured on DunneFlow's own map as the signed binary built it, 2026-09-10: **122 of 147
     documents** came out of `output/`, **122 of 122** stated naming rules were mined from
-    them — every rule the map claimed was about Mensores — 655 of 680 definitions likewise,
+    them — every rule the map claimed was about Lictores — 655 of 680 definitions likewise,
     and the document store was **289 MB** against a 6 MB graph, 13,449 tables and 161,047
     table rows of somebody else's generated report.
 
@@ -1913,7 +1913,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     `detectors` (in the key, and the reason the key exists), `schema`, and `sql`.
     `sql.parse` classifies every SQL statement the extractor finds in the program being
     read — its direction, its operation, and the tables it names — so `sql.py` shapes all
-    1,055 of Society's `sql_ops` rows, all 43 `db_tables` and all 73 `db_indexes`. Edit one
+    1,055 of Comitia's `sql_ops` rows, all 43 `db_tables` and all 73 `db_indexes`. Edit one
     entry in its `_OP_DIRECTION` table and every cached graph on the machine keeps its old
     answer, reports it as current, and is *not* discarded, because the fingerprint it is
     checked against did not move. That is rule 12's failure mode reached through rule 12's
@@ -1963,7 +1963,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     Chunk 8 asked a new question. A string literal has to name its owner *before* anybody
     knows whether it is a fact — what a string means is the host's answer now, and the
     reader reports it either way — so `_owner()` was called for every module-level string
-    in the corpus. **65 of Society's 628 files gained a `<module>` routine owning nothing
+    in the corpus. **65 of Comitia's 628 files gained a `<module>` routine owning nothing
     at all**: no SQL operation, no artefact, no call, no comment. A 1.3% inflation of every
     routine count, every dead-code number and every naming population in the map, and the
     thing deciding it was `LITERAL_MIN` — a bound whose entire purpose is to save bytes on
@@ -2292,7 +2292,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
      **It is older than the language that found it.** Python and TypeScript had both been
      here since chunk 9; no corpus happened to put two same-stemmed files of different
      languages in one directory, because DunneNote and DunneCorp are TypeScript-shaped and
-     Society is Python. It surfaced while building the C++ reader's probe tree, and the C++
+     Comitia is Python. It surfaced while building the C++ reader's probe tree, and the C++
      reader was immune by accident of a different fix — it puts the file in every identity,
      because a C++ routine is a body and a body is in exactly one file. The remedy was
      already written, in one of the four readers, for another reason.
@@ -2369,7 +2369,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
 108. **A walk up the tree does not know when it has left it, and it answers anyway.**
      `find_package_root` climbs from the analysed directory through its ancestors looking
      for any of six manifest filenames, and stops at the first that matches. Rule 64 is why
-     it climbs at all — `.../society-2026-08-26/src` really does belong to the
+     it climbs at all — `.../comitia-2026-08-26/src` really does belong to the
      `pyproject.toml` one level up, and the leaf that identifies a tree is the package
      root's and not the analysed directory's. What it had no answer for is **where to
      stop**, and `(target, *target.parents)` ends at `/`.
@@ -2394,7 +2394,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
      **And it took rule 64's own subject with it.** `tree_leaf = pkg_root.name` is the leaf
      that identifies a tree, and every one of those maps records its tree as
      **`Developer`** -- the name of the directory that holds every project on this machine.
-     Rule 64 exists because `.../society-2026-08-26/src` identifies itself as `src`, which
+     Rule 64 exists because `.../comitia-2026-08-26/src` identifies itself as `src`, which
      names every src-layout program ever analysed and so identifies none of them; the
      remedy was to ask the package root instead, and here the package root was four levels
      outside the program. A rule that fixes an identity by delegating it inherits whatever

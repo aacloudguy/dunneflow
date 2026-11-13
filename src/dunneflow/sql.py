@@ -165,7 +165,7 @@ def looks_like_sql(text: str) -> bool:
     # tool descriptions, *"delete: true removes the pages from this document afterwards
     # (undoable)."*, read as `DELETE ... FROM this` and minted three tables the program
     # never had. Measured before it was decided: of every statement stored in the maps on
-    # disk on 2026-11-01 -- Society, DunneFlow, DunneNote, gstack, ~1,900 -- none ends in
+    # disk on 2026-11-01 -- Comitia, DunneFlow, DunneNote, gstack, ~1,900 -- none ends in
     # one.
     if text.rstrip().endswith("."):
         return False

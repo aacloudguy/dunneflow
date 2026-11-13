@@ -162,7 +162,7 @@ def test_a_module_node_is_one_file(levelled: Store) -> None:
 
 
 def test_externals_fold_by_kind_onto_one_plate(levelled: Store) -> None:
-    """1,920 of Mensores' 10,015 nodes are boundary targets with no module. Left alone
+    """1,920 of Lictores' 10,015 nodes are boundary targets with no module. Left alone
     they are 77% of the module picture and none of them answers the question this
     altitude asks."""
     coarse = _module_level(levelled)
@@ -356,7 +356,7 @@ def test_routine_level_never_aggregates(levelled: Store) -> None:
 # --------------------------------------------------------------------------- #
 
 def test_each_level_carries_its_own_default_threshold(levelled: Store) -> None:
-    """8 is right for routines and wrong for modules: applied at module level on Mensores
+    """8 is right for routines and wrong for modules: applied at module level on Lictores
     it folds 21 of the 45 packages away, because a package with six modules is a real
     package while a package with six routines is not much of a plate.
 
@@ -391,7 +391,7 @@ def test_the_threshold_moves_plates_and_states_what_it_merged(levelled: Store) -
 
 def test_a_merged_plate_stays_in_its_own_band(levelled: Store) -> None:
     """Everything used to land on `pkg:<small>`, which is a *package* plate -- so on
-    Mensores the four QUEUE targets, the unnamed QUEUE touch and the one LLM_API endpoint
+    Lictores the four QUEUE targets, the unnamed QUEUE touch and the one LLM_API endpoint
     have been drawn among the code that reaches them for as long as `<small>` has existed.
 
     Nothing could see it, because a merged plate is supposed to hold things from
@@ -615,7 +615,7 @@ def test_no_routine_of_the_program_is_ever_called_external(
         levelled: Store, as_package: Store) -> None:
     """`routines` holds what was extracted from this program's own files and nothing else.
 
-    The branch fired **0 of 4,786** times on Mensores and 750 of 752 on a map with a wrong
+    The branch fired **0 of 4,786** times on Lictores and 750 of 752 on a map with a wrong
     root -- it never described a fact, only a misreading (rules 26 and 30). It is
     unreachable by construction now, and this is what says so.
     """
@@ -631,7 +631,7 @@ def test_every_navigator_package_row_selects_a_plate_that_exists(
     `COVER_PACKAGES` fills that group and used to take the second dotted segment on its own,
     without knowing the program root -- a second definition of "package" that `PACKAGE_SIZES`
     named as a hazard in a comment and nobody had clicked. Analysed at the parent the two
-    agree except for the root module itself (Mensores: **1 dead row of 46**); analysed at the
+    agree except for the root module itself (Lictores: **1 dead row of 46**); analysed at the
     package the second segment is a *module* (**36 dead of 48**), which is a navigator whose
     Packages group answers "Nothing to show." three times in four.
 
@@ -771,7 +771,7 @@ def test_the_solve_never_makes_the_crossings_longer(levelled: Store) -> None:
     """It is a search that keeps only improvements, so this is a floor rather than a hope.
 
     Stated as *not worse* rather than as a percentage: the reduction on a three-module
-    fixture is not the reduction on a program, and a test asserting Society's 82.8% here
+    fixture is not the reduction on a program, and a test asserting Comitia's 82.8% here
     would be measuring the fixture and naming the feature (rule 24).
     """
     m = _routine_level(levelled)
@@ -881,7 +881,7 @@ def test_a_fit_on_one_node_still_shows_half_its_plate() -> None:
     `bounds` ends `radius: r || 1`, and a selected node with no neighbours to spread it has
     `r === 0` -- so the fit framed a box **two world units** across and drew one magnified
     dot. Reported by Tom: *"you can't tell what you're seeing until you zoom out, then you
-    can see giant node spheres."* Measured on Society's map before the fix: 3 world units
+    can see giant node spheres."* Measured on Comitia's map before the fix: 3 world units
     visible against a plate 669 across.
 
     That `|| 1` is rule 49 in one character: *this has no extent* is not a size, and

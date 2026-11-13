@@ -135,7 +135,7 @@ def test_standards_are_not_governance_tickets(tmp_path: Path) -> None:
     """A bare LETTERS-DIGITS pattern matches every cipher and standard a program names.
 
     SHA-256, UTF-8, ISO-8601, RFC-3161 and IEEE-29148 produced 121 phantom tickets on
-    Mensores. A false governance link claims traceability that does not exist, which is
+    Lictores. A false governance link claims traceability that does not exist, which is
     worse than a missing one.
     """
     src = tmp_path / "m.py"
@@ -158,7 +158,7 @@ def test_standards_are_not_governance_tickets(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 # An f-string still names its table
 #
-# Mensores' migration 0028 creates `work_items` as `f"CREATE TABLE {_TABLE} (...)"`,
+# Lictores' migration 0028 creates `work_items` as `f"CREATE TABLE {_TABLE} (...)"`,
 # so the name interpolated to a placeholder and the table was never recorded: the
 # database map read 40 tables before the migration and 40 after, while a table had
 # arrived. The value was never missing -- rule 19 records `_TABLE = "work_items"` as a
@@ -267,7 +267,7 @@ def test_an_elif_ladder_is_one_decision_with_its_ways_out(tmp_path):
 
     `elif` is an `If` in the `orelse` of an `If`, so the tree says "2 arms" once per
     `elif`. Counting nodes instead of ladders is a picture of the syntax rather than of
-    the decision, and it is not a small error: over Mensores it turned **69** decisions
+    the decision, and it is not a small error: over Lictores it turned **69** decisions
     of three or more arms into **97**, and **3,931** guard clauses into 3,937, because an
     `elif` tail that ends in `return` reads as a guard of its own. Both figures were
     written into the plan from a script that walked every node, and both were corrected
@@ -297,7 +297,7 @@ def f(x):
 def test_a_guard_is_a_decision_narrowed_by_how_it_leaves(tmp_path):
     """`if not x: return` and `if not x: raise` are the same sentence, opposite facts.
 
-    So `exits` is recorded rather than read back off the header. 62.6% of Mensores'
+    So `exits` is recorded rather than read back off the header. 62.6% of Lictores'
     branches are one of these four -- refusals are the largest single shape in it.
     """
     pts = _control(tmp_path, """
@@ -350,7 +350,7 @@ def outer(rows):
 def test_a_comprehension_is_a_loop_that_is_an_expression(tmp_path):
     """Counted apart from `LOOP` because a reader scanning for loops does not see one.
 
-    Which is exactly why a boundary inside one is worth saying out loud: 39 of Mensores'
+    Which is exactly why a boundary inside one is worth saying out loud: 39 of Lictores'
     974 comprehensions reach one, against 219 of its 976 loops.
     """
     pts = _control(tmp_path, "x = [g(i) for i in rows]\ny = {k: g(k) for k in rows}\n")
@@ -384,7 +384,7 @@ def _arms(tmp_path: Path, src: str):
 def test_a_ladder_records_every_way_out_as_its_own_span(tmp_path):
     """A point says a decision has four ways out; only an arm says which one writes.
 
-    78 of Society's 2,213 decisions differ in what moves between their arms, and that
+    78 of Comitia's 2,213 decisions differ in what moves between their arms, and that
     question cannot be put to the span -- it holds every answer at once.
     """
     got = _arms(tmp_path, """
@@ -440,7 +440,7 @@ def test_one_way_through_records_no_arms(tmp_path):
 def test_a_try_records_its_body_its_handlers_and_its_tails(tmp_path):
     """The body is an arm here where a loop's body is not: a `try` genuinely has more
     than one way through, and *which* one moves something is the question -- 396 of
-    Society's 1,531 handlers recover by moving something.
+    Comitia's 1,531 handlers recover by moving something.
     """
     got = _arms(tmp_path, """
 def f(x):
@@ -463,7 +463,7 @@ def f(x):
 
 
 def test_a_loop_with_an_else_records_both_and_the_word_is_the_source_word(tmp_path):
-    """4 of Society's 976 loops have an `else`, and it is the clause most readers have
+    """4 of Comitia's 976 loops have an `else`, and it is the clause most readers have
     to look up. Kept rather than dropped (design rule 1); the arm's kind is the word
     standing in the source, so `for` and `while` are told apart by it.
     """
@@ -473,7 +473,7 @@ def test_a_loop_with_an_else_records_both_and_the_word_is_the_source_word(tmp_pa
 
 
 def test_a_case_is_an_arm_and_its_guard_is_part_of_what_was_written(tmp_path):
-    """Society has no `match` at all, so this is the only place the shape is asserted.
+    """Comitia has no `match` at all, so this is the only place the shape is asserted.
 
     An extractor that silently walks past a language construct reports a smaller
     program (rule 15's shape) -- and the pattern and its guard are two nodes with the

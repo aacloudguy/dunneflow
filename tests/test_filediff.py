@@ -5,7 +5,7 @@ the normal case: marked lines look exactly like marked lines whatever they are m
 
 Two of them are about the defect that made this chunk necessary at all -- the code browser
 read the sidecar's *newest* snapshot whatever version the map was showing, so serving
-Mensores' older graph returned `_queue.py` at 674 lines with the 595-line version's marks
+Lictores' older graph returned `_queue.py` at 674 lines with the 595-line version's marks
 laid over it. Nothing raised, and the page looked like a page that worked.
 """
 
@@ -45,7 +45,7 @@ def _sidecar(tmp_path: Path, at: dict[str, dict[str, str]]) -> SourceStore:
 def test_the_four_states_are_told_apart(tmp_path: Path) -> None:
     """Same, modified, and one side only each way. `same` is an answer, not an omission.
 
-    613 of Mensores' 628 files are unchanged, and a list holding only the exceptions
+    613 of Lictores' 628 files are unchanged, and a list holding only the exceptions
     cannot be told from a list that lost some.
     """
     s = _sidecar(tmp_path, {
@@ -237,7 +237,7 @@ def test_the_matcher_does_not_treat_repeated_source_lines_as_junk(
     `SequenceMatcher`'s heuristic calls a line appearing in more than 1% of a sequence
     longer than 200 lines junk -- which in source is every blank line, every bare `)` and
     every `return`, so it aligns worst exactly where source is most repetitive. On
-    Mensores' twelve modified files it reported three removals that are not removals.
+    Lictores' twelve modified files it reported three removals that are not removals.
 
     Written first as a grep for `autojunk=False` in this module's source, and that guard
     was worthless twice over: the string is in the docstring as well as the code, so a
@@ -273,7 +273,7 @@ def test_the_code_browser_reads_the_version_it_was_asked_for(tmp_path: Path) -> 
     """The defect, made into a check.
 
     One sidecar holds every revision, so its own default is the newest snapshot -- right
-    only while the newest is also the version being read. Serving Mensores' older graph
+    only while the newest is also the version being read. Serving Lictores' older graph
     returned `_queue.py` at 674 lines with the 595-line version's marks over it: every
     link past the first divergence underlining the wrong characters, nothing raised.
 

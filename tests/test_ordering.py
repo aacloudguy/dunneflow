@@ -1,6 +1,6 @@
 """The map may not depend on the order the rows happen to be in.
 
-**It did, for a year.** Two analyses of Society by the same build, minutes apart, wrote
+**It did, for a year.** Two analyses of Comitia by the same build, minutes apart, wrote
 different documents — 1,488 lines of `06-governance.md`, 656 of `12-traceability.md` — and
 every difference was *order* and never content. `analyze_tree` collects facts through
 `as_completed`, so which file is written first varies per run and so does every rowid; a
@@ -66,10 +66,10 @@ order = _tool()
 
 # **Every file here is a tie somebody actually shipped.** A fixture of distinct names
 # proves nothing: the whole defect is what happens when two rows are equal on the column
-# the order was taken over, so each of these is one of the ties the Society map was found
+# the order was taken over, so each of these is one of the ties the Comitia map was found
 # to be unstable on, reduced to the smallest program that still has it.
 TIES = {
-    # Two ways in with the same kind and the same name, in different modules. Society has
+    # Two ways in with the same kind and the same name, in different modules. Comitia has
     # exactly this, and `README.md` listed the pair in a different order every run.
     "alpha/__main__.py": (
         "import sqlite3\n\n\n"
@@ -88,7 +88,7 @@ TIES = {
         "    con = sqlite3.connect('b.db')\n"
         # **The same index, on the same table, in a second file.** `ORDER BY name` over
         # `db_indexes` was the first site found — `idx_audit_agent` is created in two of
-        # Society's migrations, both on `audit`. Two files creating one table is the
+        # Comitia's migrations, both on `audit`. Two files creating one table is the
         # migration idiom, and it is what puts two rows in the bucket the renderer groups
         # by; an index of the same name on a *different* table lands in a bucket of its
         # own and the tie never arises, which is how the first version of this fixture
@@ -387,7 +387,7 @@ What this is for. See PLAN-01 and AC-19.
 # proves: nothing. `_cache` changes so there is a `behaves` row at all; both `twin`s change
 # so two of them tie on (module, qualname); `spare` arrives twice so `only_in_base` ties on
 # the same key; and both `Config`s gain a field so the structure lanes tie on
-# (module, name). Society's pair supplies none of these -- see `_pair`.
+# (module, name). Comitia's pair supplies none of these -- see `_pair`.
 PAIR_TWO = {
     **PAIR_ONE,
     "alpha/work.py": PAIR_ONE["alpha/work.py"].replace(
@@ -524,9 +524,9 @@ def test_the_comparison_lane_is_asked_a_question_it_could_get_wrong(tmp_path: Pa
     """Rule 37, aimed at the fixture above — and the whole reason this file grew.
 
     The comparison lane came back clean under a full row reversal for as long as anyone
-    had asked it, and on 2026-09-18 that was measured rather than believed: Society's pair
+    had asked it, and on 2026-09-18 that was measured rather than believed: Comitia's pair
     differs in three source files, so `BACKLOG.md` item 2 said the population was thin. A
-    pair built from Society's `main` against its branch head — **384 files against 628**,
+    pair built from Comitia's `main` against its branch head — **384 files against 628**,
     2,733 rows in `only_in_base` alone — came back clean too, and then held **no tie at
     all**: not one of the five maps to hand declares one name twice in one module, over
     9,972 routines. Neither did this fixture, whose comparison lane answered three lists of

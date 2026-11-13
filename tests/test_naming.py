@@ -340,7 +340,7 @@ def test_a_leading_underscore_still_reads_as_snake_case() -> None:
 
     `SNAKE` is `[a-z0-9_]+`, which tolerates the underscore that marks a routine private.
     Decomposing it into "lowercase words joined by underscores" -- which is what a reader
-    writing this from scratch would do -- drops `_helper` to `other`, and Mensores has
+    writing this from scratch would do -- drops `_helper` to `other`, and Lictores has
     1,811 of those in one population: enough to outvote its 1,611 unambiguous names and
     report a program with a 99.97% convention as having none.
     """
@@ -364,7 +364,7 @@ def test_an_ambiguous_name_is_counted_with_its_own_populations_majority() -> Non
 def test_other_never_votes_on_what_the_convention_is() -> None:
     """It is the absence of a style rather than one of them.
 
-    Letting it into the order made Mensores' unreadable names the plurality and reported
+    Letting it into the order made Lictores' unreadable names the plurality and reported
     `other` as the convention -- a population's dominant style being "no style".
     """
     sets = [styles_of(n) for n in ("do_GET", "do_POST", "visit_Call", "load_widget", "main")]
@@ -399,7 +399,7 @@ def test_a_dotted_name_is_judged_segment_by_segment() -> None:
     reported as having no module convention at all.
     """
     assert styles_in("apps.desktop.lib.calendar-nav", dotted=True) == {"kebab-case"}
-    assert "snake_case" in styles_in("mensores.cli.call_args", dotted=True)
+    assert "snake_case" in styles_in("lictores.cli.call_args", dotted=True)
     # And a path whose segments genuinely disagree has no single answer, which is the
     # honest result rather than a failure of the judge.
     assert styles_in("packages.api-types.src.AddColumnRequest", dotted=True) == {"other"}
@@ -429,7 +429,7 @@ def test_every_style_predicate_agrees_with_the_judge_that_produced_it() -> None:
         "WIDGET_HOME", "DDL", "_helper", "do_GET", "visit_Call", "a1", "X9",
     ]
     dotted_names = [
-        "apps.desktop", "apps.desktop.calendar-nav", "mensores.cli.call_args",
+        "apps.desktop", "apps.desktop.calendar-nav", "lictores.cli.call_args",
         "packages.api-types.src.AddColumnRequest", "Foo.Bar", "fooBar.bazQux",
         "A.B", "ONE.TWO_THREE",
     ]

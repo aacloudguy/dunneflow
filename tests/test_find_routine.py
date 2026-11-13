@@ -1,8 +1,8 @@
 """A routine search says how it found what it found, or it is answering about something else.
 
 **The defect, found 2026-09-09 while retaking the ground truth.**
-`dunneflow touches output/mensores --routine mensores.cli.app` answered about
-**`mensores.cli.apply.apply`** and reported a reach of 1. `app` is a Typer object rather
+`dunneflow touches output/lictores --routine lictores.cli.app` answered about
+**`lictores.cli.apply.apply`** and reported a reach of 1. `app` is a Typer object rather
 than a routine, so nothing could match it exactly; `find_routine` then fell back to
 `qualname LIKE '%needle%'` and returned the first plausible thing it found -- silently.
 
@@ -85,7 +85,7 @@ def test_a_name_that_is_not_a_routine_names_the_module_instead(analyzed: Store) 
 
 def test_a_module_that_declares_no_routines_says_that_rather_than_a_count(
         tmp_path: Path) -> None:
-    """`mensores/cli/__init__.py` is the real one: a package that builds a Typer app.
+    """`lictores/cli/__init__.py` is the real one: a package that builds a Typer app.
 
     **This is why the module test asks `files` and not `routines`.** A package module
     declares nothing of its own, so `routines.module` reports it as unknown -- which would
@@ -132,7 +132,7 @@ def test_a_bounded_name_search_says_how_many_it_held_back(analyzed: Store) -> No
 
 
 def test_a_bounded_exact_answer_says_how_many_share_the_name(tmp_path: Path) -> None:
-    """Eight routines are named `resolve` on Society, and `--limit 2` showed two.
+    """Eight routines are named `resolve` on Comitia, and `--limit 2` showed two.
 
     An exact match needs no caveat about *how* it was found; it does need one about how
     much of it is on screen (rule 32).

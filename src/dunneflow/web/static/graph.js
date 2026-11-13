@@ -129,7 +129,7 @@ function hslToRgb(h, sl, l) {
  * units so that it means the same thing at every zoom. It used to be a pixel constant,
  * identical on every plate, while a plate's width was a world quantity that shrank with
  * both zoom and how little it held -- so a dot knew nothing about the space it had.
- * Measured on Society at the default framing, **4,990 of 10,052 drawn nodes touched or
+ * Measured on Comitia at the default framing, **4,990 of 10,052 drawn nodes touched or
  * overlapped a neighbour**, and the smallest plate was 5.5 px across holding six of them.
  *
  * The tightest pair on a phyllotaxis disk of `n` points is exactly `1.546 * R / sqrt(n)`,
@@ -3020,7 +3020,7 @@ window.DunneFlowGraph = {
    *
    * Asked so the page can say it. A dot held below its earned size is a filter on the one
    * channel this feature exists to use, and design rule 1 says no filter is ever silent --
-   * at the default `spreadZ` of 0.35 this is forty-three of Society's fifty-three plates,
+   * at the default `spreadZ` of 0.35 this is forty-three of Comitia's fifty-three plates,
    * which is not a footnote. `spreadZ` is the lever: the ceiling is half the drawn gap, so
    * spreading the stack lifts it. */
   /* **The closest two drawn nodes come to touching, anywhere on the stack.**

@@ -68,7 +68,7 @@ from ..canonical import canonical
 # Every column that says what the routine does, and none that says where it sits.
 # `file` and `line` are absent from every row here, deliberately -- see the module
 # docstring. `calls.callee_id` is in, because a call that stopped resolving is a real
-# change to what the program can be shown to do (it is how four of Mensores' routines
+# change to what the program can be shown to do (it is how four of Lictores' routines
 # changed without being edited); `callee_expr` is in beside it so a call whose *target*
 # was rewritten is not silently equal to one whose resolution merely improved.
 # --------------------------------------------------------------------------- #
@@ -113,7 +113,7 @@ SELECT o FROM (
 
 # What a caller *passed*, which `FACTS` cannot ask for and which is squarely the subject:
 # an argument is a thing that moves. `f(db_path=None)` becoming
-# `f(policy_path=project_dir / ".mensores" / "standards-policy.json")` read as no change at
+# `f(policy_path=project_dir / ".lictores" / "standards-policy.json")` read as no change at
 # all until this existed.
 #
 # **Its own step rather than a sixth `FACTS` row**, and not for tidiness. Two things about it
@@ -131,7 +131,7 @@ SELECT o FROM (
 # What it costs is the mirror of what `FACTS["calls"]` already costs, and it is stated rather
 # than discovered later: this is set comparison, so deleting one of two *identical* calls
 # carrying *identical* arguments reads as no change. Rule 1 -- a false difference is worse
-# than a missing one. Measured on Mensores' pair, both keys give the same fourteen routines,
+# than a missing one. Measured on Lictores' pair, both keys give the same fourteen routines,
 # so the corpus does not separate them and the choice rests on the argument.
 # `file` rides along and is **not** part of the comparison -- `_arguments_moved` slices it
 # off before comparing. It is here because the canonical form of an expression is a question
@@ -148,7 +148,7 @@ SELECT c.caller_id AS o, c.callee_expr, a.idx, a.expr, a.keyword, a.splat, c.fil
 # comment is text in a file, so a file both versions hold with the same content hash cannot
 # hold a comment that moved -- the same argument `filediff.py` makes when it decides which
 # twelve of 628 files are worth reading, and it needs no sidecar here because
-# `files.content_hash` is already in the graph. Measured on Mensores' pair: 41 ms over all
+# `files.content_hash` is already in the graph. Measured on Lictores' pair: 41 ms over all
 # 18,731 comment lines a side, **5.2 ms** over the fifteen files whose bytes differ, and the
 # same twenty routines either way. `/api/changes` has 20 ms of headroom and the first number
 # does not fit in it.
@@ -189,7 +189,7 @@ SELECT r.id, r.docstring
 
 # What a **module** says it is. `files.doc` and not a routine's column, because it is not a
 # routine's: `<module>` is minted only where a file has module-level work, so 487 of
-# Mensores' 628 files have one and the other 141 do not -- while 619 of them state what the
+# Lictores' 628 files have one and the other 141 do not -- while 619 of them state what the
 # module is. Hanging this on `<module>` would cover it where it happens to exist and miss it
 # silently everywhere else, which is the half answer this module is written not to give.
 #
@@ -205,7 +205,7 @@ SELECT f.path, f.module, f.doc FROM {db}.files f
 # `structures` holds -- and the third subject in this module after the routine and the file.
 #
 # It was compared by nothing at all until 2026-09-02: not its presence, not what it declares,
-# not what it says about itself. On Mensores' pair that hid **8 structures that appeared or
+# not what it says about itself. On Lictores' pair that hid **8 structures that appeared or
 # vanished**, reported nowhere, while the page could still say "No differences found".
 #
 # **The subject is the structure, and that was settled by measuring the alternative.** A
@@ -245,7 +245,7 @@ SELECT s.id, s.name, s.kind, s.module, s.file, s.line
 #
 # `kind` is in because DATACLASS becoming CLASS is a real change to what the program can be
 # shown to do, and `bases` because losing a base class changes what a structure inherits --
-# the one row that moves on Mensores' pair is exactly that.
+# the one row that moves on Lictores' pair is exactly that.
 STRUCTURE_DECL = """
 SELECT id, kind, bases FROM {db}.structures
 """
@@ -332,7 +332,7 @@ SELECT y.id AS o FROM {A}.routines x JOIN {B}.routines y ON y.id = x.id
 # The **key** decides identity across the two revisions and is the thing a reader would
 # name it by, never a row id — an id that includes a position moves for the same reason
 # routines' did. `entrypoints` is the exception and has to be: `name` is not unique there
-# (Mensores has fourteen ways in and a great many of them are called `main`), so identity
+# (Lictores has fourteen ways in and a great many of them are called `main`), so identity
 # needs the id.
 #
 # The **label** is what is printed. Those two came apart exactly once and it was visible
@@ -365,7 +365,7 @@ class Presence(NamedTuple):
 # **One residue, stated rather than discovered.** The `chg` route reads its ids through
 # `navIds`, which splits `data-navid` on a space -- it was written for a route that can
 # carry several. A *named file* is the one subject here whose name can contain one, and such
-# a row would resolve to two ids that name nothing. Mensores has 0 of them, and a constant's
+# a row would resolve to two ids that name nothing. Lictores has 0 of them, and a constant's
 # `module.name` cannot hold a space at all, so the corpus does not exercise it; it is
 # recorded because the next artefact-bearing corpus might, and because the fix belongs to
 # `navIds` rather than here.
@@ -391,7 +391,7 @@ def _attach(compared: Path, base: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:", uri=True)
     conn.row_factory = sqlite3.Row
     # Absolute, because a relative path inside a `file:` URI is not the same path --
-    # it produced `unable to open database: file:output/mensores/graph@...db`, which
+    # it produced `unable to open database: file:output/lictores/graph@...db`, which
     # names the file it could not open and still does not say why.
     conn.execute("ATTACH DATABASE ? AS compared",
                  (f"file:{compared.resolve()}?mode=ro",))
@@ -408,7 +408,7 @@ def _arguments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
 
     **The cheap pass says which routines the expensive one is worth running on**, which is
     the shape `filediff.py` already uses: there, equal content hashes decide which twelve of
-    628 files `difflib` reads. Measured warm on Mensores' pair -- 43,926 arguments against
+    628 files `difflib` reads. Measured warm on Lictores' pair -- 43,926 arguments against
     43,464, 53 callers differing as written and 13 still differing once canonicalised:
 
         one scan a side, compared as written    188 ms
@@ -425,7 +425,7 @@ def _arguments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
 
     **The second pass is what keeps this out of the wrong band.** Arguments are stored as
     written and never re-rendered (rules 8 and 75), which is right for a reader who wants to
-    find the string in the file and wrong for a comparison: Mensores has a `typer.echo` whose
+    find the string in the file and wrong for a comparison: Lictores has a `typer.echo` whose
     message was re-wrapped across two lines without one character of its content changing,
     and comparing what was written puts it in *behaves differently* -- next to a band that
     says *edited only, and nothing it does changed*. Rule 1: a false difference tells the
@@ -464,7 +464,7 @@ def _arguments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
         # `canonical` would return every one of these unchanged through its own fallback, so
         # removing the test is behaviourally invisible; a mutation of it survives, and the
         # mutation is the weak one rather than the guard (rule 59's companion). What it buys
-        # is 49 parse attempts not made on Mensores, and a reader not having to work out
+        # is 49 parse attempts not made on Lictores, and a reader not having to work out
         # whether splats were considered.
         return {(ce, i, e if sp else canonical(e, f), k, sp)
                 for ce, i, e, k, sp, f in rows}
@@ -486,7 +486,7 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
     a definition sits *above* the `def`, so it is outside that routine's `line_start` and
     outside its `body_hash`. Rewrite one and:
 
-    * in a file with module-level work -- 487 of Mensores' 628 -- the change surfaces as
+    * in a file with module-level work -- 487 of Lictores' 628 -- the change surfaces as
       `<module>` in *edited only*, which names the file rather than the routine whose intent
       was rewritten and files the WHY under "internal computation", the one thing this tool
       says it exists not to report;
@@ -499,7 +499,7 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
     comment is attached to the routine it leads, so the right subject is named for free.
 
     **Joined in line order and collapsed, not compared as written**, and the corpus was made
-    to say which. Re-wrapping every comment in Mensores at three widths without altering one
+    to say which. Re-wrapping every comment in Lictores at three widths without altering one
     word -- 86% of its 18,731 comment lines live in a run of two or more, so this is the
     dominant edit, not an exotic one:
 
@@ -559,7 +559,7 @@ def _prose(text: str) -> str:
     through `ast.get_docstring`, which is `inspect.cleandoc` -- dedented, stripped top and
     tail, and with **its blank lines intact**. The structure is there, so it is kept.
 
-    Measured over Mensores' 3,769 docstrings rather than argued, re-wrapping every one of
+    Measured over Lictores' 3,769 docstrings rather than argued, re-wrapping every one of
     them at three widths without altering a word -- the ordinary edit, and 52% of them are
     multi-line with a blank-line break:
 
@@ -599,7 +599,7 @@ def _docstrings_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
     always inside `body_hash` and a rewritten one is never invisible -- it is filed under
     **edited only**, whose whole claim is *the body differs and nothing it does does*, a band
     this tool describes in its own words as internal computation and the one thing it exists
-    not to report. `_production_audit_db_path` on Mensores' pair had a deprecation notice and
+    not to report. `_production_audit_db_path` on Lictores' pair had a deprecation notice and
     its entire reasoning rewritten and sits there, indistinguishable from a renamed local.
 
     So this is a **tag and never a band**, and the two follow from that same fact. It cannot
@@ -620,7 +620,7 @@ def _module_docs_moved(conn: sqlite3.Connection, A: str,
 
     A module docstring is the only place a module states what it *is*, and it belongs to no
     routine. Hanging it on the synthetic `<module>` was the obvious cheap answer and is
-    wrong: `<module>` exists only where a file has module-level work, so on Mensores it
+    wrong: `<module>` exists only where a file has module-level work, so on Lictores it
     covers 487 of 628 files while 619 of them carry a module docstring. For the **138** that
     state what they are and run nothing at import, a rewritten module docstring changes no
     routine's `body_hash`, no fact, and no row -- and the page says **"No differences
@@ -882,7 +882,7 @@ def build(base: Path, compared: Path,
 
     A second, read-only handle to a database this process has open in
     WAL mode cannot join the shared-memory WAL index -- it has no write access to the
-    `-shm` -- so it re-derives it on every query. Measured on Mensores, one `calls`
+    `-shm` -- so it re-derives it on every query. Measured on Lictores, one `calls`
     comparison: **8,855 ms with the dashboard holding the graph open, 242 ms with it
     stopped, 137 ms attached onto the connection that already had it.** Same query, same
     files, same page cache.
@@ -953,7 +953,7 @@ def build(base: Path, compared: Path,
         modules = _module_docs_moved(conn, A, B)
 
         # The third subject, and the one that had nothing at all. Presence first, because it
-        # is where the whole gap was: 8 of Mensores' structures appear or vanish and were
+        # is where the whole gap was: 8 of Lictores' structures appear or vanish and were
         # reported nowhere. Rows carry an id, so a reader can open what a row names.
         struct_only_base = [dict(r) for r in conn.execute(
             STRUCTURES_ONLY.format(X=B, Y=A))]
@@ -970,7 +970,7 @@ def build(base: Path, compared: Path,
         # here and absent there. Every one of those is already a presence row, and reporting
         # it twice is rule 40: two lanes recording one act, two numbers about one thing.
         #
-        # Measured before it was written and again after: on Mensores' pair this lane returned
+        # Measured before it was written and again after: on Lictores' pair this lane returned
         # **5 rows, all five of them presence rows and none of them a rewritten docstring**,
         # against a raw ground truth of zero. The routine lane guards it the same way at the
         # same place (`& both`), and the module lane guards it inside `_module_docs_moved` --

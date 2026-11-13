@@ -4,7 +4,7 @@ The interesting failures here are not "did the intersection work". They are the 
 ways this report could confidently mislead:
 
 * counting one citation twice because two detectors caught it (`ISS-014` matches both
-  the ISSUE rule and the general TICKET rule -- 574 such rows on Mensores);
+  the ISSUE rule and the general TICKET rule -- 574 such rows on Lictores);
 * calling a plan landed because a document mentioned `list`, which is rule 3 wearing a
   new uniform;
 * printing a count beside a query that returns a different number, which rule 13 calls
@@ -92,7 +92,7 @@ Adds `reconcile_witness_ledger` only.
 # Subject of a document, naming nothing that exists.
 ABSENT_DOC = """# Plan 02-03 — Never started
 
-Will add `quaesitor_interview_loop` and `tabularium_writer`.
+Will add `quaesitor_interview_loop` and `vestiarium_writer`.
 """
 
 # Rule 3 in a new place: the only symbol named is a builtin the program happens to
@@ -222,7 +222,7 @@ def test_one_marker_caught_by_two_detectors_is_one_citation(joined):
 
     The extractor rightly records both readings. Counting them as two citations would
     report a plan as governing twice as much code as it does -- 574 such rows on
-    Mensores, every one of them a single comment.
+    Lictores, every one of them a single comment.
     """
     store, docs, _ = joined
     result = measure(store, docs)
@@ -428,7 +428,7 @@ def test_a_program_that_cites_no_id_in_code_is_reported_rather_than_a_crash(tmp_
     program whose comments name no governance id at all makes that denominator zero -- which
     is not an exotic corpus, it is every program that has not adopted this discipline. Found
     by pointing the tool at a four-file fixture, the first thing it had ever been given with
-    none; Mensores cites 593 and could not reach it.
+    none; Lictores cites 593 and could not reach it.
 
     **Stated as an absence, never filled with a plausible 0%** (rule 49). "No ids are cited
     in code" and "none of the ids cited in code are documented" are opposite findings, and a

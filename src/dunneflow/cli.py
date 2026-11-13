@@ -1,6 +1,6 @@
 """Command line.
 
-    dunneflow analyze <path> --name mensores    extract, resolve, and write the map
+    dunneflow analyze <path> --name lictores    extract, resolve, and write the map
     dunneflow touches <path> --routine save     what does this reach?
     dunneflow impact <path> --routine save      what breaks if I change it?
     dunneflow query <path> --sql "..."          ask the graph directly
@@ -875,7 +875,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # be handed over (rule 60).
     #
     # The *package* root's leaf, not the analysed directory's. Analysing a `src/` layout
-    # means `target` is `.../society-2026-08-26/src`, whose leaf is `src` -- which names
+    # means `target` is `.../comitia-2026-08-26/src`, whose leaf is `src` -- which names
     # every src-layout program ever analysed and so identifies none of them. Measured on
     # the real corpus, which is the only place it shows: the toy fixtures have no `src/`
     # and recorded the right answer by having nowhere else to go.
@@ -1096,7 +1096,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
                    if duplicates else "")
             )
             # Design rule 1: no filter is ever silent. A nested checkout can be most
-            # of a corpus -- two stale worktrees were 335 of Mensores' 2,381 documents
+            # of a corpus -- two stale worktrees were 335 of Lictores' 2,381 documents
             # -- and a reader comparing two points in time would otherwise read their
             # absence as the project having deleted them.
             if doc_stats.not_files:

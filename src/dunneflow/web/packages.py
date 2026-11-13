@@ -87,7 +87,7 @@ def build(store: Store, root: str | None = None) -> dict[str, Any]:
         ext_edges.append({"src": src, "dst": kind, "weight": int(r["weight"])})
 
     # The commonest destination is what makes a boundary kind mean something: "DATABASE"
-    # is a category, "DATABASE · tabularium.db" is a fact about this program.
+    # is a category, "DATABASE · vestiarium.db" is a fact about this program.
     for r in store.query(queries.COVER_BOUNDARIES):
         known = externals.get(str(r["kind"]))
         if known is not None:
@@ -160,7 +160,7 @@ def _place(sizes: dict[str, int], entries: set[str],
            ranks: dict[str, int]) -> list[dict[str, Any]]:
     """One column per rank, biggest first down each column, wrapped when a rank is deep.
 
-    Wrapping is the point of this view rather than a nicety. Mensores has forty-seven
+    Wrapping is the point of this view rather than a nicety. Lictores has forty-seven
     packages over four ranks, and one rank holds thirty of them -- stacked in a single
     column that is a two-thousand-pixel strip, which is a list with boxes round it and not
     a picture. Rule 8 says a bounded thing is only allowed where the whole content sits

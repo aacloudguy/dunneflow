@@ -211,7 +211,7 @@ def test_a_relative_link_cannot_navigate_the_dashboard() -> None:
     """Chunk 1's open item, and it is the reason this half of chunk 3 exists.
 
     `<a href="./rel.md">` in this page navigates the **dashboard** away — off the page, out
-    of the session, losing the selection and the trail. 666 of them in Mensores' corpus.
+    of the session, losing the selection and the trail. 666 of them in Lictores' corpus.
     Removing the `href` is the fix rather than a precaution: an element with one is a link
     the browser will follow whatever else is bound to it.
     """
@@ -287,7 +287,7 @@ def test_an_image_is_never_fetched() -> None:
 def test_a_relative_path_resolves_against_the_linking_document() -> None:
     """Read off the source, because the arithmetic is the kind that looks right.
 
-    `.groma/PROJECT.md` really does link to `../../Society-Specs/01-naming-standards.md`,
+    `.groma/PROJECT.md` really does link to `../../Comitia-Specs/01-naming-standards.md`,
     which is outside the corpus. That resolves to a path with nothing behind it, and saying
     so is the caller's job — a renderer that clamped it to something inside the tree would
     have invented a document.
@@ -360,7 +360,7 @@ def test_frontmatter_is_blanked_and_never_removed() -> None:
     markdown-it knows nothing about frontmatter, so a document opening
     `---\\nkind: reference\\ntitle: Glossary\\n---` parses it as a **setext heading**: the
     metadata becomes an `<h2>` at the top of the page, before the document's own title, with
-    an id of `kind-referencetitle-glossary`. **989 of Mensores' 2,019 Markdown documents**
+    an id of `kind-referencetitle-glossary`. **989 of Lictores' 2,019 Markdown documents**
     begin with a frontmatter block.
 
     The trap is the fix. Cut the lines out and every `token.map` below shifts up by the

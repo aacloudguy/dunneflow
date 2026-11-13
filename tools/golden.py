@@ -1,7 +1,7 @@
 """Take the golden, or compare a graph against it.
 
 `output/GOLDEN-v1.txt` is the gate every ingest change is measured against: row counts,
-distributions, and seven identity digests over a graph of Society read by v1. `make_id` is
+distributions, and seven identity digests over a graph of Comitia read by v1. `make_id` is
 derived from names and never from positions, so while `extractors/python/` is unchanged
 every one of those digests must stay byte-identical -- not "the counts should match", which
 a swap of contents can satisfy while the total holds.
@@ -22,12 +22,12 @@ is bigger than that and the search was abandoned rather than finished. *We did n
 is not *it is not there*, and writing the first as the second is how a residue becomes a
 claim (rule 24). So they are **redefined here**, explicitly, and their
 values against the preserved v1 graph are printed by `--adopt`. That costs nothing the gate
-needs: the artifact is `output/mensores-v1/`, the v1 graph itself, and a digest is only ever
+needs: the artifact is `output/lictores-v1/`, the v1 graph itself, and a digest is only ever
 compared between two graphs computed by one script. A recorded number whose definition is
 lost is a label, not an identity (rule 30) -- the remedy is to state the definition, not to
 keep the number.
 
-    uv run python tools/golden.py output/mensores-v1/graph@*.db
+    uv run python tools/golden.py output/lictores-v1/graph@*.db
     uv run python tools/golden.py <new.db> --against output/GOLDEN-v1.txt
     uv run python tools/golden.py <v1.db> <v2.db>
 """
@@ -244,7 +244,7 @@ def rekeyed(left: Path, right: Path) -> int:
     comparison with the keys taken out.
 
     So `REKEYED` projects each table onto its facts and none of its ids, and the two graphs
-    are compared column for column. Against `output/mensores-v1/` -- v1's own graph, read by
+    are compared column for column. Against `output/lictores-v1/` -- v1's own graph, read by
     v1 -- all six agree, which is the statement the change was taken on.
 
     It is not a replacement for the digests and does not want to be: two routines that swap

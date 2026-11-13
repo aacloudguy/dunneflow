@@ -1,7 +1,7 @@
 """A Go method is a boundary by its receiver's type, and never by its variable's name.
 
 `r.ReadFile(name)` is a file read when `r` is an `*os.Root` and nothing at all when `r` is
-a type of the program's own. Found on Society2 (`internal/cli/project_folder.go`,
+a type of the program's own. Found on Comitia2 (`internal/cli/project_folder.go`,
 2026-11-07): every file operation made through an `os.Root` was missing, which is where
 code that must not follow a symlink out of a folder does its reading and writing.
 
@@ -173,7 +173,7 @@ def test_opening_a_root_is_a_read_and_what_it_returns_is_typed(typed):
 
 
 def test_a_method_expression_in_a_package_variable_is_a_touch_where_it_is_taken(typed):
-    """`var lchown = (*os.Root).Lchown` is Society2's own shape: the call that follows is
+    """`var lchown = (*os.Root).Lchown` is Comitia2's own shape: the call that follows is
     through a variable and names nothing, so the touch is where the method is taken."""
     facts, _, _ = typed
     ff = facts["special.go"]

@@ -44,12 +44,12 @@ REV = "2026-09-03T10:00:00Z"
 #
 #   * the **fenced block** spans lines, and a body sent as anything but one string cuts it
 #     in half;
-#   * `notes.txt` is not markdown, and the corpus admits 45 such files on Mensores;
-#   * `docs/copy.md` is byte-identical to `docs/glossary.md`. Mensores has eight real
+#   * `notes.txt` is not markdown, and the corpus admits 45 such files on Lictores;
+#   * `docs/copy.md` is byte-identical to `docs/glossary.md`. Lictores has eight real
 #     duplicates, and without one here every guard about `duplicate_of` -- including the
 #     one that says the class counts count the rows they are printed over -- passes on a
 #     corpus that has nothing to be filtered out of it.
-GLOSSARY = "# Glossary\n\n**mensor** — one who measures.\n"
+GLOSSARY = "# Glossary\n\n**lictor** — one who measures.\n"
 CORPUS = {
     "README.md": "# The program\n\nWhat it is for.\n\n## Running it\n\n```sh\nrun --now\n```\n",
     "docs/glossary.md": GLOSSARY,
@@ -153,7 +153,7 @@ def test_the_list_is_every_document_and_its_counts_come_from_those_rows(
 def test_the_list_has_no_limit_in_its_sql() -> None:
     """Read off the statement, because a bound added later has no symptom at this size.
 
-    Three documents in a fixture cannot notice a `LIMIT 500`. Mensores' 2,064 can, and by
+    Three documents in a fixture cannot notice a `LIMIT 500`. Lictores' 2,064 can, and by
     then the number on the heading and the rows under it disagree in a way that looks like
     a filter working.
     """
@@ -277,7 +277,7 @@ def test_a_version_with_no_bodies_is_refused_not_served_from_the_newest(
 
     `_sidecar_revision` returns `None` for *this sidecar cannot serve the version on
     screen*. Every store here reads `revision=None` as *the current one*. Two meanings,
-    one spelling, and the newer one won: Mensores' 2026-08-26 base listed all 2,041 of its
+    one spelling, and the newer one won: Lictores' 2026-08-26 base listed all 2,041 of its
     documents as openable and served the **2026-08-29** prose under them — every heading's
     line landing wherever the text had since moved.
 

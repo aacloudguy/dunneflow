@@ -727,7 +727,7 @@ class UnfinishedMapError(RuntimeError):
     """An analysis started writing this map and never finished. **Rule 80.**
 
     A killed `analyze` leaves a graph that **opens perfectly and lies**. Measured on the
-    Society tree by stopping one twelve seconds in: 628 files, 4,786 routines, 4,070
+    Comitia tree by stopping one twelve seconds in: 628 files, 4,786 routines, 4,070
     boundary touches -- and `resolved_calls = 0`, because it died before `resolve_calls`.
     It carries `analysed_at`, `tool_version` and `inference = none`, so every part of the
     dashboard vouches for it, and it reports a program that calls nothing.
@@ -806,7 +806,7 @@ def refuse_missing(path: Path, what: str) -> None:
     Rule 20 from the side nobody expects. That rule says a read may refuse but may never
     *repair*; here the read repaired nothing and simply **wrote**, into the one directory
     this project treats as an artifact. Found by doing it: a one-line probe against
-    `output/mensores/graph.db` — a path that does not exist there, since mensores keeps
+    `output/lictores/graph.db` — a path that does not exist there, since lictores keeps
     only `graph@<revision>.db` — put a 0-byte file into the output tree, invisible to
     `git status` because `output/` is untracked.
 

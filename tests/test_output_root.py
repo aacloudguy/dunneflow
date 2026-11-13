@@ -42,12 +42,12 @@ def _program(root: Path, name: str, revision: str = "2026-01-01T00:00:00Z") -> P
 
 
 def test_a_directory_holding_a_map_is_a_program(tmp_path):
-    prog = _program(tmp_path, "mensores")
+    prog = _program(tmp_path, "lictores")
     assert where(prog) == (prog.resolve(), tmp_path.resolve())
 
 
 def test_a_directory_holding_programs_is_a_root(tmp_path):
-    _program(tmp_path, "mensores")
+    _program(tmp_path, "lictores")
     _program(tmp_path, "dunneflow")
     assert where(tmp_path) == (tmp_path.resolve(), tmp_path.resolve())
 
@@ -86,10 +86,10 @@ def test_a_named_version_that_is_not_here_says_so(tmp_path):
 
 def test_a_root_with_programs_names_them(tmp_path):
     """Rule 89: the reader's next move is a program name they cannot guess."""
-    _program(tmp_path, "mensores")
+    _program(tmp_path, "lictores")
     _program(tmp_path, "dunneflow")
     said = no_map_here(tmp_path, tmp_path, None)
-    assert "mensores" in said and "dunneflow" in said
+    assert "lictores" in said and "dunneflow" in said
     # The root itself is not one of the choices, however `program_dirs` reports it.
     # Split on the sentence's own words rather than on the first colon: the sentence opens
     # with a path, and on Windows that path starts `C:` -- so the first colon is the drive
@@ -105,7 +105,7 @@ def test_an_empty_root_names_the_command_instead(tmp_path):
 
 def test_the_three_answers_are_three_different_sentences(tmp_path):
     """Design rule 21: collapsing any two would make *we did not look* read as *nothing there*."""
-    _program(tmp_path, "mensores")
+    _program(tmp_path, "lictores")
     said = {no_map_here(tmp_path, tmp_path, "2026-01-01T00:00:00Z"),
             no_map_here(tmp_path, tmp_path, None),
             no_map_here(tmp_path / "empty", tmp_path / "empty", None)}
@@ -117,7 +117,7 @@ def test_the_three_answers_are_three_different_sentences(tmp_path):
 
 
 def test_the_root_is_derived_once_when_nobody_says(tmp_path):
-    prog = _program(tmp_path, "mensores")
+    prog = _program(tmp_path, "lictores")
     live = _Live(prog / "source.db", prog)
     try:
         assert live.out_root == tmp_path
@@ -127,7 +127,7 @@ def test_the_root_is_derived_once_when_nobody_says(tmp_path):
 
 def test_a_root_given_outright_is_taken(tmp_path):
     """The case with no parent to take: a server opened on the root itself."""
-    prog = _program(tmp_path, "mensores")
+    prog = _program(tmp_path, "lictores")
     live = _Live(prog / "source.db", prog, tmp_path)
     try:
         assert live.out_root == tmp_path
@@ -207,10 +207,10 @@ def test_nothing_spells_the_map_marker_for_itself():
 
 
 def test_analysing_into_the_served_program_is_refused(tmp_path):
-    _program(tmp_path, "mensores")
+    _program(tmp_path, "lictores")
     tree = tmp_path.parent / "atree"
     tree.mkdir(exist_ok=True)
-    v = analysis.check(str(tree), "mensores", tmp_path, tmp_path / "mensores")
+    v = analysis.check(str(tree), "lictores", tmp_path, tmp_path / "lictores")
     assert not v.ok
     assert "being read" in v.refusal
 
@@ -224,7 +224,7 @@ def test_with_nothing_open_that_refusal_has_no_subject(tmp_path):
     """
     tree = tmp_path.parent / "atree"
     tree.mkdir(exist_ok=True)
-    v = analysis.check(str(tree), "mensores", tmp_path, None)
+    v = analysis.check(str(tree), "lictores", tmp_path, None)
     assert v.ok, v.refusal
 
 
@@ -278,13 +278,13 @@ def test_a_root_reached_through_a_symlink_names_each_program_once(tmp_path):
     stored path, one question over.
     """
     real, link = _linked(tmp_path)
-    _program(real, "mensores")
+    _program(real, "lictores")
 
     assert revisions.program_dirs(link) == revisions.program_dirs(real)
     # The union `_r_programs` actually makes, spelled here so the test fails on the defect
     # rather than on a proxy for it (rule 37).
-    here = (link / "mensores").resolve()
-    assert revisions.program_dirs(link) | {here} == {real / "mensores"}
+    here = (link / "lictores").resolve()
+    assert revisions.program_dirs(link) | {here} == {real / "lictores"}
 
 
 def test_a_program_that_is_itself_a_symlink_stays_under_the_root_that_lists_it(tmp_path):
@@ -296,10 +296,10 @@ def test_a_program_that_is_itself_a_symlink_stays_under_the_root_that_lists_it(t
     """
     real, link = _linked(tmp_path)
     elsewhere = tmp_path / "elsewhere"
-    _program(elsewhere, "mensores")
-    (real / "mensores").symlink_to(elsewhere / "mensores", target_is_directory=True)
+    _program(elsewhere, "lictores")
+    (real / "lictores").symlink_to(elsewhere / "lictores", target_is_directory=True)
 
-    assert revisions.program_dirs(link) == {real / "mensores"}
+    assert revisions.program_dirs(link) == {real / "lictores"}
 
 
 def test_the_root_is_never_one_of_its_own_programs_however_it_was_reached(tmp_path):
@@ -311,8 +311,8 @@ def test_the_root_is_never_one_of_its_own_programs_however_it_was_reached(tmp_pa
     """
     real, link = _linked(tmp_path)
     revisions.db_path(real, revisions.GRAPH, "2026-01-01T00:00:00Z").touch()
-    _program(real, "mensores")
+    _program(real, "lictores")
 
     assert real in revisions.program_dirs(link), "the root holds a map and is one"
-    assert revisions.programs_under(link) == [real / "mensores"]
+    assert revisions.programs_under(link) == [real / "lictores"]
     assert no_map_here(link, link, None).split("Under this root:", 1)[1].count("real") == 0

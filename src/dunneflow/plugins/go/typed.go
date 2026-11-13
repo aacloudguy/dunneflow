@@ -6,7 +6,7 @@
 // of that name. A bare method name cannot tell them apart (rule 5), and a variable's name
 // is a label, not a type (rule 30). Since Go 1.24 `os.Root` is how code that must not
 // follow a symlink out of a folder reads and writes, so the gap hid exactly the file
-// boundaries that matter most (Society2, `internal/cli/project_folder.go`, 2026-11-07).
+// boundaries that matter most (Comitia2, `internal/cli/project_folder.go`, 2026-11-07).
 //
 // **Checked against declarations, never against GOROOT, and that is the cache key.** A
 // file's facts are cached under its own hash and the reader's stamp, and the stamp does

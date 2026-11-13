@@ -1,7 +1,7 @@
 """Binding the words a program uses to the places its documentation defines them.
 
 The feature was scoped as "infer what these words mean". Checking the source first
-inverted it: nine of Mensores' eleven opaque terms are already defined by the project,
+inverted it: nine of Lictores' eleven opaque terms are already defined by the project,
 in a naming table and two glossary sections that DunneFlow could not see because it read
 only code. So the job is **binding existing documentation to the code**, not generating
 definitions -- and the terms nothing defines are the worklist, not a failure.
@@ -69,7 +69,7 @@ class Term:
         """Is this word evidenced *only* as a fragment of a compound constant name?
 
         `_GLOSSARY_DEFINITION_MAX_LEN` is one name a person chose, and splitting it on
-        underscores yields four words of which two are its type and its unit. Over Society
+        underscores yields four words of which two are its type and its unit. Over Comitia
         that is **889 of the 1,154** words nothing defines -- `DDL`, `EXTRAS`, `REASON`,
         `KEYS`, `BYTES`, `CHARS` at the head of the worklist -- and the words actually
         worth explaining, `witness` and `posture` and `claim` and `probe`, are buried
@@ -92,8 +92,8 @@ class GlossaryReport:
     terms: list[Term] = field(default_factory=list)
     undefined: list[Term] = field(default_factory=list)
     # Words held back as fragments of compound names, kept whole and stated rather than
-    # dropped in silence (design rule 1). A reader can promote one back: `MENSORES` in
-    # `MENSORES_MAX_LEN` is the program's own word beside a modifier and a unit, and it
+    # dropped in silence (design rule 1). A reader can promote one back: `LICTORES` in
+    # `LICTORES_MAX_LEN` is the program's own word beside a modifier and a unit, and it
     # may occur nowhere else in the program at all. Tom, 2026-09-08.
     set_aside: list[Term] = field(default_factory=list)
     definitions_seen: int = 0
@@ -149,7 +149,7 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
             note(word, "table", f"table {r['tbl']}", str(r["tbl"]))
 
     # A constant is the third place a person must name a thing rather than describe
-    # one. `EMBEDDING_MODEL` and `MENSORES_DIRNAME` carry the program's configuration
+    # one. `EMBEDDING_MODEL` and `LICTORES_DIRNAME` carry the program's configuration
     # vocabulary, and until constants were recorded none of it was here.
     for r in store.query("SELECT DISTINCT name FROM constants WHERE name <> '' ORDER BY name"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["name"])):
@@ -164,7 +164,7 @@ def bind(store: Store, docs: DocStore | None) -> GlossaryReport:
     report = GlossaryReport()
 
     # DECLARED_CODE: a package's own docstring is the only place most programs say
-    # what their words mean. `disceptator/__init__.py` opens "Interview engine".
+    # what their words mean. `conciliator/__init__.py` opens "Interview engine".
     for r in store.query("SELECT path, module, doc FROM files WHERE doc <> '' ORDER BY path"):
         module = str(r["module"])
         leaf = module.rsplit(".", 1)[-1].lower()

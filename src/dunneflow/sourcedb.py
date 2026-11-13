@@ -9,7 +9,7 @@ attached -- a per-recipient decision rather than a per-analysis one.
 **Content-addressed**, keyed by the `content_hash` already in `files`. Each unique file
 body is stored once no matter how many paths or revisions point at it, so the sidecar
 grows only by what genuinely changed. That is what makes temporal layers storable at
-Mensores' rate of six hundred commits a month, and it is why this is the store the layer
+Lictores' rate of six hundred commits a month, and it is why this is the store the layer
 work builds on rather than a new one.
 
 Two rules from `CLAUDE.md` apply here in an unusual way, and both are load-bearing:
@@ -77,7 +77,7 @@ STATES = (STATE_WORKING, STATE_FOR_COMPARISON)
 # graph: reachability is recursive SQL because a call graph does not fit and does not need
 # to. Text is the one thing here you cannot answer a question about without reading it --
 # searching 184,722 lines means inflating 184,722 lines -- so the honest answer is a bound
-# that says what it is, not a claim to be holding nothing. Mensores is 7.8 MB and fits
+# that says what it is, not a claim to be holding nothing. Lictores is 7.8 MB and fits
 # whole; a corpus larger than this re-inflates the overflow on every search, and the search
 # reports how many bodies it had to inflate so a reader can see that happening rather than
 # only feel it.
@@ -864,7 +864,7 @@ class DocSourceStore(SourceStore):
 
     One file per program holding every revision, the shape `source.db` has -- not per revision
     like `docs@<rev>.db` -- because a body is content-addressed and two revisions of a corpus
-    share almost all of theirs. Measured on Mensores: 2,064 documents, 38.72 MB of text in
+    share almost all of theirs. Measured on Lictores: 2,064 documents, 38.72 MB of text in
     **14.87 MB** at zlib-6. Prose compresses about 2.6:1 where code manages 4:1.
     """
 

@@ -324,7 +324,7 @@ def is_ordinary(word: str) -> bool:
     """Is this a word a working programmer already has?
 
     A glossary is for the words a reader cannot look up. `handler` is not one of them;
-    `disceptator` is.
+    `conciliator` is.
     """
     return word.strip().lower() in load_prose_rules().ordinary_words
 
@@ -344,7 +344,7 @@ def reports_rather_than_rules(heading: str) -> bool:
     A naming-standards document is not made only of rules. NAMING.md carries a
     trademark status section, a registry availability table and a runner-up list, and
     every one of them is normative in voice -- "Action before any filing", "prefix
-    `mensores-<role>` if it ever ships standalone". None of them is a rule anyone
+    `lictores-<role>` if it ever ships standalone". None of them is a rule anyone
     follows when naming a function, and admitting them would put four findings into a
     standard that has three rules.
     """
@@ -354,7 +354,7 @@ def reports_rather_than_rules(heading: str) -> bool:
 def states_a_constraint(text: str) -> bool:
     """Is this gloss a bound on a value rather than a meaning?
 
-    `1 <= len <= 5000 chars` is what Society's plan says about the *field* called
+    `1 <= len <= 5000 chars` is what Comitia's plan says about the *field* called
     `definition`, mined out of a validation list by the same shape a gloss is written in
     and admitted because the section's heading mentions the glossary. It arrived on the
     glossary page as one of sixty defined terms.

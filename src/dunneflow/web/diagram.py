@@ -12,7 +12,7 @@ functions, what it touches, and the flow between them. Tom's words for why:
 So a box is a **class** -- a data structure and the algorithms bound to it -- or a **file's
 loose functions**, which are the algorithms bound to nothing but each other. That grain was
 chosen against a measurement rather than a preference. A box per class *and per loose
-function* is 432 boxes on Mensores' `quaestor`, because the program is function-oriented and
+function* is 432 boxes on Lictores' `tribunus`, because the program is function-oriented and
 42 classes hold only 89 of its 531 routines; gathering each file's loose functions into one
 box gives **median 14 boxes, p90 57, max 107**, with one compartment over a hundred. Nothing
 is dropped -- the functions are one level in, exactly where a class's methods are, and the
@@ -29,7 +29,7 @@ the second one is not a separate walk over the store.
 **Graphviz draws and Mermaid does not**, and that is a measured decision rather than a
 preference. Mermaid's dagre puts every node with no inbound edge on rank 0 side by side and
 lays disconnected components out in a row, and roughly half of a compartment's boxes have no
-*within*-compartment edge at all -- they only reach outward. On Mensores that is
+*within*-compartment edge at all -- they only reach outward. On Lictores that is
 `pkg:cli` at **11991x514 pixels, 23:1, in 2.5 s**. dagre has no component-packing,
 aspect-ratio or width option to fix it; its whole surface is `rankdir`, `align`, `nodesep`,
 `edgesep`, `ranksep`, `ranker`, `acyclicer` and the margins. Graphviz's `pack=true` packs
@@ -41,7 +41,7 @@ and appeared to do almost nothing, because `size` merely *scales* a finished dra
 
 ## Ports, and why a crossing is drawn as one
 
-A compartment's flow is mostly *outward*: `quaestor` has 83 edges among its own boxes and
+A compartment's flow is mostly *outward*: `tribunus` has 83 edges among its own boxes and
 221 leaving. Drawing every far end would be the whole program again (rule 19's warning), so
 a crossing ends at a **port** -- one node per compartment on the other side, named for it.
 That is Tom's *"any links to other classes or routines in other sections of the program
@@ -68,7 +68,7 @@ the idea is good enough that someone will think of it again:
                 no crossings     ports         shadows      nodes: boxes / +ports / +shadows
 pkg:mcp            1.26:1        7.69:1        9.52:1              8 / +29 / +67
 pkg:governance     1.13:1        2.47:1        4.58:1             40 / +25 / +80
-pkg:quaestor       1.98:1        3.43:1        6.64:1             83 / +41 / +175
+pkg:tribunus       1.98:1        3.43:1        6.64:1             83 / +41 / +175
 ```
 
 Both put a single enormous row across the picture and swamp the compartment they are
@@ -254,7 +254,7 @@ class Compartment:
         return len(self.entry_arrows())
 
 
-# **The arrow bound, and it is one compartment's number.** Drawn unbounded, `mensores`
+# **The arrow bound, and it is one compartment's number.** Drawn unbounded, `lictores`
 # alone -- which enters 39 of `pkg:cli`'s boxes, nearly every file in the package -- takes
 # that compartment from 734x650pt at 1.1:1 to **3647x428pt at 8.5:1**: the horizontal strip
 # this module's docstring records Mermaid producing, arriving through a different door.
@@ -375,7 +375,7 @@ def build(model: GraphModel,
     # the routines it starts *in this compartment* -- so opening it uses the second level
     # already built for a class or a file, and the reader lands on an ordinary selection.
     #
-    # `holds` counts what it starts **here** and not its whole reach: `mensores` reaches
+    # `holds` counts what it starts **here** and not its whole reach: `lictores` reaches
     # 1,381 routines and starts 106 of them in `pkg:cli`, and a box on `pkg:cli` labelled
     # 1,381 would be a number about somewhere else (rule 24).
     if ways:
@@ -774,7 +774,7 @@ def build_inside(box_id: str, box: Box, members: list[dict[str, Any]],
     (rule 51, and design rule 2's reasoning about one instrument).
 
     **The data bounds it and no rule has to.** A class holds a median of 4 to 6 routines
-    across Mensores' 623 files, and exactly one module exceeds a hundred. That is a
+    across Lictores' 623 files, and exactly one module exceeds a hundred. That is a
     diagram either way; the count is stated regardless, because a picture that is
     complete and a picture that was cut look the same (design rule 1).
 

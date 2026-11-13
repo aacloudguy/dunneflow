@@ -12,7 +12,7 @@
  * map that otherwise looked perfect. Generated, it is a compile error.
  *
  * A field left at its default is omitted on the wire, which is what `codec.encode` does on
- * the other side: Society's 43,926 `CallArg`s each carrying `"splat":false` is most of a
+ * the other side: Comitia's 43,926 `CallArg`s each carrying `"splat":false` is most of a
  * payload. So a field with a default is optional here and the reader writes only what it
  * set.
  *

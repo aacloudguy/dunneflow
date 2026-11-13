@@ -196,7 +196,7 @@ def test_a_diff_can_ride_a_connection_that_already_holds_one_end(tmp_path):
 
     A second read-only handle to a database this process already has open in WAL mode
     cannot join the shared-memory WAL index — it has no write access to the `-shm` — and
-    re-derives it on every query. One `calls` comparison on Mensores measured 8,855 ms
+    re-derives it on every query. One `calls` comparison on Lictores measured 8,855 ms
     with the dashboard holding the graph open and 137 ms attached onto the connection
     that already had it. Same query, same files, same page cache.
 
@@ -385,7 +385,7 @@ def test_an_argument_that_changed_is_a_behaviour_change(tmp_path):
 
 
 def test_a_keyword_that_changed_is_a_behaviour_change(tmp_path):
-    """`db_path=None` -> `policy_path=…` on Mensores' pair: the name it was passed under is
+    """`db_path=None` -> `policy_path=…` on Lictores' pair: the name it was passed under is
     as much a part of what moves as the value."""
     after = ARG_BEFORE.replace("def sink(a, b=None)", "def sink(a, c=None)") \
                       .replace("sink(1, b=None)", "sink(1, c=None)")
@@ -397,7 +397,7 @@ def test_a_keyword_that_changed_is_a_behaviour_change(tmp_path):
 def test_an_argument_rewrapped_and_not_changed_is_not_a_behaviour_change(tmp_path):
     """**The reason there is a canonicalising pass at all**, and it is a real finding.
 
-    Mensores' `claim_break_glass_cmd` passes a `typer.echo` message that was re-wrapped
+    Lictores' `claim_break_glass_cmd` passes a `typer.echo` message that was re-wrapped
     across two lines without one character of its content changing. Arguments are stored as
     written and never re-rendered (rules 8 and 75) — right for a reader who wants to find the
     string in the file, and wrong for a comparison, which asks whether these are the same
@@ -424,7 +424,7 @@ def test_an_argument_rewrapped_and_not_changed_is_not_a_behaviour_change(tmp_pat
 def test_a_splat_argument_is_compared_as_written(tmp_path):
     """`**kwargs` is a call-site form, not an expression, and does not parse alone.
 
-    All 49 of Mensores' unparseable arguments are splats. They compare as written, which is
+    All 49 of Lictores' unparseable arguments are splats. They compare as written, which is
     correct rather than a fallback — and it has to go on working, because a canonicaliser
     that threw here would take the whole comparison with it.
     """
@@ -659,11 +659,11 @@ def test_only_the_python_canonicaliser_knows_how_to_canonicalise():
 # --------------------------------------------------------------------------- #
 
 # Module-level *work*, which is what creates the `<module>` routine whose body hash is the
-# whole file. 487 of Mensores' 628 files are like this and 141 are not, so both are fixtures.
+# whole file. 487 of Lictores' 628 files are like this and 141 are not, so both are fixtures.
 WITH_MODULE = '''\
 import os
 
-ROOT = os.environ.get("MENSORES_ROOT", "/srv")
+ROOT = os.environ.get("LICTORES_ROOT", "/srv")
 
 # Intent: the pid identifies this process to the scheduler.
 def alpha():
@@ -724,7 +724,7 @@ def test_a_rewritten_leading_comment_is_not_no_differences_found(tmp_path):
 def test_the_same_words_re_wrapped_are_not_a_different_explanation(tmp_path):
     """Rule 1, in prose, and the corpus was made to say how much it matters.
 
-    86% of Mensores' 18,731 comment lines live in a run of two or more, so re-wrapping is
+    86% of Lictores' 18,731 comment lines live in a run of two or more, so re-wrapping is
     the ordinary edit rather than an exotic one. Re-wrapped at three widths without altering
     one word, comparing as written reports 1,561 · 1,186 · 1,231 of the 1,870 routines that
     own a comment; joined in line order and collapsed reports **none**.
@@ -740,7 +740,7 @@ def test_the_same_words_re_wrapped_are_not_a_different_explanation(tmp_path):
     # **And the case the collapse pass actually exists for**, which the wrap above does not
     # reach: each stored line is already stripped, so joining one-space-per-break is a
     # canonical form all by itself. What is not is whitespace *inside* a line -- two spaces
-    # after a full stop, which 112 of Mensores' 6,076 comment runs carry -- because a wrap
+    # after a full stop, which 112 of Lictores' 6,076 comment runs carry -- because a wrap
     # that breaks at exactly that point turns two spaces into one. Without the second pass
     # this is a false difference, and the first version of this test could not see it.
     spaced = WITH_MODULE.replace(
@@ -873,7 +873,7 @@ def test_a_comment_in_a_file_whose_bytes_did_not_change_is_not_looked_for(tmp_pa
     A comment is text in a file, so a file both versions hold with the same content hash
     cannot hold a comment that moved — the same argument `filediff` makes when it decides
     which twelve of 628 files are worth reading, and `files.content_hash` is already in the
-    graph. 41 ms over every comment in Mensores, 5.2 ms over the fifteen files that differ,
+    graph. 41 ms over every comment in Lictores, 5.2 ms over the fifteen files that differ,
     and the same twenty routines either way.
 
     Two files, one changed: the answer must name the routine in the changed one and must not
@@ -967,7 +967,7 @@ MODULE_WITH_WORK = f"""\
 
 import os
 
-ROOT = os.environ.get("MENSORES_ROOT", "/srv")
+ROOT = os.environ.get("LICTORES_ROOT", "/srv")
 
 
 def alpha():
@@ -1023,7 +1023,7 @@ def test_a_docstring_removed_outright_is_a_difference(tmp_path):
 def test_the_same_docstring_re_wrapped_is_not_a_different_explanation(tmp_path):
     """Rule 1 in prose again, and the corpus was made to say how much it matters.
 
-    Re-wrapping every one of Mensores' 3,769 docstrings at three widths without altering a
+    Re-wrapping every one of Lictores' 3,769 docstrings at three widths without altering a
     word -- 52% of them are multi-line with a blank-line break, so this is the ordinary edit
     -- reports 2,060 · 1,652 · 1,602 routines as written and **none** canonically.
     """
@@ -1045,7 +1045,7 @@ def test_merging_a_docstrings_paragraphs_is_a_difference(tmp_path):
     A docstring reaches it through `inspect.cleandoc` with its blank lines intact, so the
     structure is there -- and PEP 257 gives the summary line its meaning by separating it.
 
-    Measured on Mensores: merging every docstring's paragraphs without changing one word
+    Measured on Lictores: merging every docstring's paragraphs without changing one word
     affects 1,996 of them, and a full collapse reports **none** of it. Both forms are silent
     on the re-wrap above, so this is the only experiment that separates them.
     """
@@ -1080,7 +1080,7 @@ def test_merging_a_docstrings_paragraphs_is_a_difference(tmp_path):
 
 
 def test_a_rewritten_module_docstring_is_not_no_differences_found(tmp_path):
-    """The case with no routine to report against, and it is 141 of Mensores' 628 files.
+    """The case with no routine to report against, and it is 141 of Lictores' 628 files.
 
     `<module>` is minted only where a file has module-level work. In a file that runs
     nothing at import there is no such routine, no body hash moves, no fact moves -- and the
@@ -1138,7 +1138,7 @@ def test_a_docstring_in_a_file_whose_bytes_did_not_change_is_not_looked_for(tmp_
 
     A docstring is text in a file, so equal content hashes are equal docstrings -- the same
     argument the comment lane makes, and the reason `_changed_files` is one function three
-    lanes call rather than three copies waiting to disagree (rule 51). Measured on Mensores:
+    lanes call rather than three copies waiting to disagree (rule 51). Measured on Lictores:
     22.3 ms over all 628 files, 3.2 ms over the fifteen that differ, same answer.
     """
     def two_files(tmp, name, one, two):
@@ -1271,7 +1271,7 @@ def test_the_bound_names_the_files_that_differ_and_no_others(tmp_path):
 # --------------------------------------------------------------------------- #
 # Structures: the third subject, added 2026-09-02. Compared by nothing before that
 # -- not presence, not what they declare, not what they say about themselves. On
-# Mensores' pair it hid eight structures that appear or vanish.
+# Lictores' pair it hid eight structures that appear or vanish.
 # --------------------------------------------------------------------------- #
 
 STRUCTS = '''\
@@ -1314,7 +1314,7 @@ def test_a_type_alias_is_reported_though_it_can_never_have_a_method(tmp_path):
     structure itself.
 
     A box is built from routine nodes (rule 74), so it exists only where a class has
-    methods -- 192 of Mensores' 671 structures, and **no** TYPE_ALIAS, ENUM or TYPEDDICT
+    methods -- 192 of Lictores' 671 structures, and **no** TYPE_ALIAS, ENUM or TYPEDDICT
     ever. Four of the eight rows that actually move on that pair have no methods. Routing
     these through `state.fold` would have been right about the majority and silently wrong
     about the rest, which is rule 77.
@@ -1420,7 +1420,7 @@ def test_a_structure_on_one_side_only_is_not_also_explained_differently(tmp_path
     Every one of those is already a presence row, and reporting it twice is two lanes
     recording one act.
 
-    Measured on Mensores' pair when it was wrong: **5 rows, all five of them presence rows
+    Measured on Lictores' pair when it was wrong: **5 rows, all five of them presence rows
     and not one a rewritten docstring**, against a raw ground truth of zero. The routine
     lane guards it at the same place (`& both`) and the module lane inside its own helper --
     three lanes, one rule, and this was the third time it had to be applied.

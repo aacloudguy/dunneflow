@@ -246,10 +246,10 @@ def test_hidden_actually_hides() -> None:
 # ----------------------------------------------------------------- pinned data --- #
 
 # `THREADS` is here because it was the one that got away. It held six hand-written rows
-# about one Mensores routine -- naming `Plan 84-06`, `disceptator`, `SOCIETY_HEADLESS` --
+# about one Lictores routine -- naming `Plan 84-06`, `conciliator`, `COMITIA_HEADLESS` --
 # and evaded all three pinned-data guards at once: a `const` object rather than a `let []`,
 # absent from this list, and invisible to the prose guard, which searches for the sample
-# program's *name* while this data said `disceptator`. Membership here is structural and
+# program's *name* while this data said `conciliator`. Membership here is structural and
 # cannot be evaded that way.
 PER_PROGRAM = ["ENTRYPOINTS", "BOUNDARIES", "PKGS", "TABLES", "ROUTINES",
                "ANOMALIES", "TERMS", "UNDEFINED", "CONVENTIONS", "VOCAB", "MANIFEST",
@@ -282,10 +282,10 @@ def test_no_program_data_is_pinned_inside_state() -> None:
     """The same rule, one level down, where the guard above could not see.
 
     `test_no_program_data_is_pinned_into_the_shell` walks the top-level arrays. It passed
-    for a whole session while `state` still carried the prototype's Mensores data:
+    for a whole session while `state` still carried the prototype's Lictores data:
 
         usage:       {cover: 41, graph: 68, table: 52, doc: 12, settings: 9}
-        selectedRow: "mensores.quaestor._witness_client.submit_to_peer"
+        selectedRow: "lictores.tribunus._witness_client.submit_to_peer"
         selected:    "specimen"
 
     `usage` exists so a Setting can be retired on evidence rather than opinion; seeded with
@@ -1132,7 +1132,7 @@ def test_a_plates_width_is_taken_from_what_is_drawn_on_it() -> None:
 
     A shadow is never drawn (rule 23) -- it is a placement device standing in for something
     living elsewhere -- so the density a reader actually sees is nodes over area however
-    many of them share the disc. Mensores' `ext:<outside>` carries ten nodes and 378
+    many of them share the disc. Lictores' `ext:<outside>` carries ten nodes and 378
     shadows: sized on the total it would be drawn six times too wide, equally plausibly,
     and the one thing a width is supposed to say would be false. Tom answered this before
     it was built -- *"shadows was just an idea due to the 3D aspect, not a requirement"* --
@@ -1441,7 +1441,7 @@ def test_boxes_are_placed_in_screen_space_and_say_what_stayed_a_dot() -> None:
     else stays a **dot**, so nothing leaves the picture (rule 19), and the number still a dot
     is stated with the way to get more (design rule 1, rule 32).
 
-    Measured on Mensores at a 1280x760 pane: picking `pkg:mcp` lights 360 and draws 102
+    Measured on Lictores at a 1280x760 pane: picking `pkg:mcp` lights 360 and draws 102
     boxes; the worst plate lights 1,319 and draws 86, in 2.3 ms.
     """
     engine = _read("graph.js")
@@ -1736,7 +1736,7 @@ def test_the_diagram_draws_with_graphviz_and_exports_mermaid() -> None:
 def test_a_diagram_box_carries_what_it_stands_for() -> None:
     """A fold that cannot be got back through is a filter.
 
-    A box is a class or a file's loose functions -- 83 boxes over `quaestor`'s 487 routines.
+    A box is a class or a file's loose functions -- 83 boxes over `tribunus`'s 487 routines.
     Clicking one has to reach the selection the whole dashboard shares, or the diagram is a
     picture beside the product rather than a view of it, and the box is a shape (rule 30).
     A port is the other case: it stands for somewhere else, so it is a *place* and clicking
@@ -2152,9 +2152,9 @@ def test_no_program_data_is_pinned_into_view_prose() -> None:
     """The third hiding place, after the top-level arrays and `state`.
 
     Table mode's footer read "Showing **12** of **515** routines in
-    `mensores.quaestor`" — a hard count and a real module name from the prototype, sitting
+    `lictores.tribunus`" — a hard count and a real module name from the prototype, sitting
     in a template literal where neither existing guard could see it: it is not an array and
-    not a `state` field, it is a sentence. `state.trail` carried a pinned "mensores" the
+    not a `state` field, it is a sentence. `state.trail` carried a pinned "lictores" the
     same way.
 
     Looks for the sample program's name in the view templates rather than for numbers,
@@ -2165,7 +2165,7 @@ def test_no_program_data_is_pinned_into_view_prose() -> None:
         text = _read(name)
         # Comments legitimately discuss the program the tool was verified against.
         body = re.sub(r"/\*.*?\*/|//[^\n]*|<!--.*?-->", "", text, flags=re.S)
-        hits = [m for m in re.findall(r"[\"'`>][^\"'`<]*\bmensores[\w.]*", body)]
+        hits = [m for m in re.findall(r"[\"'`>][^\"'`<]*\blictores[\w.]*", body)]
         assert not hits, (
             f"{name}: one program's name is pinned into what the page renders: "
             f"{hits[:3]} — the next codebase gets shown it, confidently and wrongly"
@@ -2410,7 +2410,7 @@ def test_the_invocation_line_is_the_one_in_the_code() -> None:
     # The markers are rendered. Dropped, `def f(a, *, b)` prints as `f(a, b)` -- a different
     # function, and one that cannot be called the way the card implies.
     assert "p.marker" in sig and 'esc(p.marker)' in sig, (
-        "the client drops the `*` and `/` pieces, so 998 of Mensores' 4,734 signatures "
+        "the client drops the `*` and `/` pieces, so 998 of Lictores' 4,734 signatures "
         "print with a calling convention the code does not have"
     )
 
@@ -3647,7 +3647,7 @@ def test_every_selection_the_app_hands_the_engine_is_flagged_as_an_echo() -> Non
     subject with the stack never mounted.
 
     The doorway panel is that surface, and it showed the defect on its first cold run: a
-    card naming `backup_cmd` opened the inspector on `mensores.transport._envelope.<module>`
+    card naming `backup_cmd` opened the inspector on `lictores.transport._envelope.<module>`
     and filed two trail steps under its name.
 
     So the check is over the *set* of sites, not over the two that exist -- a third way to
@@ -4302,7 +4302,7 @@ def test_one_renderer_draws_every_navigator_row() -> None:
 
 
 def test_how_many_routines_a_package_lists_is_the_readers_to_set() -> None:
-    """200 was a judgment about markup per keystroke, and on Mensores it read as a tease:
+    """200 was a judgment about markup per keystroke, and on Lictores it read as a tease:
     most packages hold 200-400, so the notice said `200 of 377` over a list that was very
     nearly whole.
 
@@ -4990,7 +4990,7 @@ def test_the_worklist_jump_buttons_act_and_say_so_when_they_cannot() -> None:
 
     And the second button counts **the list it opens**, never the finding's own figure.
     They are different numbers: `ONE_WAY_TABLE`'s count is read-plus-write operations
-    while its occurrences are the table and the routines touching it, so one Mensores
+    while its occurrences are the table and the routines touching it, so one Lictores
     finding reads `1` against a list of three (rule 32).
     """
     js = _read("shell.js")
@@ -5969,7 +5969,7 @@ def test_a_revision_reads_by_the_whole_instant_that_makes_it_unique() -> None:
     """Two options a reader cannot tell apart are worse than one long one.
 
     The revision id is when the snapshot was **captured**, not when the code is from. The
-    two snapshots here hold a Society tree from 2026-08-26 and one from 2026-08-29, and
+    two snapshots here hold a Comitia tree from 2026-08-26 and one from 2026-08-29, and
     both were captured on the same evening twenty-nine seconds apart — so abbreviated to
     the day both options read `2026-08-29`, and to the minute both read `2026-08-29 23:46`.
     Each shortening looked reasonable until it was on screen beside its neighbour.
@@ -6971,7 +6971,7 @@ def test_the_change_chip_does_not_land_inside_a_file_s_name() -> None:
 
     It gathers a row's loose text nodes into a `.navlabel` and re-inserts it immediately
     before `.n` — so an element written between the file name and the count is *moved in
-    front of the name*, and the row renders `mensores/scriba/ ○ _queue.py`: a glyph inside
+    front of the name*, and the row renders `lictores/praeco/ ○ _queue.py`: a glyph inside
     the path. The markup `fileRowsHtml` writes is correct; something else moves it.
 
     Nothing that reads markup can see this, which is why it is asserted as an ordering
@@ -7039,7 +7039,7 @@ def test_the_routine_change_cell_is_written_after_the_count() -> None:
     It gathers a row's loose text into a `.navlabel` and re-inserts that span **immediately
     before** the `.n` count -- so an element emitted between the label and the count comes
     out in front of the name. The file list learnt this the expensive way: the chip landed
-    inside the directory and the row read `mensores/scriba/ ○ _queue.py`, a glyph inside a
+    inside the directory and the row read `lictores/praeco/ ○ _queue.py`, a glyph inside a
     path (rule 71). Every check that reads markup or handlers passed, because what this
     function writes and what the reader sees are different questions.
 
@@ -7818,7 +7818,7 @@ def test_the_change_key_counts_what_the_picture_draws() -> None:
 def test_every_routine_the_stack_draws_carries_a_verdict() -> None:
     """An absent id means *unclaimed*, so a routine left out reads as never having been asked.
 
-    `routineIndex()` holds only the ids that are in a band — 86 of them on Mensores — and
+    `routineIndex()` holds only the ids that are in a band — 86 of them on Lictores — and
     `routineStatus` supplies `same` for a routine in none. Built by copying that index, the
     map left every unchanged routine absent and the key read *15 unchanged · 9,929 not
     compared* over a program with 4,700 unchanged routines. Both numbers wrong, nothing
@@ -8315,7 +8315,7 @@ def test_the_level_control_and_the_threshold_are_wired_and_the_slider_waits() ->
 
 def test_a_selection_travels_between_altitudes_in_id_space() -> None:
     """An index means a different routine in the other payload, and an id does not survive
-    either: `mod:mensores.cli.audit` is not a routine and no routine id is a module.
+    either: `mod:lictores.cli.audit` is not a routine and no routine id is a module.
 
     So the translation is explicit and it reads the **routine-level** payload, the only one
     carrying a node's module and the plate it came from. `home ?? disk` is the plate
@@ -8356,7 +8356,7 @@ def test_a_selection_travels_between_altitudes_in_id_space() -> None:
 
 def test_a_module_takes_the_band_of_what_it_holds_with_same_as_the_ground() -> None:
     """Written the other way -- any two distinct bands make it mixed -- every changed file
-    on Mensores reads `mixed` and the colour says nothing at all. With `same` as the ground,
+    on Lictores reads `mixed` and the colour says nothing at all. With `same` as the ground,
     14 modules carry the whole comparison and 7 of them are genuinely mixed.
 
     Measured before it was built, which is why the rule is this way round.
@@ -8867,7 +8867,7 @@ def test_every_scalar_a_step_records_is_a_scalar_it_is_compared_on() -> None:
     separate comments in the snapshot record paying for a field that was missing from *it*.
     The fourth field went the other way: `wayIn` was written into the snapshot and left out of
     the comparator, so drilling from a way in into one of its sub-applications filed a step
-    labelled `mensores ▸ quaestor` which was deduplicated against `mensores` and discarded —
+    labelled `lictores ▸ tribunus` which was deduplicated against `lictores` and discarded —
     rule 33's symptom with the subject present and correct.
 
     Asserted as a set equality rather than field by field, because the point is that a *new*
@@ -9244,7 +9244,7 @@ def test_a_triage_decision_is_filed_against_the_finding_and_not_its_position() -
     `state.triage` was subscripted by the finding's index at five separate sites -- the
     count, the row, the three buttons, the click handler and the number keys -- every one
     correct on its own and all five wrong together, because `/api/anomalies` sorts by a
-    count that moves. Measured on Mensores' pair: a decision filed against
+    count that moves. Measured on Lictores' pair: a decision filed against
     `siq__rebuild_87_02h` read back after a base switch as an acknowledgement of `tags`,
     with nothing on screen or in the console to say so.
 
@@ -9481,7 +9481,7 @@ def test_the_findings_only_the_compared_version_has_are_counted_and_reachable() 
     # Walked from the rows on screen, and **from this tab's rows**. Counting all 106 while
     # the tabs, the progress bar and "left to triage" beside it were per severity put
     # "4 claiming something different" on a Suspect tab with not one marked row in it: all
-    # five banded findings on Mensores' pair are INFO. Two correct numbers, neither saying
+    # five banded findings on Lictores' pair are INFO. Two correct numbers, neither saying
     # what it counted (rule 32). Found by looking at the pane, not by this file.
     assert "worklistFor(sev).forEach" in counts, (
         "the counts are read off the band lengths, or off the whole program rather than the "
@@ -9984,7 +9984,7 @@ def test_a_file_band_takes_a_file_route_and_never_a_routine_one() -> None:
     """A path where a node id belongs selects nothing, plausibly and in silence.
 
     `CHANGE_FILE_BANDS` exists because its rows are files: a module docstring belongs to no
-    routine, and in the 141 of Mensores' 628 files that run nothing at import there is no
+    routine, and in the 141 of Lictores' 628 files that run nothing at import there is no
     routine it could be reported against at all. Routed as `chg` the row would hand a path
     to `selectFromNav`, which would find no node and leave the inspector saying "Nothing
     selected" while every control worked -- rule 30's defect exactly, and the reason that
@@ -10114,7 +10114,7 @@ def test_the_diagram_head_states_a_count_of_one_in_english() -> None:
     """"1 boxes over 8 routines" is `test_a_file_band_states_a_count_of_one_in_english`
     one surface over, and it was true of every noun in the sentence.
 
-    Measured on Mensores 2026-09-08 before the fix: **8 of 53 compartments hold one box**,
+    Measured on Lictores 2026-09-08 before the fix: **8 of 53 compartments hold one box**,
     and of 250 opened boxes **97 hold one routine**, 43 cross to one other box, 24 hold one
     flow within. This is not a rare edge -- it is what the second level mostly says.
 
@@ -10143,7 +10143,7 @@ def test_the_diagram_head_states_a_count_of_one_in_english() -> None:
 def test_a_kept_arrow_states_a_count_of_one_in_english() -> None:
     """The note on a kept flow is what the reader sees on the shelf weeks later.
 
-    Both halves of it are one often: over 476 arrows on Mensores 2026-09-08, **116 carry
+    Both halves of it are one often: over 476 arrows on Lictores 2026-09-08, **116 carry
     exactly one call site** and 17 exactly one touch. `${id.weight} along it` beside it
     needs nothing -- there is no noun in it -- which is why this reads the note and not
     the whole head.
@@ -10208,7 +10208,7 @@ def _run_shorten(body: str) -> str:
         assert f"function {name}(" in src, (
             f"{name} is no longer where this test slices it from"
         )
-    prog = f'var ROOT = "mensores";\n{src}\n{body}'
+    prog = f'var ROOT = "lictores";\n{src}\n{body}'
     r = subprocess.run([engine, "-e", prog], capture_output=True, text=True)
     assert r.returncode == 0, f"the snippet failed:\n{r.stderr}"
     return r.stdout.strip()
@@ -10217,12 +10217,12 @@ def _run_shorten(body: str) -> str:
 # Real names from the corpus, each one chosen because it drove a decision. The budget is
 # the navigator's, which is the field these were calibrated against.
 _MODULES = [
-    "mensores.disceptator._advance_gate",
-    "mensores.disceptator._anthropic_architect",
-    "mensores.storage.sqlite.migrations.0027_repair_session_claims_release_causes",
-    "mensores.cli.audit",
-    "mensores._config",
-    "mensores.quaestor._envelope",
+    "lictores.conciliator._advance_gate",
+    "lictores.conciliator._anthropic_architect",
+    "lictores.storage.sqlite.migrations.0027_repair_session_claims_release_causes",
+    "lictores.cli.audit",
+    "lictores._config",
+    "lictores.tribunus._envelope",
 ]
 
 
@@ -10281,13 +10281,13 @@ def test_shortening_keeps_both_ends() -> None:
 def test_the_leaf_survives_where_anything_can() -> None:
     """The leaf is where uniqueness usually sits, so it is the last thing broken.
 
-    `disceptator._anthropic_architect` was coming out as `disceptator._an…opic_architect`:
+    `conciliator._anthropic_architect` was coming out as `conciliator._an…opic_architect`:
     the package kept whole -- and the navigator already prints it as the group heading --
     while the one part separating this row from its neighbours was cut in half. The head
     takes the damage now.
     """
     out = _run_shorten("""
-      var r = shorten("disceptator._anthropic_architect", 30);
+      var r = shorten("conciliator._anthropic_architect", 30);
       console.log(JSON.stringify([r.text, r.text.endsWith("._anthropic_architect")]));
     """)
     assert out.endswith("true]"), f"the leaf did not survive: {out}"
@@ -10298,34 +10298,34 @@ def test_a_path_is_jointed_at_its_slashes() -> None:
 
     A string holding both separators is a path with an extension, every time. Choosing `.`
     there gives two parts, no middle to elide, and a cut through a directory name --
-    `mensores/…/_…y` where `mensores/…/_audit.py` was available.
+    `lictores/…/_…y` where `lictores/…/_audit.py` was available.
     """
     out = _run_shorten("""
-      var r = shorten("mensores/storage/sqlite/_audit.py", 22);
+      var r = shorten("lictores/storage/sqlite/_audit.py", 22);
       console.log(JSON.stringify([r.text, r.text.endsWith("_audit.py")]));
     """)
     assert out.endswith("true]"), f"the path lost its file name: {out}"
 
 
 def test_the_program_root_is_dropped_before_anything_that_identifies() -> None:
-    """All 566 of Mensores' modules begin `mensores.`, so it is the first thing to go.
+    """All 566 of Lictores' modules begin `lictores.`, so it is the first thing to go.
 
     Keeping it costs nine characters on every row to say what every row says, and for a
-    three-segment module it is kept *instead of* the package -- `mensores.….\\_advance_gate`,
+    three-segment module it is kept *instead of* the package -- `lictores.….\\_advance_gate`,
     which is the useless half retained and the informative half elided.
 
     `ROOT` is measured by the server over every module (`COVER_ROOT`). The first attempt
     looked for "a segment that names a package" and stripped nothing at all, because
-    `mensores` is itself a package: it matched at position 0 every time, threw nothing, and
+    `lictores` is itself a package: it matched at position 0 every time, threw nothing, and
     left the navigator exactly as it had been.
     """
     out = _run_shorten("""
       console.log(JSON.stringify([
-        moduleLabel("mensores.disceptator._advance_gate", 30).text,
-        moduleLabel("elsewhere.disceptator._advance_gate", 30).text.startsWith("elsewhere"),
+        moduleLabel("lictores.conciliator._advance_gate", 30).text,
+        moduleLabel("elsewhere.conciliator._advance_gate", 30).text.startsWith("elsewhere"),
       ]));
     """)
-    assert out == '["disceptator._advance_gate",true]', out
+    assert out == '["conciliator._advance_gate",true]', out
 
 
 def test_the_cover_states_the_program_root() -> None:
@@ -10349,8 +10349,8 @@ def test_the_cover_states_the_program_root() -> None:
 # --------------------------------------------------------------------------- #
 # "On its own" — the option that was offered, selected, handled, and undone
 #
-# Reported by Tom: *"I have selected society-2026-08-29 on its own. However, the next line
-# down still shows BASE then compared with society-2026-08-26."*
+# Reported by Tom: *"I have selected comitia-2026-08-29 on its own. However, the next line
+# down still shows BASE then compared with comitia-2026-08-26."*
 #
 # Everything about the feature was already right. The option existed, it was selected, the
 # handler set the field, cleared `CHANGES`, and carried a comment saying "On its own is a
@@ -10729,7 +10729,7 @@ def test_a_kept_line_says_which_version_it_was_kept_in() -> None:
     """The first kept subject in this product that is not position-independent.
 
     Identity was taken off file position early and deliberately: an id holding a line number
-    changes whenever anything above it moves, which across Mensores' real commit rate renders
+    changes whenever anything above it moves, which across Lictores' real commit rate renders
     a change view as thousands of false deletions. A kept line is exactly the thing that
     decision refused, and it is worth having anyway -- but only if it says so.
 
@@ -10906,7 +10906,7 @@ def test_every_field_marked_for_fitting_names_a_kind_the_fitter_answers() -> Non
 def test_prose_is_never_put_through_the_middle_elide() -> None:
     """An anomaly title is a sentence, and `shorten()` would cut its subject out.
 
-    All 107 of Mensores' findings contain a space and 80 contain a dot, so the middle-elide
+    All 107 of Lictores' findings contain a space and 80 contain a dot, so the middle-elide
     reads one as a dotted name: the head becomes ``self`` and the leaf becomes the whole
     predicate. `prose` is in `FIT_KINDS` in order to be **refused** -- a null, not a
     shortener -- and the guard is that it stays one.
@@ -10965,7 +10965,7 @@ def test_the_fitter_and_the_check_forgive_the_same_overflow() -> None:
     """One tolerance, or the two disagree about what fits.
 
     A fitted field is usually sized to its own content, so the space available and the
-    space needed are computed from the same text and come out exactly equal -- `mensores`
+    space needed are computed from the same text and come out exactly equal -- `lictores`
     was cut to `men…res` by a float comparison losing on the last bit. A looser check than
     the fitter would hide a real overflow; a tighter one would fail every field the fitter
     had just finished (rule 13).
@@ -11050,7 +11050,7 @@ def test_the_trail_scrolls_rather_than_squeezing_its_steps() -> None:
     `.trail` is `overflow-x: auto` and `render()` scrolls the current step into view, so
     scrolling is what the bar was built to do -- but its items were shrinkable, and three
     steps in a 404px bar were squeezed to fit and clipped. It looked like a shortening rule
-    and was a layout. The tell was `mensores` coming out as `men…res`: eight characters cut
+    and was a layout. The tell was `lictores` coming out as `men…res`: eight characters cut
     to seven, which is not a shortening.
     """
     css = _css_code(_read("tokens.css"))
@@ -11066,7 +11066,7 @@ def test_a_caller_row_stacks_its_module_under_its_name() -> None:
     """Side by side, a 344px pane cannot hold a 26-character name and a 31-character module.
 
     Two boxes fixed the *tail* and could not fix the *room*: protect the name and
-    `mensores.disceptator._architect_dispatch` reduces to `dis…tch`; floor the module and
+    `lictores.conciliator._architect_dispatch` reduces to `dis…tch`; floor the module and
     the name goes to `resolve_a…_dispatch`. Both measured, neither worth having. Stacked,
     both are whole, which is the shape the navigator already uses for this pair.
     """
@@ -11168,11 +11168,11 @@ def test_every_pane_reconciles_where_every_route_arrives() -> None:
 
 
 def test_switching_to_code_shows_the_file_the_selection_lives_in() -> None:
-    """Reported at the keyboard, on `disceptator._extraction_state.<module>`.
+    """Reported at the keyboard, on `conciliator._extraction_state.<module>`.
 
     *"When I change the center panel to Code, that panel shows
-    mensores/_internal/_governed_gates.py which is not what I expect to see."* It was not:
-    `/api/node` gave `mensores/disceptator/_extraction_state.py` for that node all along.
+    lictores/_internal/_governed_gates.py which is not what I expect to see."* It was not:
+    `/api/node` gave `lictores/conciliator/_extraction_state.py` for that node all along.
 
     The walk is guarded on the pane being on screen, which is right, and it was invited from
     exactly one place -- the end of `loadSpecimen`. Selecting while Code was behind another
@@ -11599,7 +11599,7 @@ def test_the_location_route_is_declared_before_the_row_route() -> None:
 
     The location button sits **inside** a row that is itself a selection, and the dispatcher
     returns on the first *kind* that matches rather than on the nearest element. Declared
-    after `docrow`, clicking `mensores/cli/agent.py:38` would select the routine instead of
+    after `docrow`, clicking `lictores/cli/agent.py:38` would select the routine instead of
     opening the file — a plausible-looking result, and the wrong one.
     """
     js = _code(_read("shell.js"))
@@ -11649,7 +11649,7 @@ def test_a_document_row_is_an_ordinary_selection() -> None:
 def test_a_row_with_no_node_carries_no_route_and_says_why() -> None:
     """Design rule 1: three states, and the reader is owed which one it is.
 
-    8 of Mensores' 178 entrypoints name a routine the resolver could not place. Given a
+    8 of Lictores' 178 entrypoints name a routine the resolver could not place. Given a
     `data-docrow` anyway they would look clickable and do nothing; dropped they would make
     the document quietly short.
     """
@@ -11696,10 +11696,10 @@ def test_a_step_is_named_by_the_move_that_files_it() -> None:
     being left, is deduplicated here, and donates only its note; filed **after**, it lands
     on the step the move already made and is dropped entire.
 
-    Measured on screen against `output/mensores` rather than reasoned: opening the kept
+    Measured on screen against `output/lictores` rather than reasoned: opening the kept
     cohort `AC-4`, which opens 112 routines, filed a step called `resolve_cli_invocation`
     -- one arbitrary member -- and wrote *"a plan or decision id"* onto the `kept things`
-    step the reader was leaving. Following the *quaestor* curiosity left an unrelated
+    step the reader was leaving. Following the *tribunus* curiosity left an unrelated
     routine called `rubrics` labelled *"45 modules, 1 constant"*.
 
     The adoption branch that used to rescue three of the seven is **gone**, not kept: it
@@ -11763,7 +11763,7 @@ def test_no_caller_names_a_trail_step_around_an_async_move() -> None:
     # The glossary term row, which is the same cohort door one surface over.
     term = js.split('closest("[data-term]")', 1)[1].split("});", 1)[0]
     assert "followThread(" in term and "pushTrail" not in term, (
-        "a glossary term files its own step; `mensores` opens 628 modules and one of them "
+        "a glossary term files its own step; `lictores` opens 628 modules and one of them "
         "would stand in for the word (rule 74)"
     )
 
@@ -12013,7 +12013,7 @@ def test_author_comments_are_lifted_out_and_counted() -> None:
     With raw HTML refused markdown-it disables the html_block rule **entirely**, so a comment
     is not a token to catch: it arrives as an ordinary paragraph and renders as body prose.
     Verified rather than assumed — parsing a document with three HTML constructs yields
-    `html_block: 0`. **7,317 comments across 505 of Mensores' 2,019 documents.**
+    `html_block: 0`. **7,317 comments across 505 of Lictores' 2,019 documents.**
 
     Lifted out before parsing, replaced by exactly as many newlines as they held (the
     frontmatter rule, for the frontmatter reason), and **listed with their lines** rather than
@@ -12390,7 +12390,7 @@ def test_the_mode_toggle_is_dimmed_off_mode_and_still_acts() -> None:
 # ------------------------------------------------------- module scope, answered --- #
 #
 # `<module>` is DunneFlow's own name for the synthetic scope that owns what no function
-# does (rule 18). It is a real node -- 487 of them on Mensores -- and the inspector was
+# does (rule 18). It is a real node -- 487 of them on Lictores -- and the inspector was
 # answering about it in a shape built for a routine, which made it state two things that
 # are not true of any of the 487.
 
@@ -12419,7 +12419,7 @@ def test_the_shell_spells_module_scope_in_exactly_one_place() -> None:
 def test_module_scope_is_not_told_it_might_be_a_way_in_or_dead_code() -> None:
     """The three-way hint is false of module scope in all three of its branches.
 
-    Measured on Mensores: 487 `<module>` nodes, **0 with any caller and 0 that are
+    Measured on Lictores: 487 `<module>` nodes, **0 with any caller and 0 that are
     entrypoints**, against baselines of 6,441 calls over 2,866 callees and 178 entrypoints
     of which 170 resolve. So the sentence did not merely read poorly here -- it fired on
     every single one of them, offering three explanations for a thing that cannot be called
@@ -12563,7 +12563,7 @@ def test_an_outside_plate_is_told_apart_from_a_package_by_the_server() -> None:
     """`answers`, not the length of a list (rule 30).
 
     A boundary node's id is `bnd:<kind>:<target>`, so the queries that answer for a package
-    matched nothing at all on an external plate: measured on Mensores, `ext:STDIO` holds
+    matched nothing at all on an external plate: measured on Lictores, `ext:STDIO` holds
     991 nodes and reported **0 in, 0 out, 0 touches** -- on screen, the claim that nothing
     in the program writes to standard output. Both a package with no callers and an
     external plate arrive as `[]`, and they mean opposite things.
@@ -13101,9 +13101,9 @@ def test_only_a_row_that_says_so_carries_several_ids() -> None:
 def test_a_held_back_word_can_be_put_back_and_the_decision_survives() -> None:
     """The one judgement in the vocabulary lane that is a reader's, not a measurement's.
 
-    889 of Society's undefined words occur only inside a compound constant name, and
+    889 of Comitia's undefined words occur only inside a compound constant name, and
     holding them back is what makes the worklist readable. The split cannot tell
-    `MENSORES_MAX_LEN`'s subject from its unit, and that word may occur nowhere else in
+    `LICTORES_MAX_LEN`'s subject from its unit, and that word may occur nowhere else in
     the program -- so the band is drawn, every word in it is offered back, and the
     decision is persisted per program beside `triage`. Tom, 2026-09-08: *"offer a chance
     to promote them back to the list manually"*.
@@ -13588,7 +13588,7 @@ def test_a_name_with_no_seam_is_divided_rather_than_cut_anywhere() -> None:
     Two halves, and the second is the one that would go unnoticed.
 
     **A seamless name is divided evenly**, at the corpus' own median run: `jointed()`'s three
-    seams cut Mensores' 4,823 routine names into 13,175 runs whose median length is 5 and
+    seams cut Lictores' 4,823 routine names into 13,175 runs whose median length is 5 and
     whose longest is 15, so an invented break aims at five and looks like a break an
     underscore would have made. No piece may be shorter than three, because orphaning one
     letter is the whole defect.
@@ -13792,7 +13792,7 @@ def test_the_toolbar_only_yields_width_where_something_can_absorb_it() -> None:
 # Node size: a fraction of the room its own plate gives it
 #
 # The dot used to be a pixel constant on a plate whose width was a world quantity, so a
-# node knew nothing about the space it had. Measured on Society at the default framing,
+# node knew nothing about the space it had. Measured on Comitia at the default framing,
 # 4,990 of 10,052 drawn nodes touched or overlapped a neighbour. These hold the parts of
 # the fix that live in the renderer rather than in `layout.py`.
 # --------------------------------------------------------------------------- #
@@ -13860,7 +13860,7 @@ def test_the_ceiling_is_stated_on_the_page() -> None:
     """Design rule 1: no filter is ever silent.
 
     A dot held below its earned size is a filter on the one channel this feature exists to
-    use, and at the default `spreadZ` it is forty-three of Society's fifty-three plates. A
+    use, and at the default `spreadZ` it is forty-three of Comitia's fifty-three plates. A
     reader who cannot see that has forty-three plates drawing one size for no stated reason.
     """
     shell = _read("shell.js")
@@ -14052,7 +14052,7 @@ def test_every_boundary_kind_has_its_own_glyph() -> None:
     fallback mark rather than the cloud.
 
     **Nobody had ever seen it, and that is the interesting part.** Every map on the machine
-    it was found on holds **zero** CLOUD_SDK boundaries — Society imports no `boto3`, no
+    it was found on holds **zero** CLOUD_SDK boundaries — Comitia imports no `boto3`, no
     `google.cloud` and no `azure`, so the rule at `python.yaml:143` is right and simply
     never fires. A kind can therefore be wrong for as long as it likes without a single
     reader being misled, and no amount of looking at real maps would have found it. A check

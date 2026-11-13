@@ -50,7 +50,7 @@ RATES: dict[str, tuple[float, float]] = {
     # after. The dearest tree per file measured, because headers grow with the tree: OpenUSD
     # took 0.176 s a file and Runtime/Core 0.068 s, so it prices those high.
     "cpp": (0.567, 0.034),
-    # Society, 628 files: 37.7 s whole, cold. The split is unrecorded, so it is halved.
+    # Comitia, 628 files: 37.7 s whole, cold. The split is unrecorded, so it is halved.
     "python": (0.030, 0.030),
     # 443 files: 1.5 s extracting, 1.83 s wall.
     "typescript": (0.0034, 0.0007),

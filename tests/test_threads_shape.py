@@ -168,7 +168,7 @@ def test_two_routines_that_make_one_decision_are_neighbours(store):
 
 
 def test_a_test_nobody_else_makes_is_not_a_neighbour(store):
-    """1,348 of Society's 1,516 distinct headers are made once. Keeping them would bury
+    """1,348 of Comitia's 1,516 distinct headers are made once. Keeping them would bury
     the 168 that mean something -- and unlike a table, a decision made once is simply this
     routine's own line rather than a shared thing nobody happens to share."""
     assert not [t for t in _algo(store, "decides_alone")
@@ -176,7 +176,7 @@ def test_a_test_nobody_else_makes_is_not_a_neighbour(store):
 
 
 def test_a_refusal_is_not_a_decision(store):
-    """`resolve/shape.py` draws that line and this lane keeps it. 3,931 of Society's
+    """`resolve/shape.py` draws that line and this lane keeps it. 3,931 of Comitia's
     9,625 points are guards, and admitting them would drown every real decision."""
     for name in ("refusing", "decides_one"):
         for t in _algo(store, name):

@@ -17017,7 +17017,17 @@ function codeDomKey() {
    * companion inverted: the cheap check is what makes it safe not to repaint. */
   const o = codeOverlay();
   const overlay = o ? `${FILEDIFF.compared}:${o.status}:${o.base.tone}` : "-";
-  return `${CODEFILE.file}#${CODEFILE.loading ? "…" : CODEFILE.available}#${overlay}`;
+  /* **And so is the comparison's own state**, for the same reason one answer later. The
+   * fact lane above the table says "reading what behaves differently…" while `CHANGES` is
+   * loading and lists the routines once it has answered, and it is drawn inside this page.
+   * `/api/changes` is the slow one — 28 s on a cold volume on 2026-11-12 — so it is the
+   * answer most likely to arrive after the file is on screen, and without it in the key the
+   * note stayed for ever: the navigator beside it had the counts and the lane was still
+   * "reading". Leaving the mode and coming back was the only cure. Rule 78: a pane kept up
+   * to date by whoever moved it is only as correct as the last thing that moved. */
+  const changes = !CHANGES ? "-" : CHANGES.loading ? "…"
+    : `${CHANGES.available ? "y" : "n"}:${CHANGES.compared || ""}`;
+  return `${CODEFILE.file}#${CODEFILE.loading ? "…" : CODEFILE.available}#${overlay}#${changes}`;
 }
 
 /* Drop the built subtrees and draw again. What `loadCodeFile` does at the end, minus the

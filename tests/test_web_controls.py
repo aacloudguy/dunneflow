@@ -6872,6 +6872,14 @@ def test_the_built_subtree_is_keyed_on_the_overlay_as_well_as_the_file() -> None
         "the key does not name which version the overlay is against, so moving the "
         "compared end hands back the previous pair's marks"
     )
+    # And the comparison's own state, which the fact lane inside that page is drawn from.
+    # `/api/changes` answered 28 s after the file was on screen (2026-11-12, a cold
+    # volume) and the lane said "reading what behaves differently…" until the reader left
+    # the mode and came back.
+    assert "CHANGES.loading" in key and "CHANGES.available" in key, (
+        "codeDomKey() does not consult the comparison, so the fact lane keeps saying it is "
+        "still being read after it has been (rule 78)"
+    )
 
 
 def test_every_control_that_moves_the_overlay_repaints_it() -> None:

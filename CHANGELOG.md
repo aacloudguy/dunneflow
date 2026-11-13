@@ -47,6 +47,17 @@ repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
 - A command no client sends is reported as dead code is. A map no model touched says
   nothing about models.
 
+### Fixed
+
+- **A Python call was drawn to the wrong routine when the program had exactly one of that
+  name.** `rows.append(x)` was shown as a probable call to the program's only `append`,
+  and likewise `get`, `update`, `count` and the other methods of Python's own types. On
+  this tool's own map that was 893 of 1,146 inferred edges. Such a call is now resolved
+  only by evidence (its class, a base class, an import) and is otherwise said to be
+  untyped. A few true edges are lost with the false ones; see Known limits.
+- **Code mode kept saying "reading what behaves differently…"** when the comparison
+  answered after the file had been drawn. It now repaints when the answer arrives.
+
 ### Security
 
 Reviewed as a whole for the first time; [`SECURITY.md`](SECURITY.md) says what is
@@ -71,8 +82,10 @@ refuses to let into this codebase.
 In [`BACKLOG.md`](BACKLOG.md), each with what would settle it: Go dependencies read as
 *unknown* rather than *outside* (32); `--include-tests` does not bring back Rust's inline
 test items (37); four rules files hold a common method name that needs measuring (38); a
-Kotlin file in a Java tree is a missing class to javac (47). The Windows and Linux builds
-are unsigned, and each archive is published with its SHA-256.
+Kotlin file in a Java tree is a missing class to javac (47). A Python method that shares a
+name with one of Python's own, called on a value nothing types, reads as untyped (stated
+residues). The Windows and Linux builds are unsigned, and each archive is published with
+its SHA-256.
 
 ## 0.2.0
 

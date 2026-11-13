@@ -151,3 +151,22 @@ def test_a_map_does_not_name_the_disk_it_was_made_on(tmp_path):
         p.relative_to(out).as_posix() for p in out.rglob("*")
         if p.is_file() and needle in p.read_bytes())
     assert named == ["p/analysis.json"], named
+
+
+def test_a_packaged_build_does_not_carry_the_installer_s_notes_about_this_machine():
+    """`copy_metadata` bundles the dist-info whole, and an editable install's
+    `direct_url.json` holds the checkout's path on the machine that built it. It was in
+    every packaged application until 2026-11-12. The spec names what it bundles; where a
+    build is present, the build itself is read."""
+    spec = (ROOT / "packaging" / "dunneflow.spec").read_text(encoding="utf-8")
+    assert "*_own_metadata()," in spec and "    *copy_metadata(" not in spec
+    # Naming the files was not enough: PyInstaller collects the dist-info itself, so the
+    # spec also takes them out of what the analysis decided.
+    assert '_NOT_SHIPPED = ("direct_url.json"' in spec and "a.datas = [d for d in a.datas" in spec
+    built = [p for p in (ROOT / "dist").glob("**/dunneflow-*.dist-info") if p.is_dir()]
+    for info in built:
+        names = {p.name for p in info.iterdir()}
+        if "direct_url.json" in names:
+            # A build from before this fix is still lying in `dist/`; the next one will not
+            # have it, and `release*.sh verify` runs this suite's frozen checks after a build.
+            pytest.skip(f"{info} predates the fix; rebuild and run again")

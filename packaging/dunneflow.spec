@@ -80,6 +80,28 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
 
+
+def _own_metadata():
+    """DunneFlow's dist-info, **without the files that describe the build machine**.
+
+    `copy_metadata` takes the directory whole, and an editable install's `direct_url.json`
+    is `{"url": "file:///<the checkout's path on the machine that built it>"}`: it was in
+    every packaged application (found 2026-11-12 by searching a build for the path).
+    `RECORD` and uv's two cache files are an installer's bookkeeping for that machine too.
+    What `runtime.tool_version()` and the entry points need is `METADATA` and
+    `entry_points.txt`; the licence travels with them. Named, so that a file a future
+    installer adds is left out until somebody has read it.
+    """
+    wanted = {"METADATA", "entry_points.txt", "WHEEL", "INSTALLER"}
+    out = []
+    for src, dest in copy_metadata("dunneflow"):
+        root = Path(src)
+        for f in sorted(root.rglob("*")):
+            rel = f.relative_to(root)
+            if f.is_file() and (rel.parts[0] == "licenses" or rel.as_posix() in wanted):
+                out.append((str(f), str(Path(dest) / rel.parent)))
+    return out
+
 # `PyInstaller.utils.osx` needs `macholib`, which is a macOS-only dependency and genuinely
 # absent elsewhere -- so it is imported where it is used rather than here, and this file can
 # be read at all on Windows.
@@ -321,7 +343,7 @@ datas = [
     *_tree(PKG / "web" / "static", "dunneflow/web/static"),
     *_tree(PKG / "web" / "vendor", "dunneflow/web/vendor"),
     # Which DunneFlow read this map, from the one place that answers it.
-    *copy_metadata("dunneflow"),
+    *_own_metadata(),
     # The licence and everyone else's. MIT, Apache-2.0, EPL-1.0 and the PSF licence each ask
     # that their notice travel with a binary copy, and the application is a binary copy of
     # all four. Read by nobody at run time, so outside `dunneflow/` and in no cache key.
@@ -355,6 +377,15 @@ a = Analysis(                                   # noqa: F821
     excludes=excludes,
     noarchive=False,
 )
+# **And after the analysis, whoever added them.** Naming the files in `datas` was not enough:
+# the rebuilt bundle still held the whole dist-info, because PyInstaller collects a
+# distribution's metadata itself once anything asks for it. So the installer's notes are
+# taken out of what the analysis decided, which is the one list every source of them passes
+# through (rule 51).
+_NOT_SHIPPED = ("direct_url.json", "RECORD", "REQUESTED", "uv_build.json", "uv_cache.json")
+a.datas = [d for d in a.datas                    # noqa: F821
+           if not (".dist-info" in d[0].replace("\\", "/")
+                   and d[0].replace("\\", "/").rsplit("/", 1)[-1] in _NOT_SHIPPED)]
 pyz = PYZ(a.pure)                               # noqa: F821
 
 exe = EXE(                                      # noqa: F821

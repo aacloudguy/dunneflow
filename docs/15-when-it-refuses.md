@@ -263,7 +263,7 @@ fields as you type, with **Analyse** greyed out until it is settled.
 | *…is a file, not a directory to analyse* | Point at the directory that contains the code. |
 | *…is inside the output root — that is where maps are written* | You have pointed it at its own output. Point it at source. |
 | *no name was given, and the directory has none to borrow* | Fill in **Call it**. |
-| *…is not a name a directory can have* | One plain name, no slashes. |
+| *…is not a name a directory can have* | One plain name, no slashes and no leading dot. |
 | *a file called … is already sitting where that program's directory would go* | Move or rename that file. |
 
 And one **note** rather than a refusal, which still lets you proceed:

@@ -5,7 +5,7 @@
  * nowhere in the tool. Lane 2 — the map's own eight documents — is tables and needs none of
  * this.
  *
- * **The line CLAUDE.md draws, and it is drawn here as well as there.** The rule is that
+ * **The line ARCHITECTURE.md draws, and it is drawn here as well as there.** The rule is that
  * `extractors/docs/` is scanned by hand, *no markdown library*. That rule is about **facts**:
  * the extractor's output is a contract, it is hashed into the cache key by
  * `doc_extraction_inputs()`, and it must never depend on a third party's reading of a
@@ -17,7 +17,7 @@
  * when it is clicked, what exists in the corpus. What it has to say leaves as **data
  * attributes** — `data-line` on every block, `data-doclink` on a link into the corpus,
  * `data-docanchor` on a link within the document — and the shell routes them. A renderer
- * that called `openDoc()` would be a second place that decides what a click means.
+ * that called `openDocumentAt()` would be a second place that decides what a click means.
  *
  * ── what the corpus actually contains, because the handling was chosen from it ──
  *

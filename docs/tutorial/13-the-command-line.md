@@ -55,6 +55,7 @@ cli.cmd_analyze  (cli.py:771)
   FILE       '\n'.join(lines), '\n'.join(lines) + '\n', *.md, *.yaml, /proc/meminfo, …
   PROCESS    ['sysctl', '-n', 'vm.swapusage'], f'pid {self.pid}', self.argv
   STDIO      Read it whole now? [y/N] , …, f'docs:  {…}', f'graph: {db_path}', …
+  …
 ```
 
 This is [chapter 3](03-one-selection-six-ways.md)'s inspector with no pixels. 497 routines
@@ -220,11 +221,11 @@ statement on the card runs here unchanged, and returns what the card said.
 Two things to know before you lean on it.
 
 **It is read-only and it will tell you when a map is half-written.** Every other command
-that reads a map refuses an unfinished one outright — an `analyze` killed part-way leaves a
-graph that opens perfectly and lies, so a reader that vouches for a number will not read
-one. (`analyze` itself is exempt, because re-opening one is how it recovers.) `query`
-is the single exception: it proceeds and **warns**, because its whole contract is that you
-get the rows that are there.
+that reads a map refuses an unfinished one unless you pass `--allow-unfinished` — an
+`analyze` killed part-way leaves a graph that opens perfectly and lies, so a reader that
+vouches for a number will not read one unasked. (`analyze` itself is exempt, because
+re-opening one is how it recovers.) `query` is the one that needs no flag: it proceeds and
+**warns**, because its whole contract is that you get the rows that are there.
 
 **The table names are the fact contract's.** `routines`, `calls`, `boundaries`, `files`,
 `constants`, `comments`, `sql_ops` — one schema that every extractor in every language

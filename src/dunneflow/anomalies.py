@@ -201,7 +201,7 @@ class Report:
     def add(self, a: Anomaly) -> None:
         """Keep the finding, disambiguating a genuine repeat rather than merging it.
 
-        Nine of the detectors group, so their key is unique by construction. Four do not
+        Most of the detectors group, so their key is unique by construction. Some do not
         -- `PARSE_ERROR` reports one finding per error in a file, and two files can
         legitimately create indexes of the same name -- and for those a key can repeat.
         Left alone, two findings would share an id and the pairing would quietly speak
@@ -254,9 +254,9 @@ def _routine_rows(store: Store, where: str,
                   args: tuple[object, ...] = (), *, scan: bool = False) -> list[Occurrence]:
     """The routines a finding is about, as occurrences the shell can already open.
 
-    One helper rather than the same three lines in six detectors: what a routine occurrence
-    *is* -- the `routine` route, the node id, the qualname to print -- is one answer, and
-    six copies would drift the day a route is renamed (rule 51).
+    One helper rather than the same three lines in each of its callers: what a routine
+    occurrence *is* -- the `routine` route, the node id, the qualname to print -- is one
+    answer, and copies would drift the day a route is renamed (rule 51).
 
     `where` is interpolated because every caller passes a literal written in this file; the
     values that come from data are bound.
@@ -1058,7 +1058,7 @@ def _bounded(row: sqlite3.Row) -> str:
 
 
 def _looped_boundaries(store: Store, r: Report) -> None:
-    """A database, queue or network call written inside a loop.
+    """A database, queue, network or local-IPC call written inside a loop.
 
     **The measurement chose the shape of this, and it is worth saying how.** Read as
     `net_calls` alone it fires twice on Comitia, and both are `wait_until_serving` --

@@ -349,9 +349,9 @@ def command_tree(store: Store, app_id: str, depth: int = 0,
         # **Ordered, and it was not** (rule 66). A mount had no order at all, so the
         # sub-applications came back in rowid order — which is the order the process pool
         # happened to finish files in, and so a different order every run. It is not
-        # cosmetic either: `command_tree_diagram` draws the first six commands of each
-        # node and counts the rest as *+N more*, so an undefended order decides **which
-        # commands appear in the picture**.
+        # cosmetic either: `command_tree_diagram` drew the first six commands of each
+        # node and counted the rest as *+N more*, so an undefended order decided **which
+        # commands appeared in the picture**. It chooses the six by reach now (BACKLOG 3).
         "SELECT child_id, name FROM cli_mounts"
         " WHERE parent_id = ? AND child_id IS NOT NULL AND child_id != ?"
         " ORDER BY name, child_id",

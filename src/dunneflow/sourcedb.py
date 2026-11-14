@@ -37,8 +37,8 @@ temporal layers, and it is deliberately small -- the working revision already ha
 identity and a timestamp, so keeping it is a change of state and nothing else. No path row
 moves and no body is touched.
 
-Nothing here reads a second revision yet. This is the spine, so that a time selector is
-added to a working view rather than invented alongside one.
+Nothing here read a second revision when this was written. It was built as the spine, so
+that a time selector was added to a working view rather than invented alongside one.
 """
 
 from __future__ import annotations
@@ -419,7 +419,7 @@ class SourceStore:
     def _resolve_for_write(self, revision: str | None) -> str:
         """Writing: `None` means the working revision, **opened if there is none**.
 
-        Deliberately not `_resolve`. Reading a store that holds nothing must answer
+        Deliberately not `resolve_revision`. Reading a store that holds nothing must answer
         nothing; writing into a store that holds nothing must create somewhere to put it,
         or the row lands in the legacy revision -- a path belonging to no named snapshot,
         which is the exact state this table exists to remove. `capture()` resolves once and
@@ -477,11 +477,10 @@ class SourceStore:
 
         `tree` is the **leaf** of the directory the source was read from -- the name a
         reader recognises this version by, since two versions of one program are two
-        directories. It is filled on a revision that has none rather than overwritten on
-        every open: re-analysing the same working revision from the same tree writes the
-        same value, and the one case where they differ -- re-analysing a working revision
-        from a *different* tree -- is the reader replacing what the snapshot is of, so the
-        newer answer is the true one.
+        directories. It is re-stamped on every open that names one: re-analysing the same
+        working revision from the same tree writes the same value, and the one case where
+        they differ -- re-analysing a working revision from a *different* tree -- is the
+        reader replacing what the snapshot is of, so the newer answer is the true one.
         """
         self._require_writable("open a revision")
         open_already = self.working_revision()
@@ -644,7 +643,7 @@ class SourceStore:
         """Record that `path` held this body at this revision.
 
         Written whether or not the blob was new: two paths with identical contents are
-        two facts about the program and one blob. `revision` defaults to the current one;
+        two facts about the program and one blob. `revision` defaults to the working one;
         `capture()` resolves it once and passes it, rather than asking per file.
         """
         revision = self._resolve_for_write(revision)

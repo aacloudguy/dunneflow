@@ -1,6 +1,7 @@
 """The written map.
 
-Seven documents, ordered the way an unfamiliar program is best approached: what it is,
+Sixteen documents (`PAGE_NAMES`), and the seven this module writes itself are ordered
+the way an unfamiliar program is best approached: what it is,
 how you get in, what happens then, what the pieces are, what shapes move between them,
 what it touches, and what the comments warn you about.
 
@@ -183,7 +184,7 @@ def render_all(store: Store, out_dir: Path, program: str,
         lambda: render_database(store, out_dir, program, stamp),
         lambda: render_network(store, out_dir, program, stamp, ranked=ranked),
         lambda: render_anomalies(report, out_dir, program, stamp),
-        # Documentation is a parallel input, so its two documents are written whether or
+        # Documentation is a parallel input, so its four documents are written whether or
         # not any documentation was found. A glossary that says "nothing defines these
         # eleven words" is a finding; an absent glossary is a silence.
         lambda: render_glossary(store, docs, out_dir, program, stamp),

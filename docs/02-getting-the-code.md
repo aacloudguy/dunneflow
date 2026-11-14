@@ -124,7 +124,8 @@ and the button after them says which of the two is the older — read, as it say
 two versions.
 
 **Recorded: the version the program states about itself**, if it states one, whether from
-`pyproject.toml`, or a module-level `__version__`, each with the file that proves it.
+a manifest such as `pyproject.toml`, `package.json` or `Cargo.toml`, or a module-level
+`__version__`, each with the file that proves it.
 Where the source says nothing, a version may be guessed from the directory's own name
 (`app-1.2.3`, `some-project-2026-09-08`) and is marked as a guess everywhere it appears.
 

@@ -124,7 +124,7 @@ function Invoke-Verify {
     # call site rots as the Python moves (rule 51), and there were three scripts asking it
     # three ways.
     #
-    # The tree it reads is the package itself and not `canonical\`: one reader per language
+    # The tree it reads is `tests\fixtures\polyglot` and not `canonical\`: one reader per language
     # means the probe has to hold every language, and `canonical\` is Python to the last
     # file, so the TypeScript stamp went uncompared and the step passed anyway (rule 37).
     & uv run python (Join-Path $Root 'tools\fingerprints.py') (Join-Path $Build $CliExe)

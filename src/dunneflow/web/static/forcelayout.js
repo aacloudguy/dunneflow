@@ -660,8 +660,8 @@ fn consensusMove(@builtin(global_invocation_id) gid: vec3<u32>) {
       pass = enc.beginComputePass();
       pass.setPipeline(pIntegrate); pass.setBindGroup(0, gIntegrate);
       pass.dispatchWorkgroups(groups); pass.end();
-      /* The consensus, on the same schedule the workers can keep. Two passes with their
-       * own encoders so the mean is taken from a `pos` nothing is writing. */
+      /* The consensus, on the same schedule the workers can keep. Two passes of their
+       * own so the mean is taken from a `pos` nothing is writing. */
       if (alpha > 0 && it % every === 0) {
         pass = enc.beginComputePass();
         pass.setPipeline(pMean); pass.setBindGroup(0, gMean);

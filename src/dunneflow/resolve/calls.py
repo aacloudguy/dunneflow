@@ -25,14 +25,15 @@ with one is resolved; a language with none has every call left external **and is
 with how many calls that was. It is not a placeholder and it was not hypothetical: chunk 9
 shipped a TypeScript map a whole chunk before TypeScript's supplied edges, and *left
 external for want of a resolver: typescript 4,990* is what made that map honest rather than
-a program that appears to call nothing. `RESOLVERS` has three entries now, and Go arrived
+a program that appears to call nothing. `RESOLVERS` has six entries now, and Go arrived
 the way that sentence said it would.
 
 **And the two resolvers get there by different means, which is the point of the seam.**
 Python's argues from names, imports and enclosing scopes and says how much to trust each
-answer; TypeScript's is handed the answer by a checker that already made it and does no
-arguing at all. Both return `Edge` or `NoEdge`, both are counted here, and `Edge.supplied`
-is what keeps the two provenances countable side by side (rule 32).
+answer; `supplied.resolve`, which the other five languages share, is handed the answer by
+the reader's own toolchain, which already made it, and does no arguing at all. Both return
+`Edge` or `NoEdge`, both are counted here, and `Edge.supplied` is what keeps the two
+provenances countable side by side (rule 32).
 """
 
 from __future__ import annotations
@@ -45,9 +46,9 @@ from .dispatch import resolve_dispatch
 from .ipc import resolve_ipc
 from .python.calls import resolve as _resolve_python
 
-# `ResolveStats` is re-exported deliberately: it was this module's type for a year and
-# `cli.py` and fourteen test files ask this module for it. The contract moved; the address
-# did not (rule 30).
+# `ResolveStats` is re-exported deliberately: it was this module's type for a year, and
+# `cli.py` and the tests get one from this module's `resolve_calls`. The contract moved;
+# the address did not (rule 30).
 __all__ = ["RESOLVERS", "ResolveStats", "resolve_calls"]
 
 # Which resolver answers for which language. The registry's shape one subject over, and

@@ -29,7 +29,7 @@ graph, and every row keeps its node.
 
 ## Lane 1: your program's own prose
 
-The other lane is the corpus: every Markdown, reStructuredText and plain-text file found
+The other lane is the corpus: every Markdown, reStructuredText, AsciiDoc and plain-text file found
 beside the source, rendered, searchable, and cross-referenced with the code.
 
 ![Document mode with "The program's own 56" chosen over "The map". A blue note reads "No document in this map is about entrypoints_from_manifests. It carries no plan, ticket or decision id, so there is nothing for a document to have in common with it. What follows is the whole corpus — DunneFlow relates code to prose through the plan, ticket and decision ids they both name, and this one shares none." Beside a "Filter by path or title…" box: "All 56 documents." Under OTHER 47 are listed, each with its title, path, word count and section count: Backlog BACKLOG.md 3,493w 3 §, the design rules, ground truth, adding a language, packaging, the measured budgets PERFORMANCE.md 16,140w 34 §, the rules RULES.md 29,136w 1 §, third-party notices, then the user guide's chapters from 1. Installing docs/01-installing.md 2,882w 9 § down to 5. The shell](images/06-corpus-lane.jpg)
@@ -66,26 +66,26 @@ lists are useful and they are useful for opposite reasons.
 is evidence, even though it is never code. The corpus is read to find out what the authors
 *meant*; it is never read as though it were a description of what the program *does*.
 
-## Four states, not two
+## Five states, not two
 
 A document needs two stores to display: the index that says it exists, and the sidecar that
-holds its bytes. Either can be missing on its own, so there are four answers rather than
+holds its bytes. Either can be missing on its own, so there are five answers rather than
 two, each with its own sentence:
 
 - never scanned;
+- scanned, but not this file;
 - scanned, but the bytes were not captured;
 - captured, but not for the version you are looking at;
 - captured, but not this path.
 
 They look identical on a blank pane and the thing to do about each is different. This is a
-pattern you will have noticed by now — DunneFlow would rather write four sentences than let
+pattern you will have noticed by now — DunneFlow would rather write five sentences than let
 you mistake one problem for another.
 
 ## A note on rendering
 
-The document renderer is the only third-party parser in the entire tool, and it is fenced
-off carefully: it turns text into markup and is allowed to know nothing else. Raw HTML is
-refused outright, and **an image is never fetched** — an `<img>` would fire a network
+The document renderer is a third-party parser, and it is fenced off carefully: it turns
+text into markup and is allowed to know nothing else. Raw HTML is refused outright, and **an image is never fetched** — an `<img>` would fire a network
 request with no click and no consent, out of a tool whose whole posture is that nothing
 leaves your machine.
 

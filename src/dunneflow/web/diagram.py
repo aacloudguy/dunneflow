@@ -35,9 +35,10 @@ aspect-ratio or width option to fix it; its whole surface is `rankdir`, `align`,
 `edgesep`, `ranksep`, `ranker`, `acyclicer` and the margins. Graphviz's `pack=true` packs
 components instead of rowing them: the same graph is **782x744, 1.1:1, in 83 ms**.
 
-`pack=true` is passed **alone**. It was first tried beside `ratio=compress, size="14,10"`
-and appeared to do almost nothing, because `size` merely *scales* a finished drawing and
-`ratio` fights the packing -- a probe that changes two things at once measures neither.
+`pack=true` is passed with `packmode="node"` and **nothing else**. It was first tried
+beside `ratio=compress, size="14,10"` and appeared to do almost nothing, because `size`
+merely *scales* a finished drawing and `ratio` fights the packing -- a probe that changes
+two things at once measures neither.
 
 ## Ports, and why a crossing is drawn as one
 
@@ -110,7 +111,7 @@ class Box:
 
     id: str
     label: str
-    kind: str          # 'class' | 'file' | 'macro' | 'touch' | 'port' | 'wayin'
+    kind: str          # 'class' | 'file' | 'macro' | 'routine' | 'touch' | 'port' | 'wayin'
     holds: int = 0     # how many routines are folded into it -- 0 for a touch or a port
     # The node ids this box stands for, so a click on the drawing reaches the selection the
     # rest of the dashboard shares. A box that cannot name what it holds is a shape (rule
@@ -168,9 +169,9 @@ class Compartment:
 
         **Counted over every lane, including the crossings that are not drawn**, and that
         is Tom's call rather than the default. It makes the role a fact about the program
-        instead of a fact about the `ports` toggle, and it is the same reading `unlinked`
-        has always taken two lines below -- one question, one answer (rule 13). The cost is
-        stated rather than hidden: with ports off, a box can be `emits` with no outgoing
+        instead of a fact about the `ports` toggle, and it is the same reading of the
+        crossings `unlinked` takes in `stats` below -- one question, one answer (rule 13).
+        The cost is stated rather than hidden: with ports off, a box can be `emits` with no outgoing
         arrow on screen, because the arrow leaves the compartment. The panel already says
         how many crossings there are and that they are not drawn, and the legend says the
         role counts them.
@@ -223,8 +224,10 @@ class Compartment:
             "unlinked": len(drawn - linked),
             # **Per role, because the legend states a count beside every swatch** and a
             # colour whose population nobody can see is a claim nobody can weigh (rule 32).
-            # `none` and `unlinked` are the same population by construction -- a box with
-            # no flow either way is exactly a box with no role -- and they are both here
+            # `none` and `unlinked` are the same population wherever no way in is drawn -- a
+            # box with no flow either way is exactly a box with no role; a box whose only
+            # flow is a way in entering it is `receives` to `roles()` and still `unlinked`
+            # here, which does not read `entered` -- and they are both here
             # because one is the sentence the panel has always printed and the other is the
             # swatch's number, and a reader seeing them disagree would be right to worry.
             "role_emits": by_role["emits"],
@@ -283,7 +286,8 @@ def build(model: GraphModel,
     so the diagram describes exactly what the stack describes. **Shadows are not consulted**:
     a shadow is a placement device and never an endpoint (rule 23), and `model.edges` already
     carries each crossing twice, once per plate -- which is why every crossing here is keyed
-    by the *plate* of its far end rather than counted, or it would be counted twice.
+    by the *plate* of its far end, so it is one arrow and not two. Its weight is added once
+    per copy all the same, so a crossing's weight is twice what the store holds.
 
     `ways` maps a routine id to the ways in that start it, and is the **only** thing here
     that did not come out of the model. It arrives as an argument rather than being looked
@@ -306,7 +310,7 @@ def build(model: GraphModel,
         if n.kind == "ROUTINE":
             # `<module>` is the synthetic scope that owns what no function does. It is a
             # real node in the stack and it is not a thing a reader looks for in a diagram,
-            # so its routines fold into their file like any other loose function.
+            # so it joins no box here, and an edge that starts or ends at it is not drawn.
             if n.label == "<module>":
                 continue
             mod, cls = d.get("module"), d.get("class_name")
@@ -467,9 +471,9 @@ def split_edge(eid: str) -> tuple[str, str] | None:
 def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
     """The compartment as Graphviz DOT -- the source that is actually drawn.
 
-    `pack=true` and nothing else. See this module's docstring: `size` scales a finished
-    drawing and `ratio` fights the packing, so the two attributes that look like they help
-    are the two that hid the fix.
+    `pack=true` with `packmode="node"`, and nothing else. See this module's docstring:
+    `size` scales a finished drawing and `ratio` fights the packing, so the two attributes
+    that look like they help are the two that hid the fix.
 
     **Ports are off by default, and that is design rule 19 arriving here on its own.** Drawn,
     they do two things to the picture and both are bad. They *connect what was disconnected*,
@@ -699,8 +703,8 @@ def flow_of(c: Compartment, box_id: str) -> dict[str, list[dict[str, Any]]]:
 def edge_flow(c: Compartment, src: str, dst: str) -> tuple[list[str], int] | None:
     """The kinds carried by one arrow and its weight, or `None` if there is no such arrow.
 
-    All three lanes are asked, because a reader clicking an arrow does not know or care
-    which lane the drawing filed it in -- `inside`, `out` and `into` are a fact about the
+    All four lanes are asked, because a reader clicking an arrow does not know or care
+    which lane the drawing filed it in -- `inside`, `out`, `into` and `entered` are a fact about the
     *picture* (rule 23's within-plate links and crossings), not about the edge. `None`
     rather than an empty answer: "there is no arrow between these two" and "the arrow
     carries nothing" are different claims, and an empty panel states the second.
@@ -851,8 +855,8 @@ def box_index(comps: dict[str, Compartment]) -> tuple[dict[str, str], dict[str, 
     """Which box each node lives in, and what each box is called.
 
     Built from the compartments rather than from a second walk over the store, so the
-    second level places a crossing in exactly the box the first level drew it in. Two
-    passes over ten thousand members, held on the base beside the compartments.
+    second level places a crossing in exactly the box the first level drew it in. One
+    pass over ten thousand members, held on the base beside the compartments.
     """
     box_of: dict[str, str] = {}
     label_of: dict[str, str] = {}

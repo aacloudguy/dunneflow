@@ -154,7 +154,8 @@ class ResolveStats:
         return (self.resolved / self.total * 100) if self.total else 0.0
 
     def unresolved_sentence(self) -> str:
-        """*typescript: 5,119 calls left external — this build has no resolver for it.*
+        """*left external for want of a resolver: typescript 5,119 — this build reads that
+        language and cannot yet see the far end of its calls.*
 
         **The one place those words live** (rule 51), because the field was written in
         chunk 6 and read by nothing until chunk 9 made it fire. `resolve/calls.py`'s own

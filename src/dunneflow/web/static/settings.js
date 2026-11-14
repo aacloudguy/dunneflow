@@ -14,7 +14,7 @@
 'use strict';
 
 /* Wrapped: a classic script's top-level declarations are globals, and a global here
- * collides with the same name imported in app.js. One exported name each, no leakage. */
+ * collides with the same name in another script. One exported name each, no leakage. */
 (function () {
 
 /* Bumped to 2 when the graph and the shell became one application. Before that there were
@@ -397,7 +397,7 @@ const DEFAULTS = {
    *
    * A third switch for the reason there is a second: what it costs is different again, and
    * it is the most expensive of the three. Findings are not rows to be joined; they are
-   * what thirteen detectors conclude, so the compared end means running them over a graph
+   * what the detectors conclude, so the compared end means running them over a graph
    * this process has never opened -- 1.3 s to 4.1 s the first time, and nothing at all
    * afterwards. That is why it is fetched when the worklist is *opened* rather than with
    * the cover, and why a reader who does not want to pay it has somewhere to say so.
@@ -409,7 +409,7 @@ const DEFAULTS = {
   theme: 'system',        // 'system' | 'light' | 'dark'
   scale: 1,               // design rule 3: one multiplier over every dimension
   startup: 'cover',       // 'cover' | 'graph'
-  mode: 'graph',          // which centre view: 'graph' | 'table' | 'doc'
+  mode: 'graph',          // which centre view: 'graph' | 'table' | 'doc' | 'code' | 'diagram' | 'shape'
   menuOrder: 'waysin',    // 'waysin' | 'explore' -- a genuine tie, so both exist
   trailShown: true,
   trailCap: 12,

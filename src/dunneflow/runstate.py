@@ -30,7 +30,7 @@ the graph cannot give -- *not finished, and still being worked on*.
 
 Written whole, through a temporary file and `os.replace`, so a reader never sees half of
 one. On Windows a replace can be refused while another process has the file open; a write
-that loses that race is dropped rather than retried, because the next beat is two seconds
+that loses that race is dropped rather than retried, because the next beat is five seconds
 away and a progress report is not worth blocking the run for.
 """
 

@@ -9466,7 +9466,7 @@ def test_the_findings_overlay_says_what_it_could_not_show() -> None:
     assert "not compared" in note, "there is no sentence for a comparison nobody has asked for"
     assert ".loading" in note and "comparing with" in note, (
         "the wait is silent -- and this is the dear one, seconds on the first open of a "
-        "session, because the compared end is thirteen detectors over an unopened graph"
+        "session, because the compared end is every detector over an unopened graph"
     )
     assert ".available" in note and ".reason" in note, (
         "a graph this build refuses to read is reported as a comparison that found nothing"

@@ -2,7 +2,7 @@
  *
  * Small on purpose. Everything hard — the analyse dialog, the pre-flight, the progress
  * panel, the stop button — is `analyze.js`, shared with the shell; this page supplies the
- * four host functions that module cannot know and draws a list.
+ * five host functions that module cannot know and draws a list.
  *
  * **One route lists programs, and it is the shell's.** `/api/programs` answers with nothing
  * open: `serving` is empty, `files` is null for every row, and `root` rides along. A second

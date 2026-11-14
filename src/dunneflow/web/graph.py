@@ -3,20 +3,21 @@
 Each disk is an ordinary 2D graph. Within a disk, nodes and edges behave exactly as they
 would in any force-directed picture. When an edge leaves the disk, the far node appears
 here as a **shadow** -- a proxy at its own position on this disk, taking part in this
-disk's forces like any other node -- while the real node lives on its own disk. A
-**transposition** line joins the two across Z.
+disk's forces like any other node -- while the real node lives on its own disk. The
+renderer resolves the two halves back to their real ends and draws the crossing once, as
+one line across Z; a shadow itself is never drawn (rule 23).
 
 This is what makes ten thousand nodes legible. A single plane holding all of Lictores is
 a hairball at any zoom; the same graph cut into fifty-five disks is fifty-five pictures,
 the largest of which holds 645 nodes. Decomposition, not filtering, is the fix -- and it
-is the fix precisely because nothing is thrown away: every cross-disk edge is still drawn,
+is the fix precisely because nothing is thrown away: every cross-disk edge is still held,
 twice, and the reader can follow it.
 
 One entity therefore holds a position *per disk it appears on*: its real one, plus one for
 every disk that shadows it. `layout` is keyed `(node_id, disk)` for that reason.
 
-Nothing here talks to a renderer. It emits plain dictionaries; `serve.py` turns them into
-JSON and the browser decides how to draw them.
+Nothing here talks to a renderer. It emits a plain `GraphModel`; `serve.py` turns it into
+JSON and the browser decides how to draw it.
 """
 
 from __future__ import annotations
@@ -80,11 +81,12 @@ class Node:
 
 @dataclass(slots=True)
 class Edge:
-    """A connection, always drawn on exactly one disk.
+    """A connection, always placed on exactly one disk.
 
     A cross-disk connection becomes two edges -- one on each disk, each ending in a
-    shadow -- plus a transposition. It is never dropped, and never drawn as a line
-    floating between plates with no endpoint.
+    shadow -- which the renderer resolves back to one crossing between the real ends
+    (rule 23). It is never dropped, and never drawn as a line floating between plates
+    with no endpoint.
     """
 
     src: str
@@ -328,9 +330,9 @@ def _fold_to_modules(m: GraphModel, disk_of: dict[str, str]) -> dict[str, str]:
             node.detail["folded"] = 0
             merged[fid] = node
             order.append(fid)
-        # A module's file is the first non-empty one seen; a module is one file here, and
-        # taking the first rather than asserting it keeps a partially extracted file from
-        # blanking the whole node.
+        # A module's file is the first non-empty one seen; a module is usually one file
+        # here (a C `foo.c` and `foo.h` share one), and taking the first rather than
+        # asserting it keeps a partially extracted file from blanking the whole node.
         if not node.detail.get("file") and n.detail.get("file"):
             node.detail["file"] = n.detail["file"]
         holds: dict[str, int] = node.detail["holds"]
@@ -387,7 +389,7 @@ def _add_edges(store: Store, m: GraphModel, disk_of: dict[str, str],
     An edge whose endpoint is not a node -- a call resolved to something outside the
     program, a boundary on a routine that was never extracted -- is counted and dropped
     here rather than drawn to nowhere. The count is reported; a vanished edge that
-    nobody counts is the silent filter rule 1 forbids.
+    nobody counts is the silent filter design rule 1 forbids.
 
     `fold` maps an entity to the node that stands for it, and is `None` where each entity
     stands for itself. Folding happens **here**, on the way in from the store, where every

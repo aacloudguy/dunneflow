@@ -229,7 +229,7 @@ def test_every_detector_declares_what_identifies_its_finding():
     The failure this guards against is a **new detector** rather than a change to an
     existing one -- which is exactly what a second language brings, since detectors are
     query-driven and a Kotlin or C++ extractor's facts will want detectors of their own.
-    A test naming the thirteen that exist today would pass the day the fourteenth is
+    A test naming the ones that exist today would pass the day the next is
     written without an identity.
 
     `ident_parts` has no default, so omitting it is already a `TypeError`. This says the

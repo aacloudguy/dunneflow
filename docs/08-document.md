@@ -50,7 +50,7 @@ mirror and the macros.
 
 ![Document mode, corpus lane, "The program's own 56": a blue note saying no document in this map is about cmd_serve, a filter box, "All 56 documents.", and the first group, OTHER 47, listing Backlog (BACKLOG.md, 3,493w, 3 §), the design rules, ground truth, adding a language, packaging, the measured budgets (16,140w, 34 §), the rules (29,136w), the third-party notices, and the guide's chapters from 1. Installing (2,882w, 9 §) onward, each with its path, word count and section count](images/08-document-corpus-lane.jpg)
 
-Everything DunneFlow found beside the code encompassing Markdown, reStructuredText, and plain text, all
+Everything DunneFlow found beside the code encompassing Markdown, reStructuredText, AsciiDoc, and plain text, all
 grouped by what kind of document it is, with its size in words and sections.
 
 The filter box narrows by path or title. It hides rows rather than rebuilding the list,

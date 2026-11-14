@@ -108,7 +108,7 @@ lookup by exactly the name given.
 **123 deleted**
 
 One hundred and fourteen of them are every routine under `extractors/cpp` — an earlier C++
-reader, written in Python, eleven files of it. It is not in today's tree, and the 245
+reader, written in Python, twelve files of it. It is not in today's tree, and the 245
 routines of `plugins/cpp` are. The comparison does not say one replaced the other; it says
 one is gone and one has arrived, which is all the source says.
 
@@ -152,7 +152,7 @@ and "these 186 are not, those 228 are" is the answer.
 
 **What it does not see**
 
-`shell.js`, the dashboard's own script, gained 1,165 lines between these two commits, and
+`shell.js`, the dashboard's own script, had 1,165 lines added between these two commits, and
 this map does not read JavaScript. The comparison can say nothing about those. It does not
 pretend the change was smaller, either: *About this map*, in the user guide, lists every
 kind of file it left out under **Left out of it**, and `.js` is on it.

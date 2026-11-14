@@ -34,8 +34,9 @@ from pathlib import Path
 from .. import revisions
 from .analysis import Verdict
 
-# What a map directory is allowed to cost before the reader is told the number. Not a limit
-# -- a **note**, on `analysis.check`'s precedent: a surprise is not an error, and a reader
+# The room a move must find, as a multiple of what the maps take, before it is refused as
+# not fitting. The size itself is always told and is not a limit
+# -- it is a **note**, on `analysis.check`'s precedent: a surprise is not an error, and a reader
 # moving 4 GB onto a nearly full disk should be told rather than stopped, because only they
 # know what else is going there. Refusal is reserved for *it will not fit*.
 HEADROOM = 1.05
@@ -52,7 +53,7 @@ WRITE_PROBE = ".dunneflow-write-test"
 def _size(path: Path) -> int:
     """Bytes under `path`, following nothing. Symlinks are counted as links, not targets.
 
-    A map directory holds databases and generated Markdown and nothing else, so there is
+    A map directory holds databases, generated Markdown and a run's sidecar, so there is
     normally no link in it at all -- but a reader's output root is a directory they own, and
     following a link out of it would measure something that is not being moved.
     """

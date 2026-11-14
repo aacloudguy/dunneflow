@@ -53,7 +53,7 @@ from .words import plural
 # one on somebody else's map. The cost is a descent that finds nothing.
 #
 # The five names added for v2 -- `target`, `vendor`, `obj`, `Pods` and `DerivedData` --
-# are the build output of languages this tool cannot read yet, and `DOC_SKIP_DIRS` has
+# were the build output of languages this tool could not read then, and `DOC_SKIP_DIRS` has
 # had `vendor` and `target` all along: this walk was the only one of the two that could still
 # descend into somebody else's build tree. `.gradle`, `.build` and `.turbo` are
 # deliberately **not** listed, because every name below a dot is already pruned and a
@@ -111,9 +111,9 @@ class WalkStats:
     failed: int = 0
     # What the code walk left out, and design rule 1 is why every one of these exists: a
     # filter nobody can see is a map that is quietly smaller than the directory it claims
-    # to describe. Point this tool at a Go repository today and the map is empty; with
-    # `unclaimed` it says *4,120 `.go` files -- no reader claims `.go`*, which is a
-    # sentence somebody can act on (rule 89).
+    # to describe. Pointed at a Go repository before there was a Go reader, the map was
+    # empty; with `unclaimed` it said *4,120 `.go` files -- no reader claims `.go`*, which
+    # is a sentence somebody can act on (rule 89).
     #
     # `pruned` is keyed by the directory **name** that matched and counts directories, not
     # files, and the paths are deliberately not kept: four hundred `__pycache__` paths are
@@ -129,8 +129,9 @@ class WalkStats:
     # never be the difference between two runs that nobody can see.
     tests_excluded: dict[str, int] = field(default_factory=dict)
     # Language -> files dropped by **that language's own** skip list, after the suffix
-    # said who owns them. Python's list is wholly covered by `SKIP_DIRS` today, so this
-    # cannot fire yet; it is the counter for the half of the asymmetry above that can.
+    # said who owns them. Python's list is wholly covered by `SKIP_DIRS`, so this does not
+    # fire for Python; it is the counter for the half of the asymmetry above that can, and
+    # the C++ reader's `ThirdParty` is one that does.
     lang_skipped: dict[str, int] = field(default_factory=dict)
     # Why -> how many: names in the tree that a reader would have claimed and that are not
     # files of this tree (`not_a_tree_file`). Said, like everything else left out.
@@ -273,9 +274,9 @@ def walk_residue(stats: WalkStats) -> list[str]:
     """What the code walk left out, in sentences, or nothing at all when it left nothing.
 
     Design rule 1 in the one place a reader will actually be standing: the end of an
-    analysis. Point this tool at a Go repository and the map is empty; what is wanted is
-    not an empty map but *2,410 `.go` files — no reader here claims `.go`*, which names
-    the thing that happened and implies what would fix it (rule 89).
+    analysis. Pointed at a Go repository before there was a Go reader, the map was empty;
+    what was wanted was not an empty map but *2,410 `.go` files — no reader here claims
+    `.go`*, which names the thing that happened and implies what would fix it (rule 89).
 
     **One line per kind and never one per file.** A run that pruned four hundred
     `__pycache__` directories has one fact to report and four hundred paths to report it
@@ -425,8 +426,8 @@ def discover(root: Path, include_tests: bool = False,
     number in the map.
 
     `rules` defaults to every plugin this build ships. It is a parameter rather than a
-    lookup so that a caller can ask this walk about readers it does not have yet, which is
-    the only way the multi-language behaviour above can be pressed while one language is
+    lookup so that a caller can ask this walk about readers it does not have yet, which was
+    the only way the multi-language behaviour above could be pressed while one language was
     wired.
 
     Which suffix belongs to whom is `ingest.suffix_owners`, the same function the registry
@@ -599,7 +600,7 @@ class Breakdown:
 def parts_under(root: Path, bound: int = TOO_BIG,
                 rules: Sequence[DiscoveryRules] | None = None,
                 judge_root: Path | None = None) -> Breakdown:
-    """The tree cut into parts no larger than `bound`, or `[]` if it already is one.
+    """The tree cut into parts no larger than `bound`, or no parts if it already is one.
 
     **The cut is adaptive, and that is what makes it worth printing.** Choosing a depth
     gives a reader 109 parts of wildly different sizes, most of them a handful of files;
@@ -711,7 +712,7 @@ def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
     the root is exempt there, but a corpus is never itself a map, so a `--docs` pointed
     into a program directory is the failure rather than the ordinary case. It cannot fire
     by accident on the default path, where the docs root is the nearest ancestor holding a
-    `pyproject.toml` and a program directory holds none.
+    manifest and a program directory holds none.
 
     **`exclude` stays, and it is not the same mechanism.** It is a path known for certain
     rather than a marker read off the disk, which is what answers for this run's own

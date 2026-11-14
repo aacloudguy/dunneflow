@@ -19,9 +19,9 @@ source captured two weeks ago — and the old line then read as a claim about th
 fortnight. Three instants, and the page states all three.
 
 **Its own module, and that placement is load-bearing.** `markdown.py` imports every one of
-the eight renderers, so a header living there and imported back by them is a cycle. This
+the nine renderers, so a header living there and imported back by them is a cycle. This
 imports nothing but the store, which is also what lets `Stamp.of` ask the graph once for
-facts fourteen pages share rather than threading them through fourteen signatures.
+facts sixteen pages share rather than threading them through sixteen signatures.
 
 **Missing and blank are different answers.** A map written before `analyze` recorded a
 revision keeps the exact line it always had rather than being handed an invented one
@@ -66,7 +66,7 @@ class Stamp:
         """Read once, for the whole map.
 
         Asked of the store rather than carried down from `analyze`, because the graph is
-        where both facts already live and a second copy travelling through fifteen
+        where both facts already live and a second copy travelling through sixteen
         signatures is a second answer waiting to disagree with the first.
         """
         return cls(

@@ -86,7 +86,8 @@ def listing(store: Store) -> list[dict[str, Any]]:
 
     `ways_in()` ranks them and this answers *what am I looking at* for each. The extra cost
     is two queries per way in over indexed columns on a list that is fourteen long for the
-    largest program measured here, paid once at boot with the cover.
+    largest program measured here, paid at boot with the cover and again by each surface
+    that asks afterwards (the plate pane, the compartments, `describe`); nothing caches it.
     """
     out: list[dict[str, Any]] = []
     for w in ways_in(store):

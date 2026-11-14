@@ -1068,7 +1068,10 @@ retaken under the table's conditions and is not a figure.
 ## The C++ reader, and the first tree that is not small (v2, measured 2026-09-18)
 
 Apple M1, macOS 26.2, corpus on an external volume — **which is load-bearing here and is
-why it is in the heading** (rule 24). At this size the cost is not extraction.
+why it is in the heading** (rule 24). At this size the cost is not extraction. *These, and
+the C++ figures of 2026-09-19 and 20 after them, are the first, syntactic reader's, written
+in Python under `extractors/cpp`; it was retired on 2026-11-05 for the libclang reader in
+`plugins/cpp`, whose figures begin at 2026-11-03 below.*
 
 ### Reading, measured on 300 real files of `Engine/Source/Runtime/Core`
 
@@ -1216,7 +1219,7 @@ roughly a third of the wall clock.
 `/api/program` on `Engine.Source.Runtime` — 18,191 files, 262,879 routines, 6,064,042 lines —
 reports `done` after **1,659,334 ms**, most of it in *the 2.5D model and its payload*. It does
 open, every route answers 200, and the cover is correct. But a reader who clicks a program and
-waits twenty-eight minutes has not been given a reading tool, and design rule 45's bargain —
+waits twenty-eight minutes has not been given a reading tool, and rule 45's bargain —
 the bound is the reader opening one thing — does not survive a map this size. Recorded as the
 figure it is; no conclusion is drawn here about which of the six steps to attack.
 

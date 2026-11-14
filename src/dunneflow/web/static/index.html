@@ -76,7 +76,7 @@
 
     <label class="sr-only" for="search">Search routines, boundaries, tables</label>
     <!-- The three flags are the Code box's three, written here rather than generated
-         because the topbar is static markup that `render()` never touches. `navFlags()`
+         because the topbar is static markup that `render()` never touches. `paintNavFlags()`
          keeps their pressed state in step; the routing is the same `searchflag` table. -->
     <div class="tb-searchwrap">
       <input class="tb-search" id="search" type="search" placeholder="Search routines, tables, boundaries…   /">
@@ -270,7 +270,7 @@
   global scope, which is why each of them wraps itself in an IIFE and exports
   exactly one name.
 
-  `prose.js` needs nothing at parse time and is 6 KB; what it *renders* with is
+  `prose.js` needs nothing at parse time and is 19 KB; what it *renders* with is
   `markdown-it`, 125 KB, and that is fetched lazily the first time a document is
   opened. Most sessions never open one, and paying for it at boot would slow the
   screen everyone sees for the one many never reach -- the same bargain the

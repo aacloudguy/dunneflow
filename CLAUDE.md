@@ -101,11 +101,13 @@ someone orient in an unfamiliar codebase, not by how many pages it emits.
 uv run dunneflow analyze  <path> --name <program>   # extract, resolve, write the map
 uv run dunneflow touches  <path> --routine <name>   # what does this reach?
 uv run dunneflow impact   <path> --routine <name>   # what breaks if I change it?
+uv run dunneflow check    <path>                    # what looks wrong; exit 1 only on BROKEN, 2 with no map to read
 uv run dunneflow glossary <path>                    # what its words mean, and who says so
 uv run dunneflow naming   <path>                    # the naming standard as found: derived, and quoted
 uv run dunneflow mirror   <path>                    # words the docs define that the code never uses
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
+uv run dunneflow revisions <dir> [--seal]           # the snapshots a program holds; keep the current one
 uv run dunneflow render   <dir> [--revision <rev>]  # a snapshot's map, from the graph it has
 uv run dunneflow serve    [dir] [--revision <rev>]  # the dashboard; a program, a root, or neither
 uv run dunneflow mcp      [dir] [--revision <rev>]  # the same map, answered to an agent over MCP
@@ -117,7 +119,7 @@ which is how `serve` runs it. See **The surfaces** in `ARCHITECTURE.md`.
 
 ### What each command actually does — `ARCHITECTURE.md`
 
-`serve`'s three ways of being started and the start page, `mcp`'s thirteen tools and its three
+`serve`'s three ways of being started and the start page, `mcp`'s thirteen tools and its
 modules, `query`'s two gates and the residue they leave, the analyse dialog and its stop
 button, `migrate`, `render`, the diagram's two levels and the two ALGORITHMS surfaces: all
 of it is in `ARCHITECTURE.md`, under **The surfaces**, with the module list underneath it.
@@ -137,8 +139,9 @@ uv run ruff check .  # must pass
 ```
 
 **All three run on Windows and on Linux as well, and the suite is expected to be green on
-all three.** Two tests skip off their own platform, by name; everything else that is
-platform-shaped is tested by monkeypatching `sys.platform` rather than by skipping.
+all three.** Two tests skip off their own platform, by name, and three more skip on
+Windows; a test that needs a reader's toolchain skips where that is missing. Everything else
+that is platform-shaped is tested by monkeypatching `sys.platform` rather than by skipping.
 
 Four more gates are **conditional on what moved**, and each one exists because something got
 through without it. `GROUND-TRUTH.md` carries what each is measured against and the figure
@@ -350,7 +353,8 @@ colliding definitions keep separate identities, and an edge lost to ambiguity is
 recorded as `LOST_EDGE` rather than silently omitted — a missing connection must be
 visible, or a broken program documents as a smaller working one.
 
-`dunneflow check` exits non-zero only on BROKEN, so it can gate CI.
+`dunneflow check` exits 1 only on BROKEN, so it can gate CI; a map it cannot read is a
+refusal and exits 2.
 
 **A severity is a claim about a language, so the language declares it.** `unawaited_async`
 in each reader's own rules file says what it costs to start an async call and drop the
@@ -375,8 +379,8 @@ shipping the detector.
 
 A reading tool for someone orienting in code they did not write. Settled shape: a local
 server (`dunneflow serve`), three panes — navigator, centre view, inspector — where the
-centre pane is a mode toggle (graph / table / document) over one shared selection, not
-three destinations. **Vanilla JS + deck.gl, served by `http.server`** — no framework, no
+centre pane is a mode toggle (graph / table / document / code / diagram / shape) over one
+shared selection, not six destinations. **Vanilla JS + deck.gl, served by `http.server`** — no framework, no
 Node at runtime or build, deck.gl vendored into `web/vendor/`.
 
 *Astro 5 + Tailwind 4 was ratified here and has been struck, on evidence.* It was chosen

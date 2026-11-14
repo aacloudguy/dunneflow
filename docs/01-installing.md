@@ -105,7 +105,7 @@ ship exactly one thing that can ask you for a folder. A Linux desktop ships whic
 toolkit brought, so DunneFlow looks for **zenity** or **kdialog** and uses whichever it
 finds, preferring the one that matches your desktop.
 
-If neither is installed the installer names them both, and typing the path by hand still
+If neither is installed the picker says so and names them both, and typing the path by hand still
 works. The field is the control and the picker is a convenience over it. If you are
 reaching DunneFlow over SSH with no display, it says that instead, because there is no
 screen to put a window on.
@@ -127,7 +127,7 @@ only a Java runtime; and C and C++ by asking clang, which needs **clang 15 or ne
 libclang library**: the Xcode Command Line Tools on macOS, an LLVM release or your
 distribution's packages on Linux, and LLVM or Visual Studio's C++ Clang tools on Windows.
 The Go, Rust, Java and C++ readers are built on your machine the first time each is needed —
-about a second for Go, a few for Java, ten for Rust and seven for C++ — and no build is
+about a second for Go and for Java, ten for Rust and seven for C++ — and no build is
 repeated or downloads anything. A package your program imports from outside the tree being
 read is counted as outside it, not fetched; for Rust, a dependency already in your local
 cargo cache is *read*, and for Java a jar already in your local Maven or Gradle cache is, so

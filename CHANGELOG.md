@@ -8,7 +8,7 @@ repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
 
 ### Before you upgrade
 
-- **A map made by 0.2.0 has to be analysed again.** The store went from schema 16 to 20
+- **A map made by 0.2.0 has to be analysed again.** The store went from schema 15 to 20
   and there is no migration between them. Opened for reading, an old map is refused with
   a sentence saying so. Opened by `analyze`, it is emptied and rebuilt from the tree. A
   snapshot sealed for comparison under 0.2.0 cannot be compared against a 0.3.0 one; seal
@@ -34,8 +34,8 @@ repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
 
 ### New in every language
 
-- **`LOCAL_IPC`**: a Unix-domain socket or a named pipe is another process on this
-  machine, and is no longer counted as the network.
+- **`LOCAL_IPC`**: a Unix-domain socket is another process on this machine, and is no
+  longer counted as the network.
 - **Every unresolved call says where it stops**: outside the program and where, untyped
   and why, or dispatched and to how many bodies. Reach, `touches`, `impact` and
   `UNREACHABLE` cross a dispatched call into each body that may answer it.

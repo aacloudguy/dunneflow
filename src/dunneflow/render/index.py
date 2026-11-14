@@ -20,7 +20,7 @@ about each:
   absence (rule 89). It said "not something this tool offers yet" until `dunneflow render`
   existed, which is the sentence a feature has to come back and correct.
 * a map on disk for a revision no graph in this directory claims. A snapshot whose stores
-  were dropped by hand -- the recipe in `CLAUDE.md` says to do exactly that -- and its map
+  were dropped by hand -- the recipe in `GROUND-TRUTH.md` says to do exactly that -- and its map
   is a real document about a version nothing here can answer questions about.
 * the older flat map, still lying in the program directory. It is left where it is: it is
   a real map of *some* revision, and which one is not recorded anywhere in it (rule 30 --

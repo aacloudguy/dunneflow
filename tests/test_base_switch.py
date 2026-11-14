@@ -176,7 +176,7 @@ def test_a_switch_keeps_what_is_keyed_on_one_version_rather_than_on_a_pair(
 ) -> None:
     """The other half of the rule above, and the expensive half.
 
-    `findings` holds what thirteen detectors concluded about **one graph file**, which a
+    `findings` holds what the detectors concluded about **one graph file**, which a
     switch does not change: the file is the same file. Cleared with the pair caches it
     would look tidy and make every switch pay 4.1 s to learn what it already knew -- and
     `filepairs` has carried this same reasoning since it was written, because there is one

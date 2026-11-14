@@ -527,7 +527,7 @@ SELECT point_id, routine_id, idx, kind, line_start, line_end, header
 def measure(store: Store) -> ShapeReport:
     """Every control point in the program, joined to what moves inside it and judged.
 
-    A whole-corpus pass, like `naming.measure`: four statements, and then arithmetic
+    A whole-corpus pass, like `naming.measure`: six statements, and then arithmetic
     over what they returned. On Comitia that is 9,625 points, 2,269 arms and 4,174
     moving things.
     """

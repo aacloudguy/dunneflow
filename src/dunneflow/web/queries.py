@@ -224,10 +224,11 @@ ORDER BY src, bkind, dst
 """
 
 # --------------------------------------------------------------------------- #
-# Stored layout
+# Stored layout -- drafted, and run by nothing: the store has no `layout` table
+# and nothing executes these. `layout.py` says why it stayed a draft.
 #
-# Layout is a fact: computed once, kept, and identical on every later open, so
-# the map holds still and spatial memory works. Keyed by (node, disk) because
+# The draft's argument: layout is a fact, computed once, kept, and identical on
+# every later open, so the map holds still and spatial memory works. Keyed by (node, disk) because
 # one entity holds a position per disk it appears on -- its real one, and one
 # for every disk that shadows it.
 # --------------------------------------------------------------------------- #
@@ -628,7 +629,7 @@ WHERE owner_id = :id AND owner_kind = 'structure'
 ORDER BY line, kind, value, text
 """
 
-# A constant has no id of its own in the store -- it is identified by the file and
+# A constant has no id of its own in the store -- it is identified by the module and
 # name that declare it, which is also how the graph builds its node id.
 CONSTANT_DETAIL = """
 SELECT file, module, name, value, type, is_final, comment, private, line
@@ -650,7 +651,8 @@ ORDER BY b.salience DESC, r.qualname, b.line
 
 # These rows are an artefact's IN, and an IN row's `name` is the caller's: the inspector
 # prints it. It returned `a.name` there until 2026-10-02, so every row under `source.db`
-# read `source.db`. A mention at module scope has no routine and is named by its file.
+# read `source.db`. A mention at module scope belongs to `<module>` (rule 18); a row whose
+# routine the join does not find is named by its file.
 ARTEFACT_NAMERS = """
 SELECT a.name AS artefact, a.stem, a.ext, a.kind, a.line, a.literal, a.is_pattern,
        a.file, r.id, COALESCE(r.name, a.file) AS name, r.name AS routine,
@@ -988,7 +990,7 @@ ORDER BY others, mine.tbl
 # standing in for it -- which is why boundaries get a node subject and tables,
 # which are not nodes, get a set.
 #
-# **A boundary already named by a `sql_ops` row on the same line is excluded**, for
+# **A boundary already named by a `sql_ops` or `net_calls` row on the same line is excluded**, for
 # the same reason the hover card excludes it, and here the consequence was louder:
 # without it the three best threads off `write_spec_seal_atomic` were `ROLLBACK`,
 # `COMMIT` and `BEGIN IMMEDIATE`, shared with 91, 87 and 84 other routines. Those
@@ -1221,9 +1223,6 @@ LEFT JOIN routines r ON r.id = e.routine_id
 ORDER BY e.kind, e.name
 """
 
-# The signature is assembled here rather than in Python so the whole document is
-# one statement per section -- which is also what lets these same strings run
-# client-side against sqlite-wasm later without a second implementation.
 # The routine list the navigator and table mode read.
 #
 # It carries the **package** as well as the module, and takes it from `PACKAGE_EXPR` -- the
@@ -1270,6 +1269,9 @@ FROM structures s
 ORDER BY s.module, s.line, s.file, s.name, s.id
 """
 
+# The signature is assembled here rather than in Python so the whole document is
+# one statement per section -- which is also what lets these same strings run
+# client-side against sqlite-wasm later without a second implementation.
 DOC_ROUTINES = """
 SELECT r.id       AS node,
        r.name     AS name,
@@ -1476,10 +1478,11 @@ ORDER BY n DESC, t.name
 # table cannot mean selecting the table; it means selecting the code that reads and
 # writes it, which is the question a reader has when they click the busiest one.
 #
-# `routine_id` is null for an operation at module scope. Those rows are dropped here
-# rather than folded into a synthetic node: the count beside the name comes from
-# COVER_TABLES and counts *operations*, so the two are different populations on
-# purpose, and the client says which it is showing.
+# `routine_id` is never null -- the column is `NOT NULL`, and an operation at module
+# scope belongs to the `<module>` routine (rule 18) -- so the `IS NOT NULL` below drops
+# nothing. The count beside the name comes from COVER_TABLES and counts *operations*,
+# so the two are different populations on purpose, and the client says which it is
+# showing.
 TABLE_ROUTINES = """
 SELECT DISTINCT o.routine_id AS node
 FROM sql_ops o
@@ -1512,14 +1515,6 @@ WHERE tbl = :name
 ORDER BY file, line, idx, name
 """
 
-# Who touches this table, with what each routine does to it. `BOUNDARY_TOUCHERS` one
-# subject over, and the same shape on purpose: the inspector's question at a table is
-# the boundary's question -- not "what is this" but "which of my code talks to it".
-#
-# `routine_id` is null for an operation at module scope, and those rows are **kept**
-# with a null id rather than dropped: a table written at import time is exactly the
-# thing a reader is looking for, and `TABLE_ROUTINES` drops them only because its
-# answer is a list of nodes to select (design rule 1).
 # ── ALGORITHMS chunk 5: the loops and the decisions as neighbours ────────────────── #
 
 # **What is *inside* a span is a range join and never a relationship** (rule 40, and the
@@ -1613,6 +1608,14 @@ ORDER BY node
 """
 
 
+# Who touches this table, with what each routine does to it. `BOUNDARY_TOUCHERS` one
+# subject over, and the same shape on purpose: the inspector's question at a table is
+# the boundary's question -- not "what is this" but "which of my code talks to it".
+#
+# An operation at module scope belongs to the `<module>` routine (rule 18) and is
+# **kept**: a table written at import time is exactly the thing a reader is looking
+# for. The `LEFT JOIN` keeps a row whose routine is not found, with a null id, rather
+# than dropping it (design rule 1).
 TABLE_TOUCHERS = """
 SELECT o.tbl, o.direction, o.operation, o.line, o.file,
        r.id, r.name, r.qualname, r.module,
@@ -1683,7 +1686,7 @@ JOIN routines r ON r.id = e.routine_id
 
 # The program root: the one leading segment every module shares, or nothing.
 #
-# `COVER_PACKAGES` says it takes the second segment "without knowing the program root", and
+# `COVER_PACKAGES` says it used to take the second segment "without knowing the program root", and
 # this is that root, asked for directly. It exists because a field that shortens a module
 # has to know which end carries information: **all 566 of Lictores' modules begin
 # `lictores.`**, so a rule keeping both ends of a name spends its head on a word that is
@@ -1692,9 +1695,9 @@ JOIN routines r ON r.id = e.routine_id
 #
 # Grouped rather than assumed. One row means every module agrees and the segment is a root;
 # more than one means the program has several top-level names and there is nothing to strip.
-# `lictores` is itself a package id in `COVER_PACKAGES` -- top-level modules belong to it --
-# which is exactly why "a segment that names a package" is the wrong test and this one is
-# right.
+# `lictores` was itself a package id in `COVER_PACKAGES` then -- top-level modules belonged
+# to it, and are `<root>` now -- which is exactly why "a segment that names a package" is
+# the wrong test and this one is right.
 COVER_ROOT = """
 SELECT CASE WHEN instr(module, '.') = 0 THEN module
             ELSE substr(module, 1, instr(module, '.') - 1) END AS head,
@@ -1708,7 +1711,7 @@ GROUP BY head
 # agree about what a package is. `COVER_PACKAGES` now asks through this expression too --
 # it used to take the second segment without knowing the program root, and this note stood
 # beside that difference calling it a hazard for two months before anybody clicked one of
-# the rows it produced. One expression, three callers (rule 51). `COVER_ROOT` is still its
+# the rows it produced. One expression, ten statements (rule 51). `COVER_ROOT` is still its
 # own question and still separate: it asks what prefix a *narrow field* may drop, which is
 # a display decision rather than a decomposition.
 PACKAGE_SIZES = f"""
@@ -1853,9 +1856,6 @@ WHERE t.file = :file
 ORDER BY t.line, t.name
 """
 
-# Reached through the owner for the same reason the per-file counts are: an annotation
-# hangs off a routine or a structure, and a file whose ids all sit on class bodies would
-# show none of them if only one side were asked.
 # A call that left this program, pinned by an import rather than guessed.
 #
 # `calls.external` is set for three genuinely different things and only one of them earns a
@@ -1884,6 +1884,9 @@ WHERE c.file = :file
 ORDER BY c.line
 """
 
+# Reached through the owner for the same reason the per-file counts are: an annotation
+# hangs off a routine or a structure, and a file whose ids all sit on class bodies would
+# show none of them if only one side were asked.
 CODE_ANNOTATIONS = """
 SELECT line, kind, value FROM (
   SELECT a.line AS line, a.kind AS kind, a.value AS value
@@ -1986,10 +1989,10 @@ GROUP BY c.routine_id
 
 
 # What a fold looks like from the inside: the calls among its own members, and the
-# calls that leave it. The second level of the diagram is drawn from these two.
+# calls that leave it or arrive. The second level of the diagram is drawn from these three.
 #
 # `NOT IN (SELECT value FROM json_each(:ids))` rather than a second join, because the
-# question is about *absence* from the set and a join cannot express that. Both are
+# question is about *absence* from the set and a join cannot express that. All are
 # grouped, so what comes back is one row per connection rather than one per call site --
 # a picture wants the connection, and the call sites are what `/api/flow` is for.
 FOLD_INNER_CALLS = """
@@ -2116,7 +2119,7 @@ ORDER BY b.salience DESC, b.line
 # and it states a blind spot because it makes one. These do not, and must not read
 # as though they did.
 #
-# The shape is the same nine times over and it is load-bearing for cost. `m`
+# The shape is the same twelve times over and it is load-bearing for cost. `m`
 # materialises **only the key and the measure** -- never a name, never a join --
 # and the extremum's name is resolved once, for the one row that won. Written the
 # obvious way instead, with the join inside `m`, the call-argument family joined
@@ -2156,7 +2159,7 @@ FROM top JOIN routines r ON r.id = top.k
 """
 
 # Lines in one routine. The declaration's span, not a report on what is inside it:
-# this tool does not read control flow and does not start here. Size is a measure
+# this measure does not read control flow. Size is a measure
 # real standards are written about, and how long a routine is is a fact about the
 # shape of the map -- so it is reported flatly, with the middle beside it, and
 # implies nothing about whether it should be shorter.
@@ -2257,14 +2260,6 @@ SELECT 'const:' || top.k AS node, c.name AS name, top.k AS qualname,
 FROM top JOIN constants c ON c.module || '.' || c.name = top.k
 """
 
-# The most lopsided table: read far more often than it is written, or the reverse.
-# The lopsidedness is the doorway -- something writes a great deal nobody reads back,
-# which is either an audit log or a question.
-#
-# A table is **not a node** (`queries.py` wrote that down before anything needed it),
-# so `node` is empty and the subject is the code that touches it. Both sides must be
-# non-zero: a table only ever written is not lopsided, it is write-only, and dividing
-# by nothing would rank it above everything real for ever.
 # ── ALGORITHMS chunk 5: two measures about shape ─────────────────────────────────── #
 
 # The table reached from inside the most loops, and the middle table that is looped over
@@ -2345,6 +2340,14 @@ FROM top JOIN control c ON c.point_id = top.k
 """
 
 
+# The most lopsided table: read far more often than it is written, or the reverse.
+# The lopsidedness is the doorway -- something writes a great deal nobody reads back,
+# which is either an audit log or a question.
+#
+# A table is **not a node** (`queries.py` wrote that down before anything needed it),
+# so `node` is empty and the subject is the code that touches it. Both sides must be
+# non-zero: a table only ever written is not lopsided, it is write-only, and dividing
+# by nothing would rank it above everything real for ever.
 CURIO_TABLE = """
 WITH m AS MATERIALIZED (
     SELECT s.tbl AS k,

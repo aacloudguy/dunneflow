@@ -31,7 +31,9 @@ uv run ruff check .  # must pass
 
 **All three run on Windows and on Linux as well, and the suite is expected to be green on all
 three.** Two tests skip off their own platform, by name — the macOS and Linux maps roots, each
-asserting its own layout — and nothing else is conditional. Everything else that is
+asserting its own layout — and three more skip on Windows for what it does not have (a
+file's change time, POSIX process groups, a pseudo-terminal); every other skip in the suite
+is for a toolchain or a capability the machine lacks. Everything else that is
 platform-shaped is tested by **monkeypatching `sys.platform`** rather than by skipping, so the
 Linux picker and the Windows stop rungs are exercised on whichever machine is running:
 `tests/test_desktop.py` says why, and the two-of-four guard drift in `analysis.py` is what
@@ -147,7 +149,7 @@ them. All output belongs in `output/`.
 ground truth above cannot be run there and no figure in this file was retaken on it. What a
 Linux session can press instead is DunneFlow's own tree and `../dunnenote` — real code, not a
 toy, and enough to exercise the binary end to end — and that is what the Linux figures in
-**Packaging** were taken against. A session that needs the recorded numbers needs the trees:
+`PACKAGING.md` were taken against. A session that needs the recorded numbers needs the trees:
 clone them, or take the measurement on the Mac. Do not restate a Lictores figure measured
 somewhere else as though it had been reproduced (rule 24).
 

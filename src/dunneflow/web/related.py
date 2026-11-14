@@ -4,7 +4,7 @@ Document mode was a **place**, not a view of the selection: `state.docPath` held
 document had last been opened and nothing ever connected it to what the reader had picked.
 Tom selected `cantator.__main__`, pressed Document, and got a document about PAUL style
 rules -- opened twenty minutes earlier from a naming citation and never put away. The mode
-toggle's own sentence is *"five ways of reading one selection"*, and one of them was not.
+toggle's own sentence was *"five ways of reading one selection"*, and one of them was not.
 
 **The obvious relation does not exist, and that is worth writing down so nobody mines it
 again.** `doc_refs` holds 37,150 PATH and 114,067 CODE references, which sound exactly like
@@ -63,7 +63,7 @@ def documents_for(store: Store, docs: DocStore | None, node_id: str) -> dict[str
     `matched` is how many of the node's ids a document names, and the list is ordered by it.
     A document naming every one of them is in the `full` band; the rest are `partial`. Both
     are sent complete -- this is a list and not a diagram, so rule 8's bound does not apply,
-    and the largest answer measured is 1,030 rows of four short fields.
+    and the largest answer measured is 1,030 rows of five short fields.
     """
     if docs is None:
         return {"found": True, "ids": [], "full": [], "partial": [], "total": 0,

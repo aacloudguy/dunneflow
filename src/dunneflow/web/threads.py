@@ -60,9 +60,10 @@ def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
 # --------------------------------------------------------------------------- #
 # The subject
 #
-# What following a thread selects. Three shapes, because there are genuinely three
-# kinds of thing at the far end and pretending otherwise is what rule 30 warns
-# against: a package is a plate, a routine is a node, and a governance id is
+# What following a thread selects. Two shapes are minted below, a node and a cohort,
+# though there are genuinely three kinds of thing at the far end and pretending
+# otherwise is what rule 30 warns against: a package is a plate (and no thread
+# mints one), a routine is a node, and a governance id is
 # neither -- `Plan 56-02` is not a node at all, so following it means selecting
 # the code that carries it. `queries.py` wrote that reasoning down for tables
 # before anything needed it: inventing an id to make a row clickable would be a

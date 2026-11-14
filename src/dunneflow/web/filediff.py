@@ -73,9 +73,9 @@ def pair(source: SourceStore | None, base: str | None,
     here* is the answer to most of the question, and a list holding only the exceptions
     cannot be told from a list that lost some.
 
-    Three refusals, told apart, because "there is no comparison" and "the comparison found
-    nothing" are opposite claims (design rule 1): no sidecar, a revision this sidecar does
-    not hold, and the same revision on both ends.
+    Four refusals, told apart, because "there is no comparison" and "the comparison found
+    nothing" are opposite claims (design rule 1): no sidecar, fewer than two versions
+    named, the same revision on both ends, and a revision this sidecar does not hold.
     """
     started = time.perf_counter()
     if source is None:

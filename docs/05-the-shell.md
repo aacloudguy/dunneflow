@@ -74,13 +74,14 @@ versions](14-comparing-two-versions.md).
 
 ## The navigator
 
-Twelve groups, each counting the program rather than reciting a fixed list.
+Twelve groups, eleven for a program with only one version, each counting the program
+rather than reciting a fixed list.
 
 | Group | What is in it |
 |---|---|
 | **Ways in** | Every way the program can be started: command-line entry points, HTTP routes, registered handlers. Ranked by how much of the program each one commands. |
 | **Routines** | All of them, by package. |
-| **Changes** | What differs from the compared version. Empty-headed until you set one. |
+| **Changes** | What differs from the compared version. Not drawn at all for a program with only one version. |
 | **Code** | Every file, and a text search over the source. |
 | **Explore** | *Worth a look* Measured extrema, each with its middle stated and *Kept*, your shelf. |
 | **Packages** | The largest packages, by what they hold. |

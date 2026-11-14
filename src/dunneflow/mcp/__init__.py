@@ -28,11 +28,12 @@ rather than merely declaring an intention (rule 20). The `query` tool is gated t
 and `tools.py` says why one gate is not enough.
 
 *This module is deliberately outside the no-egress guard in `tests/test_about.py`*, which
-walks `extractors/`, `resolve/` and `canonical/`. That guarantee is about **what produced
-the facts** — it is what lets *About this map* say no model read this analysis — and it
-excludes `web/` for exactly this reason: a surface that serves facts is not a surface that
-makes them. This is `web/`'s sibling and belongs on the same side of that line. `ingest/`
-is the opposite case and does belong in the guard; it goes in when it is wired.
+walks `extractors/`, `resolve/`, `canonical/`, `ingest/` and `plugins/`. That guarantee is
+about **what produced the facts** — it is what lets *About this map* say no model read
+this analysis — and it excludes `web/` for exactly this reason: a surface that serves
+facts is not a surface that makes them. This is `web/`'s sibling and belongs on the same
+side of that line. `ingest/` is the opposite case and does belong in the guard; it went in
+the day it was wired.
 """
 
 

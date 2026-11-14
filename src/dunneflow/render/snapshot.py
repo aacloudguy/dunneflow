@@ -9,7 +9,7 @@ left holding two sealed graphs and no map of either.
 
 **This is not analysis, and that is the whole of why it is allowed.** Nothing is extracted,
 no fingerprint is re-stamped and no store this reads is opened for writing: a graph and a
-document store are opened read-only and fifteen Markdown documents are written into a
+document store are opened read-only and sixteen Markdown documents are written into a
 directory beside them. Rules 25 and 62 are about re-analysing a sealed snapshot in place and
 are untouched; rule 20 is satisfied by never writing to the store it reads.
 
@@ -20,9 +20,9 @@ otherwise for a month.
 **Three things this refuses, each with its own sentence** (design rule 21):
 
 * a revision with no graph here. Its stores were dropped by hand -- the recipe in
-  `CLAUDE.md` says to do exactly that -- and there is nothing left to render from.
+  `GROUND-TRUTH.md` says to do exactly that -- and there is nothing left to render from.
 * a graph whose analysis never finished. It opens perfectly and lies (rule 80), and a map
-  written out of one would be a lie with fifteen documents behind it.
+  written out of one would be a lie with sixteen documents behind it.
 * a graph this build cannot read. `Store` refuses a stale one on open and this does not
   catch that to carry on regardless (rule 20).
 

@@ -129,8 +129,8 @@ def stated_naming(docs: DocStore | None) -> dict[str, Any]:
 
     **Nothing here is compared against anything**, and the page says so in its own first
     line. `checkable` records only that a rule names both a class of identifier and a
-    spelling, so a check *could* be written; DunneFlow does not run one, and will not until
-    a standards directory can be imported.
+    spelling, so a check *could* be written; this lane does not run one. The comparison is
+    `checked_naming`'s, below, on a page of its own.
 
     **Three absences, and they are three different answers** (design rule 21). No store at
     all means the analysis never read documentation; a store with no rules means documents

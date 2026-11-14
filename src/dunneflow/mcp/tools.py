@@ -13,7 +13,7 @@ out to where both callers pass *before* this module existed, because the cheapes
 move a rule is before the caller that would have copied it. An agent and a reader looking
 at the same map must not be told different things about it.
 
-**A tool is small and sharp, not one per endpoint.** The dashboard has forty-odd routes
+**A tool is small and sharp, not one per endpoint.** The dashboard has fifty-odd routes
 because a page is assembled from parts; an agent asks a question and wants the answer, so
 `routine` is a signature *and* its comments *and* its boundaries *and* its shape, in one
 call.
@@ -140,10 +140,10 @@ def _overview(session: Session, _args: dict[str, Any]) -> dict[str, Any]:
     return {
         **base.cover,
         "revision": base.revision,
-        # **What was read, by language.** One entry today and the count says so rather than
-        # the sentence claiming the tool reads everything. The declined-and-unclaimed halves
-        # arrive with the plugin registry; a count that says what it counts is right at
-        # every stage (rule 32).
+        # **What was read, by language.** One entry per language this map holds a file of,
+        # and the count says so rather than the sentence claiming the tool reads everything.
+        # The declined-and-unclaimed halves arrive with the plugin registry; a count that
+        # says what it counts is right at every stage (rule 32).
         "languages": languages,
     }
 

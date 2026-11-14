@@ -59,7 +59,8 @@ class MapsRootGone(RuntimeError):
     Its own class because it is the **one** state here that is neither an error in the
     program nor an answer it can act on: the pointer is intact, the choice still stands, and
     a disk is unplugged. Everything the sentence needs is in the message, because the two
-    surfaces that catch it -- `serve`'s boot and the start page -- both just say it.
+    commands that catch it -- `serve`, which also hands it to the start page, and `mcp` --
+    both just say it.
     """
 
 
@@ -224,7 +225,7 @@ def self_argv(*args: str) -> list[str]:
     steps. That only works if the subprocess is this same build.
 
     `-m dunneflow.cli` means nothing to a frozen binary: `sys.executable` *is* DunneFlow
-    there, and it takes its subcommand straight. Without this branch **+ Analyze a
+    there, and it takes its subcommand straight. Without this branch **+ Analyse a
     directory...** -- the only way a first-time reader gets a map at all -- would fail with
     an interpreter's complaint about a module.
     """

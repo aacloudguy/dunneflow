@@ -53,7 +53,7 @@ uv run dunneflow analyze <path> --name <program>
 |---|---|
 | `--docs <path>` | where the documentation is (defaults to the package root) |
 | `--no-docs` | skip documentation entirely |
-| `--recheck-docs` | re-read documents even where nothing has changed |
+| `--recheck-docs` | hash every document rather than trusting its modification time |
 | `--standards <dir>` | admit somebody else's naming standard, into its own store. Repeatable. |
 | `--include-tests` | include test files |
 | `--without <lang>` | do not read that language, and say so. Repeatable, refused for a language this build has no reader for, and refused if it would decline them all. For a machine that lacks a language's toolchain — see [installing](01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install) |
@@ -269,8 +269,9 @@ uv run dunneflow revisions output/dunneflow --seal --label "a name you will reco
 uv run dunneflow render output/dunneflow [--revision <rev>]
 ```
 
-Read-only, from the stores already on disk. This is how a sealed snapshot whose Markdown
-was lost gets it back. It is not analysis, so the rule against re-analysing a sealed
+Read-only, from the stores already on disk. With no `--revision` it writes every revision
+that has a graph and no map; naming one rewrites that one's. This is how a sealed snapshot
+whose Markdown was lost gets it back. It is not analysis, so the rule against re-analysing a sealed
 snapshot never arises.
 
 **Migrate stored paths** from absolute to relative, in place:

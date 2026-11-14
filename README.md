@@ -39,12 +39,13 @@ browser on the start page, which is where you make your first map.
 | **Linux** | `DunneFlow-<version>-linux-x86_64.tar.gz` | `tar -xzf` it, then `./dunneflow/install.sh`. Installs into `~/.local` with a menu entry and icons; nothing needs root. |
 
 Each release carries a `SHA256SUMS` file. **Reading TypeScript needs Node.js 20 or newer**, and
-**reading Go needs Go 1.22 or newer**, **reading Rust needs Rust 1.79 or newer**, and
-**reading Java needs a JDK 17 or newer**, on the machine, because each is read by its own
-toolchain; the other three languages need nothing. Without one, DunneFlow reads everything else
-and says, in the run and in the map, which files it could not read and what to install;
-`--without typescript`, `--without go`, `--without rust` or `--without java` makes the same
-choice deliberately.
+**reading Go needs Go 1.22 or newer**, **reading Rust needs Rust 1.79 or newer**,
+**reading Java needs a JDK 17 or newer**, and **reading C and C++ needs clang 15 or newer
+and its libclang**, on the machine, because each is read by its own toolchain; the other two
+languages need nothing. Without one, DunneFlow reads everything else and says, in the run and
+in the map, which files it could not read and what to install; `--without typescript`,
+`--without go`, `--without rust`, `--without java` or `--without cpp` makes the same choice
+deliberately.
 
 Details for each platform, including where maps are kept and how to move them, are in
 [docs/01-installing.md](docs/01-installing.md).
@@ -132,6 +133,7 @@ here already has it.
 | `routine` | one routine whole: signature, callers, callees, boundaries, source and shape |
 | `touches` · `impact` | what a routine reaches; what breaks if it changes |
 | `find` | names and source text together, comments and strings included |
+| `macros` | what the program's macros do where they are used, and what could not be seen |
 | `glossary` | what the program's words mean, with the file and line that says so |
 | `query` | read-only SQL against the graph |
 | `analyze` · `analysis_status` · `analysis_stop` | make a map in the background, watch it, stop it |
@@ -182,18 +184,20 @@ A program directory is built to be **handed over**: copied to a colleague, kept 
 the source tree has moved on, read on a machine that has never held the code. So what it
 records about where it came from is a deliberate, short list.
 
-**Not recorded:** the path to the analysed tree. Every stored path is relative, and the
-root is never written down. It is one machine's directory layout, it is wrong the moment
-anything moves, and it is wrong on every machine a copy reaches. Nothing at read time
-needs it: file bodies are held by content hash, never fetched by opening a path.
+**Not recorded in any store:** the path to the analysed tree. Every stored path is relative,
+and the root is never written down there. It is one machine's directory layout, it is wrong
+the moment anything moves, and it is wrong on every machine a copy reaches. Nothing at read
+time needs it: file bodies are held by content hash, never fetched by opening a path. One
+file beside the stores does name it: `analysis.json`, the record of the last run, which
+[`SECURITY.md`](SECURITY.md) says to leave out of anything you hand on.
 
 **Recorded:** the **leaf** of the directory each version was read from (`comitia-2026-08-26`,
 not the path that led to it). Two versions of one program are two directories, so the leaf
 is what a reader recognises them by; a capture instant only says when we read the bytes.
 
-**Recorded:** the version the program **states about itself**, if it states one: from
-`pyproject.toml [project] version`, or a module-scope `__version__`, each with the file
-that proves it. Where the source says nothing, a version may be guessed from the
+**Recorded:** the version the program **states about itself**, if it states one: from a
+manifest (`pyproject.toml`, `package.json`, `Cargo.toml`), or a module-scope `__version__`,
+each with the file that proves it. Where the source says nothing, a version may be guessed from the
 directory's own name (`app-1.2.3`, `comitia-2026-08-26`) and is then marked as inferred
 wherever it appears. DunneFlow never asks a version control system anything.
 
@@ -307,6 +311,8 @@ measured on 0.1.0 unless marked otherwise.
 
 DunneFlow is released under the [MIT licence](LICENSE), © 2026 Dunne, Corp. It carries
 deck.gl, Mermaid and markdown-it (MIT), @hpcc-js/wasm and the TypeScript compiler
-(Apache-2.0), and Graphviz (EPL-1.0), each under its own licence; the packaged applications
-add CPython, PyYAML and OpenSSL. [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) lists them
-all, and every licence text is in [`licenses/`](licenses/).
+(Apache-2.0), Graphviz (EPL-1.0), the four Rust crates its Rust reader is built from (MIT)
+and LLVM's libclang headers (Apache-2.0 with LLVM Exceptions), each under its own licence; the
+packaged applications add CPython, PyYAML and OpenSSL.
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) lists them all, and the licence texts are
+in [`licenses/`](licenses/), or beside the source for the crates and the headers.

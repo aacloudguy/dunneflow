@@ -253,10 +253,11 @@ def body_of(bodies: SourceStore | None, path: str, *,
             revision: str | None = None) -> dict[str, Any]:
     """The text of one document, or the reason there is none.
 
-    Its own function because `/api/doc` and `/api/docsource` both need exactly this
-    decision and there are three ways to get it wrong -- an absent sidecar, a sidecar with
-    nothing for the version on screen, and a sidecar that does not hold this path. Same
-    shape, different wording, and rule 51: the rule lives where all the callers pass.
+    Its own function because `/api/doc` needs exactly this decision, through
+    `build_document`, and there are three ways to get it wrong -- an absent sidecar, a
+    sidecar with nothing for the version on screen, and a sidecar that does not hold this
+    path. `/api/docsource` serves a span and makes the same three refusals in `serve.py`.
+    Same shape, different wording, and rule 51: the rule lives where all the callers pass.
     """
     bodies, why = serving(bodies, revision)
     if bodies is None:

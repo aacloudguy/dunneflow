@@ -16,11 +16,12 @@ six manifests rather than six that will disagree (rule 51).
 reader clicks through; declared and **unbound** is a real answer with a reason; not
 declared at all is everything a language reader recognised in code.
 
-`binding_note` is where the second of those is worded and decided, and it gives **five
-answers of which one is a fault** -- see rule 98, which this chunk was the second in two
-to pay for. `src/main.rs` is Rust and this build reads no Rust; `packages/api-types`
-declares a file that is read and holds no routine. Neither is a defect in the program
-being read, and `anomalies` asks the same function rather than matching its wording.
+`binding_note` is where the second of those is worded and decided, and for a declared
+file it gives **five answers of which one is a fault** -- see rule 98, which this chunk was
+the second in two to pay for. `src/main.rs` is Rust and the build this was written on read
+no Rust; `packages/api-types` declares a file that is read and holds no routine. Neither
+is a defect in the program being read, and `anomalies` asks the same function rather than
+matching its wording.
 """
 
 from __future__ import annotations
@@ -236,7 +237,9 @@ def binding_note(store: Store, ep_id: str) -> BindingNote:
     renderer, `cmd_analyze` and `anomalies` all ask here.
 
     Only the fourth is a fault. A manifest naming a file the walk never found is a
-    declaration that has gone stale, and that is worth a reader's attention.
+    declaration that has gone stale, and that is worth a reader's attention. Those five are
+    about a target that is a file or names none; a `module:attr` target that named no
+    routine falls through to the last line, and that is a fault too.
 
     **And first, what the reader said.** A reader that binds the ways in it marks
     (`SuppliedBinding`) says why one has no body when it knows: Unreal's
@@ -307,8 +310,8 @@ def entrypoints_from_manifests(readings: list[ManifestReading], store: Store,
 
     **A collision is refused, not overwritten.** Two declarations landing on one id is
     two ways in the map can only hold one of, and `INSERT OR REPLACE` would make the
-    second win silently. The first is kept and the second is named in the store's note
-    for its manifest, because a refusal a reader cannot see is the failure rule 49 is
+    second win silently. The first is kept and the second is named by `collisions`, which
+    the analysis prints, because a refusal a reader cannot see is the failure rule 49 is
     about.
     """
     found: list[Entrypoint] = []

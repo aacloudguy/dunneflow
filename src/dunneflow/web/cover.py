@@ -41,10 +41,11 @@ def _root(store: Store) -> str:
     right, changed nothing, and reported no error -- found by reading 1,019 rows in the
     navigator that still said `lictores.….\\_advance_gate`.
 
-    Empty rather than a guess when the program has more than one top-level name, and empty
-    when the shared head is a module in its own right -- stripping `lictores` from the
-    module `lictores` leaves nothing to show. A reader then sees whole module paths
-    shortened by the ordinary rule, which is worse-looking and still true.
+    Empty rather than a guess when the program has more than one top-level name. A reader
+    then sees whole module paths shortened by the ordinary rule, which is worse-looking and
+    still true. A shared head that is also a module in its own right is still returned:
+    stripping `lictores` from the module `lictores` would leave nothing to show, and the
+    page avoids that by dropping the head only together with its dot (`stripRoot`).
     """
     heads = [(r["head"], r["n"]) for r in store.query(queries.COVER_ROOT)]
     if len(heads) != 1:
@@ -90,7 +91,8 @@ def build(store: Store, source: SourceStore | None, program: str, *,
     """Everything the first screen shows.
 
     `vocabulary` is the three lanes' *sizes* only -- how many conventions were measured,
-    how many naming rules the documents state, how many words the program uses as names,
+    how many naming rules the documents state, how many of those rules could be measured
+    against the code, how many words the program uses as names,
     how many of those anything defines. The lanes themselves are a quarter of a megabyte
     and are fetched when their pages are opened; these numbers ride with the cover because
     the navigator states a count beside every other row, and a blank beside "Glossary"

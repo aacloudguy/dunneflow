@@ -565,7 +565,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     matches all 4,734 routines across all 47 packages -- **483 ms on the first keystroke of
     an ordinary search**.
 
-    Both are the glossary filter's 412 ms again (see the budget table), and the cause is the
+    Both are the glossary filter's 412 ms again (see `PERFORMANCE.md`), and the cause is the
     same one in a third costume: **work proportional to the whole program on every character
     typed**. The filter got there by calling `render()`; this got there by building markup
     nobody could see, and then by opening everything a broad query touched.
@@ -793,7 +793,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     admission below the top level, so two stale agent worktrees under
     `.claude/worktrees/` put **335 of Lictores' 2,381 documents** — 14% of the corpus —
     into the map: a complete second copy of the project's governance documents from May,
-    under the old `.paul` name, from before the rename this file's ground truth rests on.
+    under the old `.paul` name, from before the rename `GROUND-TRUTH.md` rests on.
 
     The tool defended itself better than it had any right to. The copy detector caught
     303 of the 335 and every consumer filters `duplicate_of = ''`, so the glossary, the
@@ -1670,8 +1670,9 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
     So the test when a fingerprint moves is not *"which stores does this recipe usually
     rebuild"* but **"which stores carry this fingerprint"** — and every one of them belongs
-    in the recipe, whether or not it is part of the normal flow. `CLAUDE.md`'s rebuild is
-    three commands now, and the third carries `--standards`.
+    in the recipe, whether or not it is part of the normal flow. The rebuild is three
+    commands now, and the third carries `--standards`; the recipe has since moved to
+    `GROUND-TRUTH.md`.
 
 89. **A refusal must name a command that can act on the thing it is refusing, and the
     sentence has to be readable off whatever decides that.** Rule 13 for a remedy rather
@@ -2041,7 +2042,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     Chunk 12 taught the tool to read a `package.json` `bin`, a Cargo `[[bin]]` and a
     SwiftPM `.executable`, and the same detector, unchanged, began reporting DunneNote's
     `dunnenote-host` as *leads nowhere*. It is the front door of that application. What
-    leads nowhere is DunneFlow: there is no Rust reader, so the binary's `src/main.rs` is
+    leads nowhere is DunneFlow: there was no Rust reader then, so the binary's `src/main.rs` is
     in no map. The finding was about this tool and was filed against somebody else's
     program — which is `anomalies.py`'s founding discipline, *six confident findings in a
     row were defects in this tool*, arriving through a feature rather than through a

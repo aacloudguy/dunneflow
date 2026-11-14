@@ -179,8 +179,8 @@ def _args_said(args: argparse.Namespace) -> str:
     # A tree given as its own `--part-of` is the ordinary whole-program case spelled the
     # long way and removes nothing, so it says nothing (rule 13).
     #
-    # `relative_to` cannot raise here because `cmd_analyze` refuses a `--part-of` that does
-    # not contain the target before anything is opened, several hundred lines above. Said
+    # `relative_to` cannot raise here because `_analyze` refuses a `--part-of` that does
+    # not contain the target before anything is opened, well before it calls this. Said
     # out loud because that is this function's one precondition and a new caller would not
     # find it -- and because catching the error instead would turn a build defect into a
     # map that quietly does not say how it was read (rule 49).
@@ -773,8 +773,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     The sidecar is opened inside `_analyze`, once there is a graph to name, and it must be
     given its last word however the run leaves -- a refusal, a failure, Ctrl-C or success.
-    `_analyze` has a dozen returns after that point, and a `finally` here is the one place
-    all of them pass (rule 51). A run killed outright gets no last word at all, and that is
+    `_analyze` returns or raises after that point, and a `finally` here is the one place
+    every way out passes (rule 51). A run killed outright gets no last word at all, and that is
     what the sidecar's heartbeat is for: see `runstate`.
     """
     run: list[runstate.RunState] = []
@@ -953,7 +953,8 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
     # -- what read this map, and whether anything was guessed ---------------- #
     #
     # **A standing guarantee, not a placeholder waiting for a model.** Nothing on this path
-    # calls a model or touches a network: the extractors are stdlib `ast` and `tokenize`,
+    # calls a model or touches a network: the Python extractor is stdlib `ast` and `tokenize`,
+    # every other reader is a parser or a checker run on this machine,
     # the document scanner is hand-written, and `Provenance`'s two paid tiers (CITED,
     # INFERRED) are declared and unbuilt. So `inference` says `none` because that is the
     # fact, and design rule 21 says a thing worth knowing is stated rather than left absent.
@@ -1272,8 +1273,8 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
                 _emit("  " + said)
         # A language this build reads and cannot resolve is **named**, because *nothing
         # resolved* and *nothing to resolve* are the same 0% and opposite facts (design
-        # rule 1). It fires for the first time with TypeScript, whose supplied edges are
-        # a chunk away.
+        # rule 1). It fired for the first time with TypeScript, whose supplied edges were
+        # then a chunk away.
         if (said := rstats.unresolved_sentence()):
             _emit("  " + said)
         # The crossing between two languages, said only where one was looked for and
@@ -1398,7 +1399,7 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
 
     c = store.counts()
     # **stdout is one channel or the other, never both.** With `--progress-json` it is the
-    # machine channel and these four lines would arrive in the middle of it; without it,
+    # machine channel and these lines would arrive in the middle of it; without it,
     # they are the summary the terminal has always printed. The counts are the same either
     # way -- one is the sentence and one is the object (rule 13).
     # What this run cost, for the next estimate of this program (see `estimate`).
@@ -1738,7 +1739,8 @@ def cmd_naming(args: argparse.Namespace) -> int:
 
     Neither lane is a requirement and neither is a comparison. Form is counted off the
     graph; Vocabulary is quoted out of whatever the project happens to have written down.
-    Checking either against a standard a team supplies is not built -- see `BACKLOG.md`.
+    This command checks neither against a standard a team supplies: `analyze --standards`
+    reads one, and `11-naming.md` reports the comparison.
     """
     opened = _open_store(args)
     if not opened:

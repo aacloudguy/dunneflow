@@ -13,8 +13,9 @@ one list:
   the resolver already decided, so a link is a lookup (rule 5 never arises).
 
 * **`marks`** are the margin: what a line *is*. A boundary with its direction and target, a
-  SQL operation with its table, a constant, an import, a named artefact, a network call
-  with its timeout, a governance id. Some carry an id and are clickable there too.
+  SQL operation with its table, a constant, an import, a named artefact, a `CREATE TABLE`,
+  a network call with its timeout, a governance id, a call into a library. Some carry an
+  id and are clickable there too.
 
 **The rule that decides where a link goes, and it has to be stated on the page.** `calls`
 records a line and the expression written at the call site, and **no column**. So a call is

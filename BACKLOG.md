@@ -75,6 +75,171 @@ javac as a classpath stub.
 **Tom's decision, 2026-11-07: find a public mixed Java and Kotlin tree first**, measure it, and
 decide the stubs from what it shows.
 
+---
+
+**49 to 64 came out of the documentation audit of 2026-11-14**, taken at `4f5d0f2`, the head
+0.3.0 was released from. Every document and every comment outside the fingerprinted files was
+read against the code; where they disagreed the prose was changed to say what the code does,
+and what is left here is where the code is the half that is wrong or missing. Each says how
+far it was checked: *read* means the lines were read and the defect follows from them,
+*reproduced* means it was made to happen. The auditors' full lists are in the development
+record under that date.
+
+**49. The product describes itself as it was.** Sentences a reader meets on screen or in a
+written map, each true when written. None was changed, because a string is product and tests
+read them. *Settled by* rewording each and retaking any picture that shows it.
+- **"stdlib parsing" and "with the standard library".** The start page's footer
+  (`start.html`) and *About this map* (`aboutVow` in `shell.js`) say every fact was read with
+  the standard library. That is the Python reader; the others are the TypeScript compiler,
+  `go/types`, `syn`, javac and libclang. The guide's chapter 3 quotes the footer.
+- **PARSE_ERROR's blind spot says "The file is not valid Python"** of a file in any language
+  (`anomalies.py`), in the module the above-the-graph guard holds to naming none.
+- **`11-naming.md` says "a standard of your own cannot yet be imported"** on a map made with
+  `analyze --standards`, whose own *Checked* section is that comparison; and it tells the
+  reader to run `dunneflow infer`, which is not a command (`render/naming.py`). It and the
+  glossary's provenance table describe CITED and INFERRED tiers as though a model pass
+  existed.
+- **Settings descriptions quote one program's figures about whichever is open**: "4,734
+  routines", "the same 105 findings … 93 suspect", "nine thousand nodes on fifty-two plates",
+  "335 of 1,395 rows"; so do the plate-layout tooltip ("91.7% fewer crossings") and the arrow
+  pane's foot ("92% of arguments on a resolved call bind").
+- **The *Unfinished maps* row speaks of "a reset of this program"**; `resetSettings` exists
+  and nothing calls it.
+- **Smaller ones**: *Scroll change bands in place* names four headings where the page draws
+  more; the table's footer waits for "a routines endpoint", which exists; LOOPED_BOUNDARY's
+  title leaves out local IPC, which it reports; the Shape lane *match statements* holds
+  `switch` and `when`; `08-network.md` says hops are "thick dashed arrows" and draws them
+  solid; `13-mirror.md` says every count comes from the SQL printed, which covers three of
+  its surfaces; the 409 sentence says the server "was started on an output root" after a
+  close on one that was not; "is being analysed already, from a terminal" is said of a run
+  another server started; the accessibility panel names Mermaid where Graphviz draws.
+- **Help and refusals**: `render --include-tests` ("as `analyze` does") changes only
+  dead-code wording; `--output`'s help gives the platform default where a packaged build
+  uses the reader's chosen root; the sidecar's "run `dunneflow revisions --seal`" leaves out
+  the directory; `tools/fingerprints.py --tree` says the probe "holds both languages";
+  `ingest/codec.py`'s host-owned refusal says "the language" of `Entrypoint.declared`;
+  `ingest/worker.py` says "the only answer to a handshake is `ready`" five lines under
+  accepting `declined`; `plugins/typescript/build.mjs` says "run pnpm install" in a tree
+  whose lockfile is npm's. The last three are fingerprinted (item 63).
+
+**50. A written map's cover links ten of its sixteen pages.** *The rest of the map* in
+`README.md` (`render/markdown.py`) lists 01 to 09 and 15; `10-glossary`, `11-naming`,
+`12-traceability`, `13-mirror` and `14-constants` are reachable only by knowing their names.
+Read. *Settled by* building the list from `PAGE_NAMES`, and a test that every page is linked.
+
+**51. *Declared tables* counts no reads and no writes.** `DOC_DB_TABLES` in
+`web/queries.py` compares `direction` with `'read'` and `'write'`; the store holds `READ` and
+`WRITE` (`sql.py`), and every other query in that file spells them so. Read, not run on a
+map. *Settled by* the two literals, and a test on a fixture with one of each.
+
+**52. One server cache outlives the program it was built for.** `_Live.relaxed` holds the
+macro report and the underscore-relaxed naming lanes under `(revision, lane)` and is in
+neither `PROGRAM_CACHES` nor `COMPARISON_CACHES` (`web/serve.py`). Two programs with no
+revision both key `""`, so a switch could serve the first one's report for the second, which
+is the collision `switch_program` gives as its reason for clearing `findings`. Read, not
+reproduced. *Settled by* adding it to `PROGRAM_CACHES` with a test that switches.
+
+**53. Small defects in the dashboard, each read off `shell.js`.**
+- The spacing slider is not saved on release: the `change` handler lists `gsize`, and the
+  control has been `gspacing` since it was renamed.
+- Sorting the table by *Changed* puts *explained differently* under *unchanged*:
+  `CHANGE_WEIGHT` has no weight for it.
+- Structure bands keep a fixed red and green when the reader turns "which is newer" round;
+  routine bands follow `diffWords()`.
+- `selectedLine` matches a file by suffix, which `followSelectionIntoCode` stopped doing
+  because `cli/audit.py` also ends `/audit.py`.
+- Usage bars are scaled against a pinned 68.
+- `setGraphDetail` pushes onto `window.__lvl`, which nothing reads; `state.colourBy` and
+  `g.coupled` are declared and unread; `.scale-group button` styles buttons that are gone.
+- **A running analysis cannot be put aside.** The panel offers *Stop it* alone, and
+  `analyze.js` still calls it dismissible. The guide's chapter 4 now says what happens.
+- **A compared pair does not survive a restart of the server.** The base goes back to the
+  newest version unless `--revision` is given; the page says what was being read. The
+  guide's chapter 14 said it survived and now does not.
+*Settled by* each in turn; the last two are decisions before they are edits.
+
+**54. Diagram mode, five things read and one probed.** A crossing's weight is doubled,
+because `web/graph.py` holds each cross-plate edge twice and `diagram.build` adds both (a
+hand-built case turned 3 into 6; not confirmed on a map). `role_none` and `unlinked`
+disagree where a way in enters an otherwise isolated box. The Mermaid export always carries
+ports and the drawing omits them by default. `flow_of` leaves ways in out of a box's *in*
+list. A `<module>`'s calls and touches are in no box and no count says so (design rule 1).
+*Settled by* a fixture with ways in, which the test that promises agreement builds without.
+
+**55. Two manifest providers misreport their own refusals.** Reproduced by calling them.
+`swiftpm.read` reports `.executable(name: "tool")` as an entry *and* as "refused 1
+.executable product whose name is not a string literal": the lookahead backtracks over the
+space before the quote. `gradle.read` says nothing of a computed `mainClass` when a literal
+one is also present, because it subtracts the literals from a count that never held them.
+*Settled by* the two expressions and a fixture written the usual way.
+
+**56. The `macros` tool cuts its answer without saying so.** Its description promises
+"every definition" of a named macro; the body returns the first five with no total, takes a
+negative `limit` as a slice from the end, and raises `ValueError` rather than a refusal on a
+non-number (`mcp/tools.py`). `find` ignores `limit` when `file` is given. Read. *Settled by*
+`_limit()` and a `more` count, as the other tools have.
+
+**57. The Kotlin reader does not keep three terms `schema.py` states.** A control point's
+id is minted from its **line** (`extractors/kotlin/control.py`), where the contract says
+names and an ordinal and never a position, so every point below an inserted line changes
+identity. `exits` is filled for every kind and may hold `throw`; an arm's header is written
+as `"else"` and `"try"` where the contract says empty. And it records **one boundary per
+matching rule** where `match_call` says the first wins (rule 40's shape), applies its own
+literal floor with no ceiling, and its `RESIDUE`, "a deliverable", is read by nothing and
+ends mid-sentence. Read. *Settled by* `control_point_id` and `match_call` in that reader,
+measured on anki-android before and after. It moves Kotlin's stamp.
+
+**58. What Rust's and TypeScript's edge passes have to say reaches nobody.** Both write
+their notes to stderr and send no `notes` on `edges_done`, which Go and Java do and the host
+reads (rule 38). So "N .rs file(s) are no crate's module and are read as crates of their
+own" is never shown. Read. *Settled by* the key in both readers. It moves both stamps.
+
+**59. ONE_WAY_TABLE reports a query's own names as tables.** Seven of the thirteen on
+DunneFlow's own map are CTE names and SQLite's `json_each`, which the tutorial's chapter 9
+shows as this tool's defect. Beside it: a statement assembled by concatenation yields no
+`sql_ops` rows at all, which is why one such finding "went away" between two snapshots with
+nothing fixed. Reproduced on the tour map. *Settled by* leaving out names a `WITH` binds in
+the same statement and table-valued functions, and by recording that a statement was built
+at run time rather than read.
+
+**60. A named pipe is not LOCAL_IPC.** No rules file knows `mkfifo`, `CreateNamedPipe` or a
+`\\.\pipe\` path; the 0.3.0 changelog said it was and has been corrected. *Settled by*
+rules per language, measured on a tree that uses one.
+
+**61. A program directory holds the path it was read from.** `analysis.json`
+(`runstate.py`) records the command line and the absolute tree, in the directory `README.md`
+calls built to be handed over. Both documents now say so. *Settled by* deciding whether a
+hand-over strips it, relativises it, or is told to leave the file behind.
+
+**62. Two stores opened to be read can be written to.** `SourceStore` and `DocStore` call
+plain `sqlite3.connect` with `writable=False`, the hole `Store` closed with `?mode=ro`
+(rule 20); and `changes._attach` writes its read-only URI by hand where
+`store.read_only_uri` exists because `?`, `#` or `%` in a path breaks that spelling. Read.
+*Settled by* opening all three through `read_only_uri`.
+
+**63. Some fifty comments in fingerprinted files describe a tool that has moved on.**
+`schema.py`, `sql.py`, `ingest/`, `detectors/`, `extractors/` and `plugins/` were read and
+not edited, because their bytes are in every stored map's stamp and a corrected comment
+would cost every user a re-analysis. Typical: `main.bundle.mjs` for `main.bundle.cjs`;
+`rules_fingerprint()`, `_scan_sql` and `_extract_one_cpp`, none of which exists; "the other
+three languages"; `cpp.yaml` and the C++ reader's headers describing the retired syntactic
+reader; `go.yaml` saying Cobra's tree "is not drawn yet" seven lines above the key that
+draws it; `python.yaml` calling `print` low-salience where its rule says normal. Beside
+them, about twenty-five comments elsewhere that are true and sit on the wrong function. The
+list, with the wording proposed for each, is in the development record. *Settled by*
+applying it in the first release that moves the core stamp anyway; 57 and 58 are two.
+Two belong with it and are behaviour: `extractors/docs/markdown.py` says unreadable
+frontmatter "is recorded by the caller" and records nothing, and `_unclaimed_marks` counts
+with one `LIKE` and prints another beside the figure (rule 13).
+
+**64. `ARCHITECTURE.md` has no entry for two of the seven readers.** TypeScript, Go, Rust
+and Java each have their paragraphs; C and C++ on libclang and Kotlin have none, the
+pipeline drawing at the top shows two languages, and twenty-six routes `serve` answers are
+named nowhere in it. Not written during the audit, which corrected and did not add. Beside
+it, design rule 8 gives every node one of `ANALYZED`, `KNOWN_INTERFACE` and `OPAQUE`, and
+only `OPAQUE` exists in `src/`. *Settled by* the two entries, and a decision on rule 8:
+build the status, or say in the rule what was built.
+
 ## Stated residues — known, bounded, and not defects
 
 These are not tasks. They are places where the honest answer is a limitation, recorded so

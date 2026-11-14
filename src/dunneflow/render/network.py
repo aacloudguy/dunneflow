@@ -8,7 +8,7 @@ failure all change character.
 
 So network hops are never drawn like local calls. Each executable is a separate zone,
 local flow stays inside its zone, and anything crossing a zone edge is drawn as a
-thick dashed hop that the eye cannot confuse with a function call.
+thick hop to a dashed box that the eye cannot confuse with a function call.
 """
 
 from __future__ import annotations

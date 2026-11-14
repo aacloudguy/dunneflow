@@ -196,7 +196,7 @@ def _evidence_cell(t: MirroredTerm) -> str:
     """Where the program uses the word, as names rather than as a count.
 
     Bounded only where a name repeats: `lictores` is 623 modules and listing them is
-    not a listing. The count is given with the surface, and `08-boundaries.md` and the
+    not a listing. The count is given with the surface, and `05-boundaries.md` and the
     module index already hold every one of them.
     """
     groups = t.by_surface()

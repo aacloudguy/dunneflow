@@ -41,8 +41,8 @@ avoided here for the paragraph above: a second `CDLL` gives a second, independen
 handle to the same symbol and builds nothing.
 
 **Frozen and macOS only.** A checkout serves from a terminal where Ctrl-C is the way out and
-a Dock icon would be an intrusion; the two non-macOS branches of `runtime` are untested and
-this is not the place to guess at them.
+a Dock icon would be an intrusion; `runtime`'s Windows and Linux branches are exercised
+now, and what a running application should look like there is not this module's to guess.
 
 Not in `runtime.py` despite being one of its questions. That module is four short answers
 about *what this build is*, read by everything; this is one long answer about what an

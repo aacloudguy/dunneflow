@@ -16,8 +16,8 @@ a full one, because `2` and `2.1.4` are different precisions and a column holdin
 without saying which is a column nobody can act on (rule 32).
 
 **No entrypoints at all.** Go's way in is `func main` in `package main`, which is a fact
-about the source and belongs to a language reader -- there is none here yet, and the
-`.go` files are named and counted as unread by the walk.
+about the source and belongs to a language reader -- `plugins/go`, which reads the
+`.go` files -- and not to this provider.
 """
 
 from __future__ import annotations

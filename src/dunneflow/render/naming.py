@@ -181,9 +181,10 @@ def _stated_form(stated: list[StatedRule]) -> list[str]:
 
     Stated and measured sit under one heading on purpose. This section is *Form*, and both
     halves answer the same question about spelling — one from a document, one from the code.
-    Comparing them is not built; putting them beside each other is the beginning of it.
+    Comparing them is `_checked_section`'s, further down the page; this puts them beside
+    each other.
 
-    **No root, deliberately.** `_form_section` is handed the *source* root and these rules
+    **No root, deliberately.** `_form_section` was handed the *source* root and these rules
     come out of *documents*, which live above it — the mix-up this file records paying for
     once already, where every citation printed as an absolute path halfway across the disk.
     A path is not needed here, so the parameter that could be the wrong one is not taken.

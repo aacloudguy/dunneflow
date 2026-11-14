@@ -11,8 +11,8 @@ Four provenances, never blended. Two of them are free and are all this module pr
 * `DECLARED_CODE` -- a module docstring, parsed.
 * `DECLARED_DOCS` -- a glossary heading or a definition table, parsed.
 
-`CITED` and `INFERRED` come from the model pass, are stored separately, and are merged
-in only at render time so that the free half can always be read alone.
+`CITED` and `INFERRED` are a model pass's, which is declared and unbuilt: nothing in this
+build produces, stores or merges either, so the free half is all a map holds.
 """
 
 from __future__ import annotations

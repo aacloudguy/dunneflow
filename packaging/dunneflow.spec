@@ -57,9 +57,9 @@ rather than one -- both of them macOS's. `target_arch` is a Mach-O idea: a Windo
 one architecture and PyInstaller builds for the interpreter it is running under, so on
 Windows this file takes no answer but `host` and **refuses the other by name** rather than
 accepting a word it would then ignore (rule 49 -- a setting that is quietly dropped is worse
-than one that is rejected, because only the second can be seen). Unset builds for the machine doing the building, which is what the
-verification gate in `CLAUDE.md` runs and what keeps that gate at seven seconds. `universal2`
-builds for Apple Silicon *and* Intel, and is what a release is, and needs an interpreter that
+than one that is rejected, because only the second can be seen). `host` builds for the machine doing the building, which is what the
+verification gate in `CLAUDE.md` runs and what keeps that gate at seven seconds. `universal2`,
+the default when unset, builds for Apple Silicon *and* Intel, and is what a release is, and needs an interpreter that
 is itself universal2 -- uv's managed Pythons and Homebrew's are single-arch by construction,
 so it has to come from python.org. **Asked for universal2 under an interpreter that cannot
 produce it, this file raises** rather than quietly building for one architecture: a
@@ -357,8 +357,8 @@ datas = [
 # `yaml._yaml` can be imported -- `yaml/__init__.py` takes `yaml.cyaml` inside a `try` and records
 # its absence in `__with_libyaml__`, which nothing here reads. PyPI has no universal2 PyYAML
 # wheel for any version, so the extension is the one thing in the bundle that cannot be built
-# for both architectures. Excluding it costs nothing measurable: the three detector files are
-# a few kilobytes each, read once. `tests/test_frozen.py` holds the "never used" half.
+# for both architectures. Excluding it costs nothing measurable: the detector files are
+# a few tens of kilobytes each, read once. `tests/test_frozen.py` holds the "never used" half.
 #
 # **Both names, and `cyaml` is the one that does the work.** Excluding the extension alone
 # leaves `yaml.cyaml` importing it, which is an ImportError where there used to be a

@@ -96,7 +96,8 @@ class Report:
     unsupplied: int = 0      # call sites the reader said nothing about
 
     def sentence(self) -> str:
-        """*typescript: 3,104 edges supplied, 12 landed on no routine.*
+        """*typescript edges: 3,104 supplied, 12 named a place this map holds no routine —
+        external.*
 
         Empty where nothing was supplied, so a map with no TypeScript in it reads exactly
         as it always did. The two recovery figures are said **only when they are not

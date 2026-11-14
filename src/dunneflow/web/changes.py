@@ -116,10 +116,10 @@ SELECT o FROM (
 # `f(policy_path=project_dir / ".lictores" / "standards-policy.json")` read as no change at
 # all until this existed.
 #
-# **Its own step rather than a sixth `FACTS` row**, and not for tidiness. Two things about it
+# **Its own step rather than a seventh `FACTS` row**, and not for tidiness. Two things about it
 # genuinely differ: `call_args` carries no owner, so it reaches one by joining `calls` through
-# `site_id`; and its answer needs a second, verifying pass that none of the other five wants
-# (see `_arguments_moved`). Five working comparisons are not disturbed to make a table look
+# `site_id`; and its answer needs a second, verifying pass that none of the other six wants
+# (see `_arguments_moved`). Six working comparisons are not disturbed to make a table look
 # uniform.
 #
 # **`site_id` is deliberately absent from the key.** It embeds an ordinal among identical
@@ -263,7 +263,7 @@ SELECT structure_id, name, COALESCE(type, ''), COALESCE(dflt, '') FROM {db}.fiel
 """
 
 # What a structure says about **itself**. Bounded to the files whose bytes differ, exactly as
-# the other two prose lanes are, and through the same `_changed_files` so the three cannot
+# the other three prose lanes are, and through the same `_changed_files` so the four cannot
 # disagree about which files are worth reading (rule 51).
 #
 # **Only structures that have one**, either side -- `DOCSTRINGS_IN`'s reasoning, unchanged: a
@@ -362,13 +362,14 @@ class Presence(NamedTuple):
 
 
 #
-# **One residue, stated rather than discovered.** The `chg` route reads its ids through
-# `navIds`, which splits `data-navid` on a space -- it was written for a route that can
-# carry several. A *named file* is the one subject here whose name can contain one, and such
-# a row would resolve to two ids that name nothing. Lictores has 0 of them, and a constant's
-# `module.name` cannot hold a space at all, so the corpus does not exercise it; it is
-# recorded because the next artefact-bearing corpus might, and because the fix belongs to
-# `navIds` rather than here.
+# **One residue, stated rather than discovered -- and since settled where it said.** The
+# `chg` route reads its ids through `navIds`, which split `data-navid` on a space -- it was
+# written for a route that can carry several. A *named file* is the one subject here whose
+# name can contain one, and such a row resolved to two ids that name nothing. Lictores has 0
+# of them, and a constant's `module.name` cannot hold a space at all, so the corpus did not
+# exercise it; it was recorded because the next artefact-bearing corpus might, and because
+# the fix belonged to `navIds` rather than here. `navIds` now splits only where the writer
+# set `data-navmulti`, so a single id comes back whole.
 PRESENCE: dict[str, Presence] = {
     "db_tables":   Presence("name", "name", "t", "name"),
     "entrypoints": Presence("id", "name || ' — ' || module", "", ""),
@@ -432,9 +433,9 @@ def _arguments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
     reader something moved when it did not. Fourteen routines survive the first pass and
     thirteen survive both.
 
-    **This module still does not know what a language is.** It asks `extractors.canonical`,
-    handing it the file the expression came from; how a canonical form is made stays inside
-    the extractor that owns the suffix, and a suffix nobody claims compares as written.
+    **This module still does not know what a language is.** It asks `canonical.canonical`,
+    handing it the file the expression came from; how a canonical form is made stays with
+    the language that owns the suffix, and a suffix nobody claims compares as written.
     """
     def side(db: str) -> dict[str, list[tuple[Any, ...]]]:
         # **Plain tuples, on a cursor of its own.** This is the one query here that reads
@@ -480,7 +481,7 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
 
     The WHY layer, and the only one the code itself never carries. `FACTS` compares what a
     routine *does*; this compares what somebody wrote down about it, which is why it is its
-    own band rather than a sixth fact kind (see `build`).
+    own band rather than a seventh fact kind (see `build`).
 
     **What was wrong before this existed, in three different ways.** A comment block leading
     a definition sits *above* the `def`, so it is outside that routine's `line_start` and
@@ -512,7 +513,7 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
 
     `_constants_moved` said whoever added comments here would have to ask the canonical
     question a third time, and that the answer would depend on how the column is filled. It
-    does. A constant reaches the store through `ast.unparse` and is already canonical; an
+    does. A Python constant reaches the store through `ast.unparse` and is already canonical; an
     argument is a byte slice and needs a pass; a comment is **one row per physical line**,
     stripped of its marker and nothing else, so the pass it needs is not about a language at
     all -- it is about where somebody pressed return. That is why it is done here rather than
@@ -555,7 +556,7 @@ def _prose(text: str) -> str:
     -- `_constants_moved` predicted it would come round and said the answer would depend on
     how the column is filled, which is exactly what decides it. A comment reaches the store
     as one row per *physical line* with no paragraph structure left to keep, so
-    `_comments_moved` joins the lot and collapses; a docstring reaches it as one string
+    `_comments_moved` joins the lot and collapses; a Python docstring reaches it as one string
     through `ast.get_docstring`, which is `inspect.cleandoc` -- dedented, stripped top and
     tail, and with **its blank lines intact**. The structure is there, so it is kept.
 
@@ -745,7 +746,7 @@ def _structure_docs_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
 def _changed_files(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
     """The files whose bytes differ, which is what every prose lane is bounded to.
 
-    One place asks it, because three lanes now do -- and a bound computed twice is two
+    One place asks it, because four lanes now do -- and a bound computed twice is two
     answers to *which files are worth reading* waiting to disagree (rule 51).
     """
     return [str(r[0]) for r in conn.execute(CHANGED_FILES.format(A=A, B=B))]
@@ -754,7 +755,8 @@ def _changed_files(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
 def _moved_prose(conn: sqlite3.Connection, A: str, B: str, sql: str) -> set[str]:
     """Owners whose prose differs, as stored and then canonically.
 
-    Shared by the docstring lane and nothing else today; written as one function because the
+    Shared by the two docstring lanes -- a routine's and a structure's -- and nothing else
+    today; written as one function because the
     comment lane has the same two-pass shape with a *different* canonical form, and folding
     all three together would mean one function that takes an argument saying which kind of
     prose it is holding -- the row that means two things (rule 32), in a signature.
@@ -806,8 +808,8 @@ def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[dict[str,
     in the presence bands and this one at once, and the two cannot disagree about what a
     constant *is* (rule 51).
 
-    **Not canonicalised, and that is the interesting half.** A constant's value reaches the
-    store through `_literal`, which is `ast.unparse` -- so `{'a':1,  'b':2}` and
+    **Not canonicalised, and that is the interesting half.** A Python constant's value reaches
+    the store through `_literal`, which is `ast.unparse` -- so `{'a':1,  'b':2}` and
     `{'a': 1, 'b': 2}` are already the *same string* by the time they are written down, and
     a canonical pass here can never change the answer. It was written, measured at 384 ms
     over 374,529 characters a side, and removed on that evidence: work that cannot change an
@@ -872,9 +874,9 @@ def build(base: Path, compared: Path,
     against. **Neither is claimed to be older.** Rows say which side a thing is on and
     stop there -- see the module docstring.
 
-    Every row carries the node **id** the rest of the dashboard selects by, never a
-    label -- a worklist whose rows cannot be acted on is design rule 16's dead control
-    with a count beside it (rule 30).
+    Every routine and structure row carries the node **id** the rest of the dashboard
+    selects by, never a label -- a worklist whose rows cannot be acted on is design
+    rule 16's dead control with a count beside it (rule 30).
 
     `serving` is a connection this process **already holds open on `base`**, and passing
     it is worth 36x. It is the base rather than the compared end because the base is what
@@ -899,10 +901,11 @@ def build(base: Path, compared: Path,
     A, B = ("chgcompared", "main") if serving is not None else ("compared", "base")
     if serving is not None:
         # A plain path, not a `mode=ro` URI, and both halves of that are deliberate.
-        # `Store` opens without `uri=True`, so a URI here is taken as a literal filename
-        # -- and read-only is what made this slow in the first place, so buying it back
-        # on the connection the whole dashboard shares would spread the 36x to every
-        # other query rather than remove it.
+        # `Store` opened without `uri=True` when this was written, so a URI here was taken
+        # as a literal filename (a read-only `Store` passes it now) -- and read-only is
+        # what made this slow in the first place, so buying it back on the connection the
+        # whole dashboard shares would spread the 36x to every other query rather than
+        # remove it.
         #
         # The guarantee is kept the way rule 25 keeps it for `sourcedb`: by a test that
         # this module contains no write statement at all, because what is being guarded
@@ -934,7 +937,7 @@ def build(base: Path, compared: Path,
             f"SELECT id FROM {A}.routines INTERSECT SELECT id FROM {B}.routines")}
         behaves = {rid: sorted(k) for rid, k in moved.items() if rid in both}
 
-        # **Deliberately not a sixth `FACTS` row, and not folded into `moved`.** Putting it
+        # **Deliberately not a seventh `FACTS` row, and not folded into `moved`.** Putting it
         # there would make every routine whose comment was rewritten *behave differently* --
         # a band that promises something the routine **does** has moved, about a change that
         # moved nothing it does. That is the mistake the argument canonicaliser was written

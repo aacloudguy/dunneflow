@@ -29,7 +29,8 @@ DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
 ```
 
 That is the **development** build: this machine's architecture, ad-hoc signed, ~11 s, and it
-**must never leave this machine** — every step in `release.sh` refuses it by name. Building for
+**must never leave this machine** — every step in `release.sh` that signs, notarises, images
+or installs refuses it by name. Building for
 one architecture is now something you have to ask for; see `DUNNEFLOW_ARCH` below.
 
 A **release** is `packaging/release.sh`, one verb per step so any of them can be run alone:
@@ -104,7 +105,7 @@ quit. `tests/test_frozen.py` asserts the module contains no `CFUNCTYPE`, so the 
 cannot quietly stop being true. Measured on the Developer ID build with `flags=0x10000(runtime)`
 and the dictionary empty: registers, serves, quits, nothing denied in the AMFI log.
 
-**Nothing uses `codesign --deep`.** Apple deprecates it and it applies the *outer* bundle's
+**Nothing signs with `codesign --deep`.** Apple deprecates it and it applies the *outer* bundle's
 entitlements to everything nested, which is the opposite of what an empty entitlements file is
 for. Every Mach-O file is found — never listed, so a dependency's dylib cannot arrive ad-hoc
 signed inside a Developer ID bundle — and signed on its own, deepest first, the bundle last.
@@ -170,9 +171,11 @@ everything.
   application to a scratchpad that no longer existed.
 
 `packaging/dunneflow.spec` bundles as **data** everything something reads as a *file*: the
-rules (loaded as YAML) and the detectors' loader plus both extractor trees (**hashed**, not
-imported — rule 12 puts the reader in the key), `web/static`, `web/vendor`, and
-`copy_metadata('dunneflow')` so `tool_version()` needs no frozen branch. Destination
+rules (loaded as YAML); the detectors' loader, `schema.py`, `sql.py`, `ingest/`, every
+in-process reader's tree, the documentation scanner and each plugin's fingerprinted files
+(**hashed**, not imported — rule 12 puts the reader in the key); `web/static`, `web/vendor`,
+the licences, and the part of `copy_metadata('dunneflow')` that `tool_version()` reads, so
+it needs no frozen branch. Destination
 `dunneflow/…`, per `resource_root()`. `packaging/dunneflow_app.py` defaults a bare argv to
 `serve` — the **application's** decision, not the CLI's, which keeps its usage message.
 
@@ -286,14 +289,14 @@ asked the binary for `--version`, which this CLI has not got, and an empty strin
 path (rule 49, in a file name). It reads the dist-info the spec bundles — the same file
 `tool_version()` stamps into every map.
 
-**The 1,447 tests prove the source tree, not the artifact**, so the ground truth is run
+**The tests — 1,447 of them when this was taken — prove the source tree, not the artifact**, so the ground truth is run
 *through the binary*. Taken 2026-09-09 on `../comitia-2026-08-29/src` with
 `--standards ../dunnecorp-standards`, 628 files in **37.7 s**: the four executables at
 **1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP` fixture with its three
 rules in the checked lane, the research paper yielding **zero** naming rules, and the
 conformance verdicts at **4 checked · 1 no population · 10 not checkable**.
 
-**Signed, notarised and shipping on all three platforms.** The identity is
+**Signed and notarised on macOS, and shipping on all three platforms.** The identity is
 whatever `DUNNEFLOW_IDENTITY` names — a `Developer ID Application: Name (TEAMID)`, which
 `release.sh` has no default for and refuses without — and a released build reports
 `flags=0x10000(runtime)`, the full Apple authority chain and a secure timestamp; the `.app`

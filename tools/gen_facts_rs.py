@@ -7,7 +7,7 @@ this file and compares it **without needing Rust**.
 
 **What Rust needs that Go did not, and each is a way the wire goes wrong.**
 
-- **There is no serde.** It would be a fourth vendored crate and a proc-macro, which is
+- **There is no serde.** It would be a fifth vendored crate and a proc-macro, which is
   a build step running somebody's code to read code. So the encoder is generated here as
   well: every record writes itself into a `String`, and `json::write_str` is the one place
   a string is escaped.
@@ -25,7 +25,7 @@ this file and compares it **without needing Rust**.
     uv run python tools/gen_facts_rs.py --write    # write src/facts.rs and the fingerprint
 
 **And the fingerprint.** The plugin vendors its parser, so its `fingerprint` is every file
-under `src/` and `vendor/` plus the manifests — about 170 names, which no person should
+under `src/` and `vendor/` plus the manifests — over 200 names, which no person should
 maintain and no glob may stand for (`contract.py`: a fingerprint names files). `--write`
 rewrites that list in `plugin.json`, and the test asserts it equals what is on disk.
 

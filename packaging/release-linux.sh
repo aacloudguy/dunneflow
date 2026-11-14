@@ -15,7 +15,7 @@
 #     uninstall  take all three back out again
 #     all        build, verify, tar, install
 #
-# **Six verbs against release.sh's eight, and the differences are stated rather than
+# **Six verbs against release.sh's seven, and the differences are stated rather than
 # pending.** There is no `venv`: an ELF holds one architecture, `FatELF` was proposed and
 # never merged, and there is no `lipo` for Linux -- so a machine that wants both builds
 # twice, on two machines, and `DUNNEFLOW_ARCH` has no answer here but `host`. There is no
@@ -77,9 +77,9 @@ die()  { printf '\n\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
 # `tool_version` into every map this build writes. So the name of the archive and the version
 # recorded inside the maps it ships cannot disagree; they are one file, read twice.
 #
-# (`release.sh` reads macOS's `CFBundleShortVersionString` instead, which is a literal in the
-# spec's `info_plist`. That is a second answer to the same question and is left alone here:
-# it is the version Apple is shown, and changing where it comes from is a macOS decision.)
+# (`release.sh` reads macOS's `CFBundleShortVersionString` instead, which the spec's
+# `info_plist` takes from `pyproject.toml`. That is a second reading of the same answer and is
+# left alone here: it is the version Apple is shown.)
 app_version() {
     [ -d "$APP" ] || die "there is no build yet — run '$0 build' first"
     local meta

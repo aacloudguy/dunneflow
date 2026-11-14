@@ -3,8 +3,8 @@
 `http.server` from the standard library, deliberately. The dashboard is a reading tool
 someone opens on their own machine, not a service, and adding a web framework to a program
 whose only dependency is a YAML parser would be paying a permanent cost for a one-machine
-problem. The same command works on macOS and Windows because nothing here is platform-
-specific.
+problem. The same command works on macOS, Windows and Linux; the folder picker and the
+reveal at the foot of this file are the only parts of it that are platform-specific.
 
 Both stores are opened `writable=False`. Serving must never be able to damage the map it
 is showing -- see rule 20, which exists because a read command once dropped every table it
@@ -101,8 +101,9 @@ STATIC = resource_root() / "web" / "static"
 VENDOR = resource_root() / "web" / "vendor"
 
 # Why a sidecar cannot answer, one sentence per corpus and one for the case that is
-# neither. Constants because three readers say them -- `/api/source`, `/api/docsource`, and
-# the glossary payload that decides whether a citation offers to open at all -- and rule 51
+# neither. Constants because four readers say them -- `/api/source`, `/api/docsource`,
+# `/api/stated`, and the glossary payload that decides whether a citation offers to open at
+# all -- and rule 51
 # puts the wording where all of them pass. Two spellings of "there is no sidecar here" is a
 # reader being told two different things about one program.
 NO_SOURCE_SIDECAR = "no source sidecar beside this map"
@@ -169,12 +170,13 @@ def columnar(model: GraphModel, clock: _Clock | None = None) -> dict[str, Any]:
     """The whole stack as parallel arrays, with every drawn thing already positioned.
 
     Shadows are appended after real nodes and carry `real[i]`, the index of the node they
-    proxy. That is what the transposition lines are drawn from, and it means the client
-    never has to build a lookup to find where a shadow's real self lives.
+    proxy. That is what a crossing is resolved back to its real ends through (rule 23 took
+    the transposition line itself away), and it means the client never has to build a
+    lookup to find where a shadow's real self lives.
 
     `clock` is the instrument and changes nothing: this and `structural` are two of the
-    five things *the 2.5D model and its payload* names, and a step label that conflates
-    five things cannot say which of them costs 27.6 minutes on a map of 262,879 routines.
+    four things *the 2.5D model and its payload* names, and a step label that conflates
+    four things cannot say which of them costs 27.6 minutes on a map of 262,879 routines.
     """
     pos = structural(model)
     if clock is not None:
@@ -309,7 +311,7 @@ def build_payload(store: Store, program: str,
     a plate order and a set of colours worked out for one codebase mean nothing in another.
 
     **`clock` splits the step that no evidence could name** (`BACKLOG.md` item 8). Three
-    phases with quite different shapes hide behind one label: `graph.build` is six scans
+    phases with quite different shapes hide behind one label: `graph.build` is ten scans
     of the store, `structural` is a sort and a phyllotaxis per drawn node, and the
     transposition is ten parallel lists over nodes, shadows and edges in pure Python. A
     sub-lap is written with a leading `·` so a reader can see at a glance that it is
@@ -510,16 +512,12 @@ class _Base:
     algorithms: dict[str, Any] = field(default_factory=dict)
 
 
-# What building a base costs, in the order it is paid, so a reader watching a switch is
-# told where the ten seconds are going rather than watching a bar. Named here rather than
-# inside `_Live.open` because the count has to be knowable before the work starts -- "step
-# 4 of 6" needs the 6 up front, and a hand-counted 6 beside a six-branch function is two
-# numbers about one thing (rule 32).
 class NothingOpen(RuntimeError):
     """A route that needs a version on screen was reached with none.
 
-    Two ways now, and it used to be one. It is still a route missing from
-    `_Handler.NEEDS_BASE` -- a defect with a sentence, rather than a blank page with none --
+    Two ways now, and it used to be one. It is still a route wrongly listed in
+    `_Handler.GET_WITHOUT_BASE` or `POST_WITHOUT_BASE` -- a defect with a sentence, rather
+    than a blank page with none --
     and since `/api/close` it is **also a race a reader can win**: `opened` goes true ->
     false for the first time in this tool's life, so a request that passed the route gate
     can reach `current` a moment after the base has gone.
@@ -544,6 +542,11 @@ def why(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+# What building a base costs, in the order it is paid, so a reader watching a switch is
+# told where the ten seconds are going rather than watching a bar. Named here rather than
+# inside `_Live.open` because the count has to be knowable before the work starts -- "step
+# 4 of 6" needs the 6 up front, and a hand-counted 6 beside a six-branch function is two
+# numbers about one thing (rule 32).
 BUILD_STEPS: tuple[str, ...] = (
     "opening the graph",
     "the 2.5D model and its payload",
@@ -636,7 +639,7 @@ class _Live:
     # clearing it would make every switch pay four seconds to learn what it already knew.
     COMPARISON_CACHES: tuple[str, ...] = ("changes", "anomalypairs")
 
-    # What a **program** switch clears, which is everything. Its own list rather than a
+    # What a **program** switch clears, which is all four of these. Its own list rather than a
     # superset expression over the one above, because the two answer different questions
     # and a reader has to be able to see both answers at once: a revision switch keeps
     # `findings` and `filepairs` deliberately, and a program switch cannot.
@@ -696,7 +699,7 @@ class _Live:
         # graph -- and a graph file's findings are a property of the file. Switching away
         # and back re-serves them rather than recomputing.
         #
-        # It exists because the findings are *computed*, not stored: thirteen detectors
+        # It exists because the findings are *computed*, not stored: every detector
         # over the graph, every time they are asked for. On the served graph, whose pages
         # the boot has already warmed, that is **62 ms** per request against 0.9 ms held
         # -- worth having and not the reason. The reason is the other end of a
@@ -710,7 +713,8 @@ class _Live:
         # Both naming lanes read with a leading underscore allowed, which is a reader's
         # Setting rather than the default the base is built with. Keyed by revision and
         # lane, and filled the first time the page asks: a reader who never turns the
-        # Setting on pays nothing for it.
+        # Setting on pays nothing for it. `/api/macros` keeps its report here as well,
+        # under `(revision, "macros")`. In neither cache list above, and nothing clears it.
         self.relaxed: dict[tuple[str, str], dict[str, Any]] = {}
         # A sidecar is optional by design -- `--no-source`, or a map handed over without
         # it. Absent is a state the inspector states plainly, never one it hides.
@@ -1078,7 +1082,7 @@ class _Live:
         *program* rather than to the version. A program switch is the case where that stops
         being true.
 
-        **Every cache goes**, and the two that survive a revision switch are the reason this
+        **All four go**, and the two that survive a revision switch are the reason this
         cannot reuse `COMPARISON_CACHES`:
 
         * `findings` is keyed on `graph_db.name` -- a **basename**. `output/lictores/
@@ -1175,7 +1179,7 @@ class _Live:
         that is reachable and shut -- which is the one race this method could otherwise
         introduce, and it is why the whole swap is a single hold of `self.lock` rather than
         `switch_program`'s two. That method closes outside the lock because it has just
-        spent ten seconds building and has already repointed; four `close()` calls are
+        spent ten seconds building and has already repointed; five `close()` calls are
         microseconds and buy nothing by being let out.
 
         **The analysis is not touched -- not the process, not the slot, not the report.**
@@ -1496,11 +1500,12 @@ class _Live:
     def current(self) -> _Base:
         """The version everything on screen is about. **Raises with nothing open.**
 
-        Sixty-odd routes read this, every one of them behind the gate in `_Handler` that
-        refuses before they are reached -- so arriving here with no base is a defect in
-        that list rather than a state a reader can produce. Refusing loudly is what makes
-        the gate's list checkable: an empty `_Base` handed back instead would let a route
-        drop off the list and answer with a confident, empty, entirely wrong page.
+        Some sixty use sites read this, every one of them behind the gate in `_Handler`
+        that refuses before they are reached -- so arriving here with no base is a defect in
+        that list, or since `/api/close` a race (see `NothingOpen`). Refusing loudly is what
+        makes the gate's lists checkable: an empty `_Base` handed back instead would let a
+        route be listed as needing no base by mistake and answer with a confident, empty,
+        entirely wrong page.
         """
         base = self._base
         if base is None:
@@ -1757,8 +1762,8 @@ class _Handler(BaseHTTPRequestHandler):
 
         The stack has always been honest about this: picking a *plate* clears the selection
         rather than nominating a member of it. What was missing was not honesty but an
-        answer, and `detail.fold` gives one in the same shape every other specimen uses, so
-        the inspector renders it through the path that already exists.
+        answer, and `detail.fold` gives one in the same shape every other specimen uses; the
+        shell renders it with `viewInspectorFold`, reading the same keys.
 
         A port is refused rather than described. It is a place, not a thing in this
         compartment -- a click on one flips the book, which is a different act with its own
@@ -2088,7 +2093,7 @@ class _Handler(BaseHTTPRequestHandler):
         most sessions read the counts without ever opening the list. Sending them with
         the cover would put that weight behind the first paint of every map.
 
-        Held per graph rather than recomputed. This route ran all thirteen detectors on
+        Held per graph rather than recomputed. This route ran every detector on
         every request, under the lock, for an answer that cannot change while the served
         file does not: 62 ms a time on Lictores, against 0.9 ms held. Small, and the same
         cache is what makes the comparison affordable, where the other end is a graph
@@ -2667,8 +2672,9 @@ class _Handler(BaseHTTPRequestHandler):
 
         The two rows this exists for are the last two, and they are a **standing guarantee**
         rather than a placeholder waiting for a model. Nothing on the analysis path calls a
-        model or touches a network -- the extractors are stdlib `ast` and `tokenize`, the
-        document scanner is hand-written, and `Provenance`'s two paid tiers are declared and
+        model or touches a network -- the Python extractor is stdlib `ast` and `tokenize`,
+        the other languages' readers are the plugins under `plugins/`, the document
+        scanner is hand-written, and `Provenance`'s two paid tiers are declared and
         unbuilt. A reader handed a map is entitled to know that in as many words, and to be
         told plainly when an older map cannot say.
 
@@ -2798,14 +2804,14 @@ class _Handler(BaseHTTPRequestHandler):
     def _version_of(self, graph: Path) -> dict[str, Any]:
         """What one version says its own version is, or nothing at all.
 
-        Three meta keys, written by `analyze` from `resolve/version.py`. Absent is a real
+        Four meta keys, written by `analyze` from `resolve/version.py`. Absent is a real
         answer -- most programs assert no version, and an empty string here means the page
         shows nothing rather than an empty box beside a label (rule 44).
 
         The served graph is read off the connection this process already holds. Rule 58:
         a second read-only handle to a database open in WAL mode cannot join the
         shared-memory WAL index and re-derives it per query -- 36x on a real comparison.
-        Three rows is not 36x of anything, but the rule is about the *habit*, and the
+        Four rows is not 36x of anything, but the rule is about the *habit*, and the
         cheap path is also the shorter code.
         """
         keys = ("program_version", "program_version_tier", "program_version_where",
@@ -3000,7 +3006,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         Where this differs from every other comparison in the dashboard is the cost, and
         it is inherent rather than an oversight: findings are not rows to be joined, they
-        are what thirteen detectors conclude, so the compared version's findings mean
+        are what the detectors conclude, so the compared version's findings mean
         running the detectors over the compared version's graph. Held per graph in
         `_Live.findings`, so a reader who switches back and forth pays once each.
         """
@@ -3134,7 +3140,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _r_programs(self, q: dict[str, list[str]]) -> None:
         """Every program beside this one, and which is being read.
 
-        The siblings come from `revisions.program_dirs(out_dir.parent)` -- *which
+        The siblings come from `revisions.program_dirs(out_root)` -- *which
         directories under this root hold a map* -- so `serve` keeps taking a program
         directory and needs no new argument. A program served from somewhere with no
         siblings gets a list of one, which is the honest answer rather than an empty
@@ -3311,7 +3317,7 @@ class _Handler(BaseHTTPRequestHandler):
         themselves -- two tabs, one close -- and it is read as *already closed*.
 
         **Synchronous, unlike both switches.** They run on a thread because they build a
-        base and that takes ten seconds; this closes four handles and clears four dicts, so
+        base and that takes ten seconds; this closes five handles and clears four dicts, so
         a thread would buy nothing and cost the caller the ability to know it was done. The
         reply already carries the terminal report, so the shell's `pollBase` and the start
         page's `watch` both settle on it without a line of new watching.
@@ -3501,11 +3507,11 @@ class _Handler(BaseHTTPRequestHandler):
         browser cannot hand a server what a folder picker chose, by design.
 
         So the picker is the operating system's, run by this process -- `osascript` on
-        macOS, a Windows Forms folder dialog through `powershell` on Windows, neither of
-        which is a dependency. **Which one, and the whole business of making it open in
-        front, is `pick_folder`'s** (rule 51): this route is the same three answers on every
-        platform, and a handler that knew one of them would be the place a second platform
-        got added by copying it.
+        macOS, a Windows Forms folder dialog through `powershell` on Windows, `zenity` or
+        `kdialog` on Linux, none of which is a dependency. **Which one, and the whole
+        business of making it open in front, is `pick_folder`'s** (rule 51): this route is
+        the same three answers on every platform, and a handler that knew one of them would
+        be the place a second platform got added by copying it.
 
         **The typed field stays**, and that is the whole posture: this is a convenience over
         a control that still works, never a replacement for one (design rule 2). Cancelling
@@ -3614,10 +3620,10 @@ class _Handler(BaseHTTPRequestHandler):
     def _p_base(self, q: dict[str, list[str]]) -> None:
         """Make another version the base. **A POST, and that is not ceremony.**
 
-        Every other route on this server is a read. A GET that swaps the whole map is one
+        Every route in `ROUTES` is a read. A GET that swaps the whole map is one
         a browser prefetch, a bookmark reload or a link preview fires by itself -- and
-        this codebase spends rule 20 on a *read* that repaired. The one route that
-        replaces what is on screen is the one route that is not a GET.
+        this codebase spends rule 20 on a *read* that repaired. A route that
+        replaces what is on screen is never a GET.
 
         Refuses by name in four cases, because "nothing happened" and "that is already
         what you are looking at" are different answers and a reader must not have to guess
@@ -3732,9 +3738,9 @@ class _Handler(BaseHTTPRequestHandler):
         "/favicon.ico": "_r_favicon",
     }
 
-    # The one route that changes what this server is showing. Its own table for the same
-    # reason `ROUTES` is one (design rule 16): an unhandled path fails by name rather than
-    # through a default that looks deliberate. Kept separate from `ROUTES` rather than
+    # The routes that change what this server is showing, or act outside it. Its own table
+    # for the same reason `ROUTES` is one (design rule 16): an unhandled path fails by name
+    # rather than through a default that looks deliberate. Kept separate from `ROUTES` rather than
     # flagged inside it, so "does a GET ever swap the base" is a question about a list.
     POST_ROUTES: dict[str, str] = {
         "/api/base": "_p_base",
@@ -3799,7 +3805,8 @@ class _Handler(BaseHTTPRequestHandler):
     def _refuse_without_base(self, raw: str) -> None:
         """Say what is not open, rather than answering as though something were.
 
-        Mostly a defect -- a route that ought to be in `WITHOUT_BASE`, or a page asking too
+        Mostly a defect -- a route that ought to be in `GET_WITHOUT_BASE` or
+        `POST_WITHOUT_BASE`, or a page asking too
         early -- and it gets a status and a sentence, which is a thing that can be found. An
         empty payload would be indistinguishable from a version with nothing in it (rule
         49), and that is the failure this whole gate exists to make impossible.
@@ -4126,7 +4133,8 @@ def where(given: Path) -> tuple[Path, Path]:
 
 
 # **A folder picker and a reveal are the two things this server asks the operating system
-# for, and they are the only two places in `web/` that are not portable by construction.**
+# for, and with the stopping of a child in `analysis.py` they are the only places in `web/`
+# that are not portable by construction.**
 # Each is a *convenience over a control that still works* (design rule 2) -- the typed field
 # and the stated path are the controls -- so a platform with no answer refuses in a sentence
 # and nothing else changes.
@@ -4260,7 +4268,7 @@ def pick_folder() -> tuple[str, str]:
     path with a reason is something that went wrong and that the reader is told about.
     Collapsing the last two would report every cancel as an error in the panel.
 
-    Bounded on both platforms, because this blocks on a person: a dialog left open must not
+    Bounded on every platform, because this blocks on a person: a dialog left open must not
     hold a server thread for ever. Three minutes is long enough to go and find a folder and
     short enough to recover from one nobody ever saw.
     """

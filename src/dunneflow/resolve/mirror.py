@@ -421,7 +421,7 @@ def term_evidence_sql(term: str) -> str:
 def _index_code(store: Store) -> dict[str, list[Sighting]]:
     """Every word the program uses as a name, keyed by identity.
 
-    Five naming surfaces and three bearing ones. The artefact surface is the one this
+    Six naming surfaces and three bearing ones. The artefact surface is the one this
     report was built for: without it `vestiarium` reads as a word Lictores defined and
     abandoned, when it is the name of the database the whole program writes to.
     """

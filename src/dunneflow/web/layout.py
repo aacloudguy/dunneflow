@@ -117,7 +117,7 @@ DISK_GAP = 190.0
 # a radius can be chosen that never overlaps instead of one that usually does not.
 #
 # It is the **minimum** rather than the median (1.69), because a guarantee taken on the
-# typical pair is not a guarantee. `test_layout.py` re-measures it, so a change to the
+# typical pair is not a guarantee. `test_layout_spacing.py` re-measures it, so a change to the
 # placement that moved it could not pass silently.
 PHYLLOTAXIS_TIGHTEST = 1.546
 
@@ -227,8 +227,8 @@ def disk_heights(model: GraphModel) -> dict[str, float]:
 
     Externals go underneath the code that reaches them, in one band, so the stack reads
     top-down as *the program, then what it touches*. Within each band, the order is by
-    size: the biggest plates near the middle of the stack, which keeps the silhouette
-    from being top- or bottom-heavy when it is tilted.
+    size, biggest first from the top: the biggest package plate is the top of the stack,
+    and the biggest external plate sits directly under the code.
 
     The order is only a default. Disks shuffle like cards, and the renderer owns that.
     """

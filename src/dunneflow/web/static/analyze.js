@@ -521,7 +521,7 @@
          *
          * **Through the host, and that is the whole of a defect worth the paragraph.** This
          * was a bare `loadPrograms()` -- a `shell.js` global. The shell defines one, so the
-         * shell worked; the start page loads only this file and `start.js`, so there it threw
+         * shell worked; the start page loads only `settings.js`, this file and `start.js`, so there it threw
          * `ReferenceError` on the one tick that ever sees `done`, *before* the paint below
          * and before the loop's `return`. The panel froze on whichever step the previous poll
          * had painted -- 7 of 7 for a ninety-second tree, 2 of 7 for one that finished between

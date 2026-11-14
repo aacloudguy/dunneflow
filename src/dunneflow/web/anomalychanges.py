@@ -22,7 +22,7 @@ about this tool rather than about the program: when it changes, DunneFlow change
 saying so here would put a mark on a finding the program did not move.
 
 **No SQL, and no `ATTACH`.** Every other comparison in this dashboard joins two graphs on
-one connection, because facts are rows. Findings are not rows: they are what thirteen
+one connection, because facts are rows. Findings are not rows: they are what the
 query-driven detectors *conclude*, so the only way to have the compared version's
 findings is to run the detectors over the compared version's graph. That is the whole
 cost of this view, and it is why the caller holds them per **graph** rather than per

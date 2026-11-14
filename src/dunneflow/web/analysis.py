@@ -1,9 +1,10 @@
-"""Running an analysis from the server: the one thing this process asks for that is a write.
+"""Running an analysis from the server: the one thing this process asks for that writes a map.
 
-Every other line under `web/` is a read, and `_Live` opens every store `writable=False`
-because rule 20 says serving may refuse but may never repair. So the analysis does not
-happen here at all -- it happens in **a subprocess running `dunneflow analyze`**, and this
-module is the pre-flight, the plumbing and the report.
+Every other line under `web/` that touches a map's contents is a read -- `roots.py` copies
+and removes whole map directories and opens none of them -- and `_Live` opens every store
+`writable=False` because rule 20 says serving may refuse but may never repair. So the
+analysis does not happen here at all -- it happens in **a subprocess running
+`dunneflow analyze`**, and this module is the pre-flight, the plumbing and the report.
 
 Three reasons for the subprocess, and the first is the binding one:
 
@@ -292,7 +293,7 @@ def _group_of(proc: Any) -> int | None:
 def _interrupt_group(proc: Any) -> bool:
     """Ask the child **and everything it started** to stop, and let it close what it holds.
 
-    `analyze` holds three SQLite connections and a process pool, so the first rung is always
+    `analyze` holds several SQLite connections and a process pool, so the first rung is always
     the polite one. On POSIX that is `SIGTERM` to the process group, falling back to the
     child alone for a `Popen` that has no group to speak of -- a test double, or a platform
     without one.
@@ -446,7 +447,7 @@ def was_stopped(code: int) -> bool:
 def stop(proc: Any, *, grace: float = 3.0) -> str:
     """End a running analysis, and say how it ended.
 
-    The polite rung first, because `analyze` holds three SQLite connections and a process
+    The polite rung first, because `analyze` holds several SQLite connections and a process
     pool and a clean exit closes them; the forceful one only if it will not go. **To the
     whole group either way** -- see `_interrupt_group`, which is where the interesting part
     is, and `own_group`, which is what makes a group there is to address.

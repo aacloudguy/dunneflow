@@ -268,7 +268,8 @@ def for_program(store: Store) -> dict[str, Any]:
 # contents, decisions splitting a block, and **no arrows at all** -- because structured
 # code has no `goto` to draw. Python source never lost that structure, so there is no
 # control-flow graph to recover, no dominator tree, and no layout pass: `ast` handed the
-# nesting back as written and the store kept it as spans.
+# nesting back as written and the store kept it as spans. The other readers record the
+# same spans, so the ribbon is drawn the same way for every language.
 #
 # So this reads top to bottom like the source, it cannot move under a gesture (rule 73),
 # it needs no vendored library, and it scrolls -- which is how this reader reads.

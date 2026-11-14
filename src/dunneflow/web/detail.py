@@ -11,7 +11,7 @@ holds and labels them. Two disciplines carry over from the renderers:
 * **Provenance travels with every claim** (design rule 13). A boundary keeps the evidence
   that admitted it, a call keeps its confidence and the expression at the call site, and
   everything keeps its file and line. A reader who cannot get back to where a fact came
-  from cannot check it, and an unheckable claim is an assertion wearing a uniform.
+  from cannot check it, and an uncheckable claim is an assertion wearing a uniform.
 
 * **Nothing is silently dropped** (design rule 1, and rule 8). Lists are returned whole.
   Where the client will bound a list for space, it is the client's job to say what it
@@ -73,9 +73,9 @@ def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
 # --------------------------------------------------------------------------- #
 # Identity
 #
-# The graph mints one id space over five kinds of thing, so the first job is to
+# The graph mints one id space over seven kinds of thing, so the first job is to
 # read a kind back out of an id. Routines and structures carry opaque hashes and
-# are told apart by looking; the other three are prefixed.
+# are told apart by looking; the other five are prefixed.
 #
 # The constant split is on the *last* dot deliberately: a module path holds dots
 # and an identifier does not, so `const:lictores.agent.JTBD_OPENERS` is the module
@@ -444,9 +444,9 @@ def attach_source(detail: dict[str, Any], source: SourceStore | None,
 def _hover_touches(store: Store, node_id: str) -> list[dict[str, Any]]:
     """What a routine reaches outside itself, grouped by what kind of thing it is.
 
-    Order is fixed rather than by count: tables, then boundaries, then remotes, then
-    the files it names. A card whose rows reshuffle between two similar routines is a
-    card the reader has to read rather than recognise.
+    Order is fixed rather than by count: tables, then SQL that names no table, then
+    boundaries, then remotes, then the files it names. A card whose rows reshuffle
+    between two similar routines is a card the reader has to read rather than recognise.
     """
     args = {"id": node_id}
     out: list[dict[str, Any]] = []
@@ -692,10 +692,11 @@ def describe(store: Store, node_id: str,
 # reads a kind out of an id, and a fold's id is a *drawing's* id.
 #
 # It answers in the **same shape** every other specimen uses, and that is the whole
-# point rather than a convenience. `viewInspector` has one rendering path with a
+# point rather than a convenience. `viewInspector` was one rendering path with a
 # default for every key (rule 51 -- one truth about what the inspector shows), so a
-# fold that fills `in`, `out`, `touches`, `governance` and `holds` renders through
-# the code that already exists. A second shape would be a second answer to "what is
+# fold that fills `in`, `out`, `touches`, `governance` and `holds` rendered through
+# the code that already existed; the shell has since given it a function of its own,
+# `viewInspectorFold`, reading the same keys. A second shape would be a second answer to "what is
 # selected", and the diagram is where that mistake was made once already: it set
 # `state.selected` to one arbitrary member and the inspector answered, truthfully,
 # about something nobody clicked.
@@ -854,7 +855,7 @@ def fold(store: Store, box: dict[str, Any], flow: dict[str, Any],
         "id": str(box.get("id") or ""),
         "label": str(box.get("label") or ""),
         "identity": {
-            "fold": str(box.get("kind") or ""),          # class | file | touch
+            "fold": str(box.get("kind") or ""),   # class | file | macro | touch | wayin
             "module": box.get("module") or "",
             "class_name": box.get("class_name") or "",
             "qualname": _fold_qualname(box),

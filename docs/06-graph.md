@@ -47,9 +47,9 @@ and a ring with four ticks around it. Both can be turned off.
 | | |
 |---|---|
 | **undo** / **redo** | step back and forward through selections |
-| **you are here** | frame the current selection |
+| **you are here** | go back to the view you found the current selection in |
 | **focus** | whether the dimmed thousands answer a hover, or only what is lit |
-| **snap to fit** | frame everything |
+| **snap to fit** | frame the selection, or everything when nothing is selected |
 | **top-down** / **tilt** | two camera angles |
 | **benchmark** | measure the frame rate on your machine |
 | **clear** | drop the selection — it appears once there is one |
@@ -77,8 +77,8 @@ is. Both readings are good, so both are built.
   instant, and blind to which nodes are connected — so links cross it at every angle.
 - **by connection** runs a force solve until connected things sit near each other, with
   the shadows pulling for the plates they stand in for. On a large program's busiest
-  plate that takes 328,531 edge crossings down to 27,291 — **91.7% fewer**. (The button's
-  own tooltip rounds that to 92%.)
+  plate that takes 328,531 edge crossings down to 27,291 — **91.7% fewer**, the figure the
+  button's own tooltip gives.
 
   It costs about **89 ms with a GPU and 9.7 seconds without one**, paid when you ask for
   it. The page says which of the two actually drew it.
@@ -109,7 +109,7 @@ The line under it always states what that merged: *"4,410 drawn · 7 plates merg
 `<small>`, holding 25."*
 
 **Colour by** What colour means: `what it is`, `which plate`, or `what changed`. The last
-appears only when there are two versions to compare.
+appears only while two versions are being compared.
 
 **unselected** Whether everything you did not pick is `dimmed` or `hidden`. Dimmed keeps
 the shape of the program around your selection; hidden gives you the neighbourhood alone.

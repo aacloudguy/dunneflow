@@ -83,8 +83,8 @@ def describe(store: Store, name: str) -> dict[str, Any]:
             "columns": columns,
             # **Operations, not routines.** `COVER_TABLES` counts operations and the
             # navigator's row carries that number, so counting routines here would put
-            # two different figures under one name (rule 32). The routines are the
-            # length of `in.callers` and the pane says which it is showing.
+            # two different figures under one name (rule 32). `in.callers` is one row
+            # per operation too, and the pane says which it is showing.
             "ops": len(touchers),
             "writes": writes,
             "reads": reads,

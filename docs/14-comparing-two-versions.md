@@ -87,8 +87,9 @@ operating system, which is why there is no picture of it here.
 
 Both ends are real. The **reading** end decides what the whole screen shows, including
 the cover, the routine list, the code browser, the glossary. The other end is what it is held
-against. Your choice survives a page reload and a restart of the server, because it is the
-server's state and not the browser's.
+against. Your choice survives a page reload. The reading end is the server's state and not
+the browser's, so a restarted server opens on the newest version again unless it is started
+with `--revision`, and the page says which one you were last reading.
 
 **A program with two versions opens comparing them**, rather than waiting to be asked.
 The routine list marks itself and the code overlay draws on your first visit. The menu
@@ -143,10 +144,10 @@ These are a partition, exclusive, so every routine that differs is in exactly on
 
 | | |
 |---|---|
-| **only in base** / **only in compared** | Presence, by identity. A routine is identified by its qualified name, never by its position, so it keeps its identity when anything above it moves. **A rename reads as one of each**, which is honest: nothing in the source says the two are the same thing. |
+| **only in base** / **only in compared** | Headed *Added* or *Deleted* on the page, by the interpretation in force. Presence, by identity. A routine is identified by its qualified name, never by its position, so it keeps its identity when anything above it moves. **A rename reads as one of each**, which is honest: nothing in the source says the two are the same thing. |
 | **behave differently** | The same routine in both, and something it *does* differs — what it calls, what it touches, what it takes or returns. This is the band worth your time. |
-| **edited only** | The body differs and nothing it does does. **The largest band in ordinary work and the least interesting**, and saying so is the point: a routine whose internal computation changed is exactly what DunneFlow exists not to report. |
-| **explained only** | Nothing about the routine differs except the prose above it. It is a band of its own because a rewritten comment sits *outside* the routine's body and would otherwise be in no band at all — and a routine already in one of the bands above carries a tag instead of a second row. |
+| **edited only** | Headed *Edited, behaving the same* on the page. The body differs and nothing it does does. **The largest band in ordinary work and the least interesting**, and saying so is the point: a routine whose internal computation changed is exactly what DunneFlow exists not to report. |
+| **explained only** | Headed *Explained differently* on the page. Nothing about the routine differs except the prose above it. It is a band of its own because a rewritten comment sits *outside* the routine's body and would otherwise be in no band at all — and a routine already in one of the bands above carries a tag instead of a second row. |
 
 ### The explanations
 

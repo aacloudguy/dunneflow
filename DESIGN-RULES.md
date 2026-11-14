@@ -11,8 +11,8 @@ rule 21, and every "design rule 21" in the codebase refers to the one below.
 
 A reading tool for someone orienting in code they did not write. Settled shape: a local
 server (`dunneflow serve`), three panes — navigator, centre view, inspector — where the
-centre pane is a mode toggle (graph / table / document) over one shared selection, not
-three destinations. **Vanilla JS + deck.gl, served by `http.server`** — no framework, no
+centre pane is a mode toggle (graph / table / document / code / diagram / shape) over one
+shared selection, not six destinations. **Vanilla JS + deck.gl, served by `http.server`** — no framework, no
 Node at runtime or build, deck.gl vendored into `web/vendor/`.
 
 *Astro 5 + Tailwind 4 was ratified here and has been struck, on evidence.* It was chosen
@@ -129,8 +129,9 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     comment fix and constants each changed what extraction *meant* while every cached
     file stayed byte-identical -- saved each time only by someone remembering to bump
     `SCHEMA_VERSION` by hand, which is precisely the half of the rule a hand forgets.
-    `code_extraction_inputs()` and `doc_extraction_inputs()` name the files, per corpus,
-    and a test asserts membership rather than re-deriving the list.
+    `core_extraction_inputs()`, `lang_extraction_inputs()` and `doc_extraction_inputs()`
+    name the files, per corpus and per language, and a test asserts membership rather than
+    re-deriving the list.
 
 13. **Every reported meaning must carry its provenance, and the provenance must open.**
     A definition or a naming rule is a claim, and a claim without its source is an
@@ -429,8 +430,9 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
 28. **Inference is voluntary and secondary, and a map states whether any was used.** Tom
     asked that an analysis record *what model was used*, so a reader could decide to read the
     directory again when a better one existed. Checking before planning turned the feature
-    from a placeholder into a guarantee: **no model is used**. The extractors are stdlib
-    `ast` and `tokenize`, the document scanner is hand-written, nothing on the analysis path
+    from a placeholder into a guarantee: **no model is used**. The extractors were then stdlib
+    `ast` and `tokenize` (the readers added since are parsers and compilers, none a model),
+    the document scanner is hand-written, nothing on the analysis path
     touches a network, and `Provenance`'s two paid tiers — `CITED` and `INFERRED` — are
     declared and unbuilt.
 
@@ -439,10 +441,13 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     Inference page is withdrawn (rule 14), so *voluntary* now means there is nothing to
     volunteer for. The two rows below are unchanged and more true than they were — they
     were always a standing guarantee rather than a placeholder, which is why withdrawing
-    the feature touched neither. So *About this map* reads **none — every fact here
-    was read, not guessed** and **none — this analysis is deterministic and local**, and a
-    test asserts that nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP
-    client or an LLM SDK. A claim on screen that no query can return is prose (rule 13).
+    the feature touched neither. So *About this map* read **none — every fact here
+    was read, not guessed** and **none — this analysis is deterministic and local** — until
+    2026-11-07, since when a map no model touched does not use the word and says *Every fact
+    here was read from the source with the standard library, and nothing left this machine*;
+    the two rows are drawn only where a model was used. A
+    test asserts that nothing under `extractors/`, `resolve/`, `canonical/`, `ingest/` or
+    `plugins/` imports an HTTP client or an LLM SDK. A claim on screen that no query can return is prose (rule 13).
 
     **This is one step over from design rule 14**, which scopes what may *leave* the machine.
     This scopes whether a fact was **guessed** — a different question with a different

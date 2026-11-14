@@ -182,7 +182,7 @@ const NODE_LABEL_ZOOM = -1.2;
  * has **no orientation**, so a picture of one must not have one either; a labelled box
  * *does* -- it has a top and a reading direction -- and one held facing the camera has
  * stopped being on the plate it belongs to. Held flat it foreshortens with the tilt, which
- * costs 18% of its height at the default 35 degrees and none at all top-down. If that turns
+ * costs 43% of its height at the default 35 degrees and none at all top-down. If that turns
  * out to be the wrong trade the billboard is a one-line change, and it is deliberately not
  * being made until there is a picture to judge.
  *
@@ -464,7 +464,7 @@ function visibleFloor(d, subset) {
  *
  * With a selection it frames the selection: having pushed everything else out of the way,
  * the next thing anyone wants is to see what is left, filling the screen -- **but never
- * closer than `selectionFloor`**, because "filling the screen" stops being useful the
+ * closer than `visibleFloor`**, because "filling the screen" stops being useful the
  * moment the selection is smaller than the thing it sits on. One node has no extent to
  * fill a screen with; framing it alone is a magnified dot with no context.
  *
@@ -842,7 +842,7 @@ function plateGaps(d) {
  * Two constraints, and a plate takes whichever binds. Its own spacing says how big a dot
  * can be before it meets its neighbour; the gap to the plate above says how big before it
  * meets a node it has nothing to do with. The second is the one that binds on a sparse
- * plate, and it binds hard at the default `spreadZ` of 0.35 -- see `plateCeilingNote`,
+ * plate, and it binds hard at the default `spreadZ` of 0.35 -- see `nodeCeilingNote`,
  * which says so on the page rather than leaving the reader to wonder why forty-three
  * plates draw the same size (design rule 1). */
 function nodeRadii(d) {
@@ -1389,7 +1389,7 @@ function buildLayers(d) {
      * plate it sits on, so the separation chosen for it holds at every zoom instead of only
      * at the one it was chosen at. `radiusMinPixels` stays at zero deliberately -- a pixel
      * floor is exactly what would put the dots back on top of each other when the reader
-     * zooms out, and the view cap in `applyLayout` is what keeps them renderable instead. */
+     * zooms out, and the view cap in `applyViewCap` is what keeps them renderable instead. */
     radiusUnits: 'common', radiusMinPixels: 0,
     pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 255],
     /* Billboarded: the disc always faces the camera.
@@ -1516,7 +1516,7 @@ function buildLayers(d) {
         /* `opts.scale` and nothing else: design rule 3 says one multiplier resizes the
          * whole surface together, and a pointer that stayed 26 px while the type and the
          * nodes grew would be the one thing on screen the slider could not reach.
-         * Deliberately *not* tied to `nodeSize`: the arrow's job is to be findable, and it
+         * Deliberately *not* tied to the nodes' size: the arrow's job is to be findable, and it
          * is needed most when the nodes are dots. */
         getSize: POINTER_SIZE * opts.scale, sizeUnits: 'pixels',
         /* Clear of what it points at, along the arrow's own line. The apex is the icon's
@@ -1572,7 +1572,7 @@ function buildLayers(d) {
    * cached on the view state besides, so coming to rest costs one pass and not one per
    * frame after it.
    *
-   * Drawn **after** the nodes and before the edges. The dot stays under its box on purpose:
+   * Drawn **after** the nodes and the edges. The dot stays under its box on purpose:
    * it is where the edges terminate, so a box without one would leave every line stopping
    * short of the thing it connects -- and at 1.4 to 3.6 pixels it reads as the anchor it is
    * rather than as a second mark. */
@@ -2618,7 +2618,7 @@ function mount(container, raw, options = {}) {
      *
      * **A `shadow` flag travelled with it until 2026-09-08, and nothing could ever set it.**
      * It was here so the card could say "you are pointing at a stand-in", written when a
-     * shadow could still be pointed at. It cannot: `prepare` gives one radius 0 and alpha 0,
+     * shadow could still be pointed at. It cannot: `paintNodes` gives one radius 0 and alpha 0,
      * so picking never returns one -- 1,989 picks over 562 distinct nodes returned none --
      * and the rim arrow below resolves through `realIndex` for these same two rules. The
      * resolution stays because it is what makes both of those true from here; the flag went
@@ -2652,7 +2652,7 @@ function mount(container, raw, options = {}) {
         degOut: (g.prepared.outbound.get(real) ?? []).length,
         /* **How far this routine's plates disagree about where it should be.**
          *
-         * A fact about the drawing, like `shadow` above it, and reported the same way: the
+         * A fact about the drawing, and reported the way the rest of this is: the
          * engine says what the picture knows and the application decides whether to draw a
          * sentence about it. The furthest of this node's crossings, in plate-widths, taken
          * off `baseXY` so a spread slider cannot move it.

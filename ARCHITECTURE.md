@@ -23,7 +23,7 @@ machine too, and runs every page they have open, so every request passes
 `_Handler._may_ask` before a route is looked up (rule 51): a `Host` that is not
 `127.0.0.1`, `localhost` or `[::1]` on the server's own port is refused, which is what
 defeats DNS rebinding; a `POST` must also carry `X-DunneFlow: 1`, no foreign `Origin` and no
-cross-site `Sec-Fetch-Site`, which is what stops another site's page starting an analysis or
+cross-site or same-site `Sec-Fetch-Site`, which is what stops another site's page starting an analysis or
 moving the maps root. Both were answered in full until 2026-11-12, confirmed with `curl`.
 Every answer carries a content security policy that loads script from this server alone,
 and no request body over 1 MiB is read. `tests/test_cold_start.py` holds each refusal.
@@ -38,7 +38,9 @@ and `open`.
 
 **Three modules and the seam is the point.** `mcp/jsonrpc.py` is the frame and knows
 nothing above it; `mcp/tools.py` holds the thirteen bodies, returns plain dictionaries and
-knows nothing about the wire; `mcp/server.py` is the only place that knows both. Every body
+knows nothing about the wire; `mcp/server.py` is the only place that knows both. Beside
+them, `mcp/session.py` holds which map is open and `mcp/resources.py` serves the schema and
+the map's own documents as resources. Every body
 calls what the dashboard calls — nothing under `mcp/` reimplements an answer, and the three
 that were reachable from one surface only (`lookup.py`, `flows.ways_in_affected` and
 `flows.governance_over`, `serve.glossary_sidecars`) were moved out to where both callers
@@ -61,7 +63,7 @@ classified at all is refused rather than admitted for looking harmless (rule 49)
 
 *This module is deliberately outside the no-egress guard in `tests/test_about.py`.* That
 guarantee is about what **produced** the facts, which is why it excludes `web/` too; this
-is `web/`'s sibling. `ingest/` is the opposite case and joins the guard when it is wired.
+is `web/`'s sibling. `ingest/` is the opposite case and joined the guard when it was wired.
 
 **`serve` takes a program, an output root, or nothing at all**, and tells the two apart by
 the same question `analyze` asks to keep a program's own output out of its own corpus:
@@ -299,11 +301,16 @@ the page asks `/api/analysis` at boot, because a run outlives the page that star
 | Inferred facts | none — every fact here was read, not guessed |
 | Read by a model | none — this analysis is deterministic and local |
 
+The two rows are drawn only where one of them is not *none* (BACKLOG 41); where both are,
+`aboutVow` says them as one sentence that does not use the word *model*.
+
 **A standing guarantee, not a placeholder waiting for a model.** Nothing on the analysis
-path calls a model or touches a network: the extractors are stdlib `ast` and `tokenize`, the
+path calls a model or touches a network: the Python extractor is stdlib `ast` and `tokenize`,
+every other reader is a parser run on this machine, the
 document scanner is hand-written, and `Provenance`'s two paid tiers (`CITED`, `INFERRED`) are
 declared and unbuilt. Tom, 2026-09-04: *"Inference should always be voluntary and secondary."*
-A test asserts nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP client
+A test asserts nothing under `extractors/`, `resolve/`, `canonical/`, `ingest/` or `plugins/`
+imports an HTTP client
 or an LLM SDK, because a claim on screen that no query can return is prose (rule 13).
 
 **The Inference page is withdrawn as of 2026-09-09**, and these two rows are untouched by
@@ -477,14 +484,14 @@ queries know a language exists.
   `*net.UnixListener` -- for a routine whose body shows nothing of that kind, which is what
   a stub that only panics looks like. Same columns, its own table, because 45 queries count
   or detect `boundaries` and a filter each of them has to remember is rule 51 at 45 call
-  sites. `counts()` and the analysis summary say them separately; the dashboard does not
-  show them yet (BACKLOG 48).
+  sites. `counts()` and the analysis summary say them separately; the dashboard's inspector
+  lists them in a section of their own (BACKLOG 48).
 - `walk.py` — discovery, and **the size guard**. `parts_under` cuts a tree into parts no
   larger than `TOO_BIG`, descending only into what is oversized, and `Breakdown.uncovered`
   states the one thing a cut of directories cannot cover: a directory that had to be split
-  cannot also be a part, because the command for it would read its children again. The bound
-  is the edge of what has been read end to end — 18,191 files — rather than a limit somebody
-  chose, and `cli.py` says so in the refusal. `serve` is not involved: it runs `analyze` as a
+  cannot also be a part, because the command for it would read its children again. The bound,
+  20,000 files, is set at the edge of what has been read end to end — 18,191 — rather than at a
+  limit somebody chose, and `cli.py` says so in the refusal. `serve` is not involved: it runs `analyze` as a
   child and promotes the child's own last line, so the refusal reaches the analysis pane
   without a second copy of the sentence (rule 51).
 
@@ -500,7 +507,7 @@ queries know a language exists.
   condition at two call sites. With it, `Breakdown.uncovered` holds only the split-directory
   half and Unreal is **86 parts covering all 88,356 files** where it was 84 covering 84,590.
 - `ingest/` — **the seam a language arrives through, and the only place a fact becomes
-  this program's.** Six modules and the split is the point.
+  this program's.** Eight modules and the split is the point.
 
   `contract.py` is what a reader may say and what a manifest may claim — `PluginManifest`,
   `DiscoveryRules`, `Toolchain`, the `IngestPlugin` protocol, and four exceptions that are
@@ -511,7 +518,8 @@ queries know a language exists.
   form, reflective over `dataclasses.fields()` so a field added to `schema.py` needs no
   second declaration. `worker.py` spawns, shakes hands, correlates on an id, **drains stderr
   without ever parsing it**, and respawns once without retrying the file that killed it.
-  `inprocess.py` and `outofprocess.py` are the two kinds of reader. `literals.py` runs the
+  `inprocess.py` and `outofprocess.py` are the two kinds of reader. `dotted.py` is the
+  written contract for how every reader spells a call expression. `literals.py` runs the
   SQL and artefact scanning for every language **in the host** — see `FileFacts.literals`
   below. **`acts.py` is the other judgement made there for every reader**: `one_act` drops a
   boundary or a remote call whose spelling extends another one's on the same line, in the
@@ -616,14 +624,14 @@ queries know a language exists.
 
   **A toolchain that is not installed declines its language and the rest is read.**
   `walk._runnable` asks each language that has files whether its reader can run, before any
-  cache key is read, and a missing `node`, `go` or `cargo` removes that language's files from the
+  cache key is read, and a missing `node`, `go`, `cargo`, `java` or `clang++` removes that language's files from the
   walk with its own residue line, *not read, no toolchain*, which is neither *unread* (no
   reader) nor *declined by you* (design rule 21). Until 2026-11-01 nothing asked, and a
   machine without `node` lost the Python half of a mixed tree to an uncaught refusal.
 - `extractors/python/` — stdlib `ast` + `tokenize` only. No third-party parser. It is the
   **in-process plugin's reader**, named by `plugins/python/plugin.json`'s `reader:` field
-  rather than imported by the walk: the one language that runs in this interpreter still
-  arrives through the same seam as the one on the far side of a pipe, and
+  rather than imported by the walk: a language that runs in this interpreter still
+  arrives through the same seam as the ones on the far side of a pipe, and
   `tests/plugins/python-oop/` runs *this extractor* through a subprocess worker to prove the
   two paths produce byte-identical facts.
 - `canonical/` — whether two writings are **the same expression**, one module per language.
@@ -641,7 +649,7 @@ queries know a language exists.
   `canonical/` is in **neither** key, which is the same test both keys apply — what does
   extraction actually *read*. A canonicaliser cannot change a fact, only whether two facts
   compare equal.
-- `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
+- `extractors/docs/` — Markdown, reStructuredText, AsciiDoc and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
 
   **A map is pruned out of the corpus by the walk, not by a set of paths — rule 92.**
@@ -700,7 +708,7 @@ queries know a language exists.
 - `resolve/manifests/` — **what a program declares about itself**, one provider per
   filename: `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, `Package.swift`,
   `build.gradle.kts`. Six small modules rather than one reader with six branches, because
-  `web/waysin.py:120` renders the **evidence verbatim** and a `package.json` entry
+  `web/waysin.py` renders the **evidence verbatim** and a `package.json` entry
   claiming to come from `pyproject.toml` would be a visible falsehood in the one string a
   reader is shown unparsed.
 
@@ -1125,7 +1133,9 @@ queries know a language exists.
   walks in memory as a read-only one does, its cache stamped with `total_changes`, because
   the recursive query's `(id, depth)` revisits made the arm sixteen times slower there. It
   surfaces as `touches` and `impact` ("by dispatch … may run"), MCP `by_dispatch`, *About
-  this map*'s "Dispatch" row and UNREACHABLE's detail, and it is not drawn (BACKLOG 44).
+  this map*'s "Dispatch" row, UNREACHABLE's detail and the inspector's list of the bodies a
+  call may run; the canvas draws nothing until one is picked there, and then one dashed line
+  to it (BACKLOG 44).
 - `render/` — Markdown and Mermaid. **A map needs neither the source tree nor the
   documentation tree**, and saying so cost twenty-eight signatures: `root` and `docs_root`
   were threaded through every renderer and read by none of them, left behind when the nine
@@ -1282,7 +1292,7 @@ queries know a language exists.
   it is a second way to look at the same facts rather than a filter — nothing is dropped
   and every folded node states what it stands for. The fold happens **on the way in from
   the store**, never over `m.edges`, which holds each crossing twice by design (rule 23);
-  `packages.py` wrote that warning down before anything needed it. `MIN_DISK` is per level
+  `packages.py` wrote that warning down before anything needed it. `MIN_DISK_BY_LEVEL` is per level
   and settable, because what a plate *holds* changes with the level.
 - `web/diagram.py` — the compartment, at **two levels**, and **every arrow carries its
   identity and its kind**. A lane is `pair -> Counter[kind]` rather than `pair -> weight`,
@@ -1475,6 +1485,7 @@ queries know a language exists.
   column is inventing a position (rule 1).
 - `sourcedb.py` — `WORKING` is a **state**, not an id; a revision is identified by when it
   was captured. `seal()` keeps the current snapshot under its own name so the next capture
-  is a second one rather than a replacement. Nothing reads a second revision yet.
+  is a second one rather than a replacement. Nothing read a second revision when it was
+  written; the base switch and the comparison's text lane do now.
 - `sql.py` — reads schemas out of the `CREATE TABLE` statements the code contains.
 

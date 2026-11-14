@@ -746,9 +746,10 @@ class UnfinishedMapError(RuntimeError):
 def unfinished_sentence(name: str, step: str) -> str:
     """Why this map may not be read, in one sentence, said the same way everywhere.
 
-    Four readers refuse an unfinished map -- the dashboard's switch, `serve`'s boot, the
-    program list and `check` -- and a sentence written at each of them would be four
-    readings of one fact by the fourth time somebody added a reader (rule 51).
+    Four readers refused an unfinished map when this was written -- the dashboard's
+    switch, `serve`'s boot, the program list and `check` -- and a sentence written at each
+    of them would be four readings of one fact by the fourth time somebody added a reader
+    (rule 51). Every orientation command and `render` have joined them since.
 
     **It names the step and stops there.** Saying *"nothing resolved its calls"* would be
     a claim about which step it died on, true of the one measured case and false of the
@@ -915,7 +916,7 @@ class Store:
         # saying because a lock looks like it should be.
         #
         # `uri=True` is only ever passed on the read path, and that is deliberate rather
-        # than incidental: a writer is handed a plain `Path`, and `changes.py:857` records
+        # than incidental: a writer is handed a plain `Path`, and `web/changes.py` records
         # the trap from the other side -- a URI handed to something that opens it without
         # `uri=True` names a file called `file:...?mode=ro`.
         self.conn = (
@@ -1319,8 +1320,10 @@ class Store:
                       "macro_sites", "macro_callees"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
-        # **`supplied_edges` is deliberately not here**, and it is the one table a file's
-        # facts do not own. Its rows are keyed by language rather than by file because a
+        # **`supplied_edges` is deliberately not here**, and it is not the only table a
+        # file's facts do not own: `supplied_bindings`, `supplied_touches`,
+        # `supplied_ways_in`, `value_uses`, `ipc_links` and `dispatch_links` are out for the
+        # same reason. Its rows are keyed by language rather than by file because a
         # checker answers about a compilation: an edge out of this file was computed from
         # every other file, and a row naming *this* file as a target belongs to a caller
         # somewhere else. Deleting either half per file leaves the other half stale, with

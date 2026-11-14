@@ -836,8 +836,8 @@ body {
   padding: .3rem .6rem;
 }
 .tb-search::placeholder { color: var(--chrome-muted); }
-/* The directory being read, prominent without shouting. Full path on hover, and on
-   click for anyone who cannot hover. */
+/* The tree being read, by its leaf, prominent without shouting. Clicking it opens
+   `About this map`. */
 .srcpath { display: flex; flex-direction: column; align-items: flex-start; gap: .02rem;
   font: inherit; background: rgba(255,255,255,.09); color: var(--chrome-text);
   border: 1px solid rgba(255,255,255,.18); border-radius: .3125rem;
@@ -888,7 +888,7 @@ body {
 .scale-val { font-size: .68rem; color: var(--chrome-muted); min-width: 2.6rem; text-align: center; }
 .scaleslider { width: 5.5rem; accent-color: var(--accent); cursor: pointer; margin: 0 .15rem; }
 
-/* Columns are driven by `data-nav` / `data-insp` on `.body` rather than by classes on the
+/* Columns are driven by `data-navtrack` / `data-insp` on `.body` rather than by classes on the
  * panes themselves: the *track* has to collapse, not just its contents, and a track is a
  * property of the grid. A pane hidden with `display:none` while its column stayed 22rem
  * would leave a 22rem hole -- which is the shape of the defect this shell already had once,
@@ -1265,7 +1265,7 @@ body {
 /* `direction: rtl` was used here to clip from the left, and it mangles any path with
  * punctuation in it -- `lictores._internal._cwd_guard` rendered as
  * "...ores_internal_cwd_guard", which is not a string that exists in the program. The
- * shortening is chosen in JS now (`moduleTail`), so this only has to not overflow. */
+ * shortening is chosen in JS now (`moduleLabel`), so this only has to not overflow. */
 /* **It yields its width to the name, and it is the only thing in the row that may.**
  * `flex: none` at up to 11rem until 2026-09-08, which made this a fixed cost the name had
  * to fit around -- and 11rem of a 21rem row is most of it. The name is a flex item that
@@ -1298,8 +1298,9 @@ body {
  * redistribute. That 12rem is not hypothetical: it is `NAV_MIN_REM`, the floor `navMaxRem()`
  * clamps to, and every window too narrow to give the navigator more lands on it. (It used to
  * be reached by a breakpoint as well; that breakpoint deleted the pane and is gone.) What is left needs a decision about the *name*
- * -- wrap it, truncate it, or let the row grow (rule 84) -- and all three are refused by
- * one or other of the two comments over `.navlabel`. Filed rather than guessed at. */
+ * -- wrap it, truncate it, or let the row grow (rule 84) -- and all three were refused by
+ * one or other of the two comments then over `.navlabel`. Filed rather than guessed at, and
+ * since built as `navName`. */
 .nav-item .navsub {
   flex: 0 1 auto; min-width: 4rem; max-width: 11rem;
   color: var(--text-faint); font-size: .64rem;
@@ -1690,8 +1691,9 @@ body {
 .hc-where { color: var(--text-faint); }
 .hc-plate { color: var(--text-faint); }
 
-/* Pointing at a stand-in is a fact the reader is entitled to (rule 23), and it is a
- * correction rather than a detail -- so it is stated, not muted away. */
+/* A fact about the drawing rather than about the program -- once *you are pointing at a
+ * stand-in* (rule 23), now where a routine's plates disagree about it -- and it is a
+ * correction rather than a detail, so it is stated, not muted away. */
 .hc-shadow { font-size: .66rem; color: var(--sev-suspect);
              background: var(--sev-suspect-bg); border-radius: .1875rem;
              padding: .18rem .3rem; }
@@ -2131,7 +2133,7 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
  * declaration is three things -- its name, its type and what constrains it -- and folding
  * the last two together would present the schema as something nobody wrote.
  * `table-layout: fixed` so a long CHECK constraint wraps inside its cell instead of
- * widening the pane; the pane is 26 rem and a horizontal scrollbar inside it is a pane
+ * widening the pane; the pane is 22 rem and a horizontal scrollbar inside it is a pane
  * that has given up. */
 .tblcols { width: 100%; border-collapse: collapse; table-layout: fixed;
   font-size: .74rem; }
@@ -2410,7 +2412,8 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
   --dochead-h: 1.85rem;
 }
 /* Sticky, like the column headings above it — a group of 566 is a heading a reader loses
-   long before they reach the end of it. `z-index` under the `th` so the two do not fight. */
+   long before they reach the end of it. `z-index` over the `th`, which sticks beneath it at
+   `--dochead-h`, so the two do not fight. */
 .dochead {
   position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: .45rem;
   height: var(--dochead-h); box-sizing: border-box;
@@ -3136,9 +3139,9 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 }
 .analyze-field input[type=text] { width: 100%; }
 .analyze-field select { max-width: 100%; }
-/* `.hint` has **no base rule** in this stylesheet — only nine descendant overrides, each
+/* `.hint` has **no base rule** in this stylesheet — only descendant overrides, each
  * scoped to a container. So a hint in a new surface is unstyled prose unless it is styled
- * here, and adding a global `.hint` would restyle all nine (rule 71: a class name is
+ * here, and adding a global `.hint` would restyle every one of them (rule 71: a class name is
  * global, and a stylesheet gives no warning). Scoped, like every one before it. */
 .analyze .hint, .analysispanel .hint { font-size: .72rem; color: var(--text-muted); }
 .analyze-field .hint { margin: .2rem 0 0; }
@@ -4250,7 +4253,7 @@ body.detached-code #trailMount { display: none !important; }
 .chg-mod { min-width: 0; font-size: .7rem; color: var(--text-faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The page. Four figures, and each says what it counts (rule 32) rather than leaving the
+/* The page. Its figures, and each says what it counts (rule 32) rather than leaving the
    reader to infer it from position. */
 .chgstats {
   display: grid;
@@ -4317,7 +4320,7 @@ body.detached-code #trailMount { display: none !important; }
 .chgsection .hint { margin: 0 0 0.4rem; font-size: 0.72rem; }
 /* Each band scrolls inside itself. The page must not grow to 4,700 rows on a comparison
    six months wide -- a pane that hands its overflow to the document is the defect rule 29's
-   companion is about, and here it would also take the four figures off the top of the
+   companion is about, and here it would also take the figures off the top of the
    screen, which are the only part a reader needs at a glance. */
 .chgsection .wl-list { max-height: 24rem; }
 

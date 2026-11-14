@@ -102,9 +102,11 @@ nowhere.
   re-analysis entirely and means the same thing at both ends of a comparison. Nothing in
   the map minted it. Its row also recounts itself: *how many routines this stands for
   now*, not how many it stood for when you kept it.
-- **A line, or a loop at a line**, is only true of the version it was kept in. If you
+- **A line** is only true of the version it was kept in. If you
   switch to a different version the row says so: *kept at 2026-11-13T03:56:47Z, so this
-  version may have moved line 92*.
+  version may have moved line 92*. **A loop** sits between the two, and its row says that
+  instead: *a span keeps its place when code moves above it, but not when another one
+  written the same way is added first*.
 - **A box in a diagram** belongs to the drawing it was drawn in, and is valid at the
   altitude you drew it at. The row says that too.
 

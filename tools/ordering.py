@@ -32,8 +32,9 @@ and a run that reports nothing has actually checked something (rule 37).
 
 **Reversing is safe, and that was established rather than assumed.** Nothing in either
 store declares an `INTEGER PRIMARY KEY`, so no rowid is anybody's key: every identity here
-is a `make_id` string, deliberately (`resolve/contract.py` says why). The one place a rowid
-is held at all is `resolve/cli.py`, which reads and updates inside a single pass. So the
+is a `make_id` string, deliberately (`resolve/contract.py` says why). The two places a rowid
+is held at all are `resolve/cli.py` and `resolve/calls.py`, each of which reads and updates
+inside a single pass. So the
 content after a reversal is identical by construction and only the physical order moves.
 
 **Why reversal rather than a stable pool** — which is the fix somebody reaches for first.
@@ -471,10 +472,11 @@ def report_set_sorts(sites: list[SetSort]) -> None:
 NOT_JSON = frozenset({"/", "/index.html", "/start", "/favicon.ico"})
 
 # **The one key that is a measurement rather than an answer**, and the sibling of `WRITTEN`
-# one surface over. `/api/search`, `/api/changes` and `/api/anomalychanges` each report how
-# long they took, so each of them differs between any two readings of one copy — and the
-# probe holds a noisy route *out* of its findings, so leaving it would take four routes out
-# of the gate for ever and report the run green (rule 37).
+# one surface over. `/api/search`, `/api/changes`, `/api/filechanges` and
+# `/api/anomalychanges` each report how long they took, so each of them differs between
+# any two readings of one copy — and the probe holds a noisy route *out* of its findings,
+# so leaving it would take four routes out of the gate for ever and report the run green
+# (rule 37).
 #
 # Normalised by name and by nothing else. The three-pass noise floor below is what makes
 # that safe: it is still measured rather than assumed, so a second volatile key arriving

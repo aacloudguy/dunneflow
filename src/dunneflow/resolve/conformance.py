@@ -28,7 +28,7 @@ alike would let *"we could not check"* read as *"it passes"*. That is the same d
 `Store.finished` applies to a map that never finished, and design rule 21's on a blank pane.
 
 **What is deliberately not built: a pattern language.** Only case styles are tested, through
-`naming.case_style` so that what `kebab-case` means is defined once (rule 51). `NN-kebab-name`,
+`naming.styles_in` so that what `kebab-case` means is defined once (rule 51). `NN-kebab-name`,
 `paul:kebab-case` and *"colon separator"* are quoted back and declared untestable. Inventing
 a template syntax to cover them would mean guessing what a placeholder meant, and a guess
 here is indistinguishable on screen from a measurement -- which is the failure this module

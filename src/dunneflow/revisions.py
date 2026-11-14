@@ -67,7 +67,7 @@ def names_a_map(names: Iterable[str]) -> bool:
     `graph.db` -- which `sqlite3.connect` will leave behind -- makes an empty directory look
     like a program, and `store.refuse_missing` is the other side of that. And a map
     directory whose `graph*.db` has been deleted by hand is **not** recognised, which is
-    reachable through `CLAUDE.md`'s recipe for dropping a superseded sealed snapshot; its
+    reachable through `GROUND-TRUTH.md`'s recipe for dropping a superseded sealed snapshot; its
     `map@<revision>/` would then be read as prose. Recognising a map by anything else means
     recognising it by a name, and that is what was rejected.
     """
@@ -107,8 +107,8 @@ def db_path(out_dir: Path, stem: str, revision: str) -> Path:
 def map_dir(out_dir: Path, revision: str) -> Path:
     """Where the written map for one revision goes.
 
-    A **directory** rather than fifteen `01-entrypoints@<revision>.md`, and the reason is
-    the links: the map's own README points at its fourteen siblings by bare name, and every
+    A **directory** rather than sixteen `01-entrypoints@<revision>.md`, and the reason is
+    the links: the map's own README points at its fifteen siblings by bare name, and every
     one of those would have to be rewritten per revision to say the same thing. Inside a
     directory of its own they are already right, and the program directory stays something
     a person can look at.
@@ -259,7 +259,7 @@ def programs_under(out_root: Path) -> list[Path]:
     `program_dirs` answers *which directories here hold a map* and includes `out_root`
     when it holds one, because the served program can be the root (`serve` takes a
     program directory or a root, and tells them apart by asking that question). Five
-    callers want the other set -- the start page's listing, the two refusals that name
+    callers wanted the other set -- the start page's listing, the two refusals that name
     what a root holds, `roots.check`'s note and `roots.move`'s work list -- and every one
     of them spelled it `if d != out_root`.
 

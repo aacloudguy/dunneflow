@@ -34,7 +34,7 @@
 # After that the key, its id and the issuer id are the keychain's business. The only thing
 # this file knows is the profile name.
 #
-# **Nothing here uses `codesign --deep`.** Apple deprecates it, and it signs everything nested
+# **Nothing here signs with `codesign --deep`.** Apple deprecates it, and it signs everything nested
 # with the *outer* bundle's entitlements, which is the opposite of what an entitlements file
 # that says "nothing is asked for" is trying to guarantee. Every Mach-O file is found and
 # signed on its own, innermost first, and the bundle last.

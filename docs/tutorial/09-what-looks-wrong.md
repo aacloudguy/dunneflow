@@ -155,7 +155,8 @@ Look at the line above the list:
 The map holds more than one version ([chapter 8](08-two-versions.md)), so the findings are
 held against each other too. Eleven of the nineteen say exactly what they said before. Two
 are new — the two `supplied_` tables. One is gone: `reaches`, a CTE in `anomalies.py` that
-the older snapshot read as a table and today's source no longer has. And six are the same
+the older snapshot read as a table. Today's source still has it, but now joins the statement
+together out of pieces, and the map reads no table out of that. And six are the same
 finding making a different claim, each marked with a diamond:
 
 | | then | now |

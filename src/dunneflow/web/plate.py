@@ -31,7 +31,9 @@ same reason from the other side: a shadow is never an endpoint (rule 31).
 beyond the system line; `ext:ARTEFACT` is the files the program *names* rather than uses;
 and `pkg:<small>` and `ext:<small outside>` are folds of plates too small to draw. A fold
 says what it stands for and never claims to be one of them (rule 74), and each of the five
-gets its own sentence rather than a shared one with a blank in it (design rule 21).
+gets its own sentence rather than a shared one with a blank in it (design rule 21). A sixth
+id exists at module level only: `ext:<outside>`, the one plate every external node folds
+onto there (`graph.OUTSIDE_DISK`), which `identity.outside` flags.
 """
 
 from __future__ import annotations
@@ -64,10 +66,10 @@ def describe(store: Store, payload: dict[str, Any], plate_id: str,
     reason: calling a plate a ROUTINE would put the wrong word in the inspector's head and
     the wrong answer in every check that reads it (rule 30).
 
-    `ways` is `waysin.listing()`, passed in rather than asked for here: `serve` already
-    holds it and there is exactly one answer to what a way in is (rule 51). `None` means
-    the caller has none to give, which is a different state from a plate holding none and
-    is why the parameter has no default list to hide behind.
+    `ways` is `waysin.listing()`, passed in rather than asked for here: `serve` asks for
+    it beside the payload and there is exactly one answer to what a way in is (rule 51).
+    `None` means the caller has none to give, which is a different state from a plate
+    holding none and is why the parameter has no default list to hide behind.
     """
     ways = ways or []
     known = {str(d["id"]): d for d in payload.get("disks") or []}

@@ -30,8 +30,8 @@ Point it at the directory that holds the code. For a Python project that is usua
 **Call it** Shows the name of the directory the map is written to, beside the programs
 already in the list. Leave it and DunneFlow uses the directory's own name.
 
-**Read the documentation too** This is on by default. DunneFlow scans the Markdown, reStructuredText
-and plain text beside the code and reads it as a separate, parallel corpus: it is what
+**Read the documentation too** This is on by default. DunneFlow scans the Markdown, reStructuredText,
+AsciiDoc and plain text beside the code and reads it as a separate, parallel corpus: it is what
 fills the glossary, the naming lanes and Document mode's second lane. Turn it off if you
 only want the code, and the analysis is quicker.
 
@@ -61,8 +61,8 @@ its own sentence. The most common one on your first run:
 
 That one is not caution. An analysis into the name that is currently open would rewrite
 the very graph the server is holding, and empty the map under you while you were reading
-it. The others, might be a relative path, a directory that is not there, or a standards directory
-nested inside the tree, each of these get their own sentence too. See
+it. The others, might be a relative path, a directory that is not there, or a directory
+inside the folder maps are kept in, each of these get their own sentence too. See
 [when it refuses](15-when-it-refuses.md).
 
 Analysing into a name that **already exists** is allowed, and the dialog says plainly
@@ -89,8 +89,8 @@ dialog stays open and **Analyse** comes back by itself when the run finishes:
 
 ## While it runs
 
-The panel appears bottom-right and stays there. You can dismiss it, keep reading, and
-come back. An analysis is not a switch, and the map you already have open stays open and
+The panel appears bottom-right and stays there for as long as the run does. You can keep
+reading beside it. An analysis is not a switch, and the map you already have open stays open and
 stays true for the whole run.
 
 ![The dashboard, still showing DunneFlow's cover, with a progress panel in the bottom-right corner reading "ANALYSING OpenUSD-cold — reading the source tree — 1,550/5,744 — step 1 of 7 · 1 m 36 s", an empty progress bar, "The map on screen is untouched. Keep reading." and a Stop it button](images/04-analysis-running.jpg)

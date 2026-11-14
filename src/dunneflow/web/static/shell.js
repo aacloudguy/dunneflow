@@ -206,7 +206,7 @@ let CHANGES = null;       // { available, counts, added, removed, behaves, ... }
  * marks look exactly like marks.
  *
  * The one that costs. Findings are not rows to be joined, so the compared end means running
- * thirteen detectors over a graph nothing here has opened: 1.3 s to 4.1 s the first time
+ * every detector over a graph nothing here has opened: 1.3 s to 4.1 s the first time
  * and 0 ms afterwards, both ends held per graph on the server. That is why it is asked for
  * when the worklist is opened rather than with the cover. */
 let ANOMALYCHANGES = null; // { available, counts, only_in_base, only_in_compared, moved } | { loading } | null
@@ -295,7 +295,7 @@ const POSTURES = [
    keyed by stable identity so it survives a revision change.
    ════════════════════════════════════════════════════════════ */
 const state = {
-  view: "cover",          // cover | graph | table | doc | settings | usage | a11y | anomalies
+  view: "cover",          // one of CENTRE_MODES, or a page: cover | wayin | settings | anomalies | changes | glossary | naming | stated | checked | macros | curiosities | algorithms | pins
   mode: "graph",
   edgesInMotion: true,    // links stay up while the camera turns
   spreadX: 1,             // three independent axes; all three together is what zoom is
@@ -427,7 +427,7 @@ const state = {
    * holds. See `settings.js`. */
   tableOverlay: true,
   /* And the same switch for the findings. A third rather than a wider second, because this
-   * one costs what neither of the others does: the compared end is thirteen detectors run
+   * one costs what neither of the others does: the compared end is every detector run
    * over a graph nothing here has opened. See `settings.js`. */
   anomalyOverlay: true,
   /* Whether the findings only the *compared* version has are unfolded. **Not persisted**:
@@ -471,7 +471,7 @@ const state = {
   namingUnderscore: false,
   macroFold: true,
   macroOpen: "",
-  menuOrder: "waysin",   // waysin | explore  — a genuine tie, so both exist       // cover | graph   ← the Setting standing in for a decision
+  menuOrder: "waysin",   // waysin | explore  — a genuine tie, so both exist
   /* Which colour set carries the difference channel and severity. See `settings.js`, and
    * `tokens.css` for the values and how they were measured. */
   palette: "default",     // 'default' | 'safe' | 'muted'
@@ -669,7 +669,7 @@ const state = {
      carried a literal "lictores" from the prototype, which is a confident label about a
      program nobody has read. */
   trail: [],
-  pins: [],      // {term, idx} — which citation is open in the source viewer   // what a one-time inference pass would cover
+  pins: [],      // {label, note, subject} — what the reader kept
   aiConfirm: false,            // second click arms it
   aiDone: false,               // has the pass been run
   termFilter: "",
@@ -810,7 +810,7 @@ function panelIsOpen(name) {
 /* The navigator's width, in rem so the scale multiplier reaches it (design rule 3).
  *
  * Written to the grid as a custom property rather than into `grid-template-columns`,
- * because the track shorthand is also what `data-nav`/`data-insp` rewrite when a pane
+ * because the track shorthand is also what `data-navtrack`/`data-insp` rewrite when a pane
  * folds -- two rules setting the same property means the last one wins and one of the two
  * features silently stops working. A variable lets both act without racing. */
 function applyNavWidth() {
@@ -1353,7 +1353,7 @@ function refreshChanges(base, compared) {
       && (CHANGES.base !== pair.base || CHANGES.compared !== pair.compared)) CHANGES = null;
   /* The findings' pairing is about the same two versions and goes stale on the same move.
      Dropped here rather than reloaded: this door is the reader asking about the *routines*,
-     and re-running thirteen detectors over the other graph because of it would spend
+     and re-running every detector over the other graph because of it would spend
      seconds nobody asked for. `ensureAnomalyOverlay` fetches it when the worklist is next
      opened, which is the only place it is drawn. */
   if (ANOMALYCHANGES && !ANOMALYCHANGES.loading
@@ -1727,7 +1727,7 @@ const EXPLAIN_TAGS = ["comments", "docstring"];
  * that asks "does every band the server sends reach a client that draws it" keeps working
  * without anybody remembering (design rule 16).
  *
- * `nav` is the route a row takes, and `"file"` is the code browser's own — so the subject
+ * `nav` is the route a row takes, and `"chgfile"` opens the code browser on it — so the subject
  * is one the router already acts on, never a label with no way in (rule 30). */
 const CHANGE_FILE_BANDS = {
   modules_explained: {
@@ -1780,7 +1780,8 @@ const CHANGE_FILE_BANDS = {
  * Four of the eight rows that actually move have none. Rule 77: a subject minted on a
  * condition cannot carry a fact that does not share it.
  *
- * All four are violet with the other explanation bands. Rule 69 measured the difference
+ * The two whose structure is in both versions are violet with the other explanation bands;
+ * the two one-sided ones carry a fixed `gone` and `new`. Rule 69 measured the difference
  * channel full at six meanings, so a fifth idea cannot have a colour of its own; these are
  * separated by being a band of structures, which is a stronger separation than a glyph. */
 const CHANGE_STRUCT_BANDS = {
@@ -2024,7 +2025,7 @@ function routineChangeCounts() {
 
 /* The one door that asks for the comparison on the routines' behalf.
  *
- * Called from the table branch of `render()` and from nowhere else. That is the door
+ * Called from the table branch of `render()` and from the table's own overlay switch. That is the door
  * rather than the mode toggle because there are five ways into table mode -- the toggle,
  * `Enter` on a hovered row, two crumb routes and the code browser's own hand-off -- and a
  * call at each is the list rule 51 says will grow. Every one of them passes through
@@ -2571,8 +2572,9 @@ function switchFailed() {
  * step. So `done` reloads, `failed` states the reason and stays, and anything else keeps
  * watching.
  *
- * The overlay is repainted rather than the page: `render()` rewrites four panes and the
- * navigator, and running that twice a second for ten seconds is work nobody can see. */
+ * The overlay is repainted rather than the page: `render()` rewrites the centre, the
+ * inspector, the trail and the filters, and running that twice a second for ten seconds is
+ * work nobody can see. */
 function pollBase(rev) {
   const since = REBUILD ? REBUILD.since : Date.now();
   const tick = async () => {
@@ -3675,7 +3677,7 @@ async function graphviz() {
 
 /* Which compartment to open on.
  *
- * The one the current selection is on, when there is one -- the modes are five ways of
+ * The one the current selection is on, when there is one -- the modes are six ways of
  * looking at **one** selection, so arriving in Diagram mode from a selected routine should
  * land on that routine's compartment rather than on a default nobody chose. Otherwise the
  * largest, because it is the one most worth having drawn for you. */
@@ -4257,7 +4259,7 @@ let dgmFitWhole = false;
 
 /* Which box the shared selection is in, marked on the drawing.
  *
- * The five modes are five ways of looking at **one** selection, so a routine picked in the
+ * The six modes are six ways of looking at **one** selection, so a routine picked in the
  * navigator or the stack has to be visible here too -- and a box clicked here has to stay
  * marked when the reader's eye comes back to it. Two class changes, never a repaint: the SVG
  * is laid out once, and rebuilding it to move a highlight is the defect that cost the code
@@ -5558,8 +5560,8 @@ function viewTable() {
  * between this and reading the rendered Markdown in `output/`.
  *
  * Lane 1 — the program's **own** 2,064 documents — is served (`/api/docs`, `/api/doc`) and
- * has no view yet: it wants the vendored renderer, which is the next chunk. Said on the
- * page rather than left to be discovered.
+ * is drawn further down, under *lane 1's two pages*, through the vendored renderer that
+ * `prose.js` loads.
  */
 
 /* The eight, asked for once. They cannot change while the map is open — a base switch
@@ -6294,7 +6296,7 @@ function relDocsBlock() {
  *
  * Tom's report: he selected `cantator.__main__`, pressed Document, and got a document about
  * PAUL style rules — opened twenty minutes earlier from a naming citation and never put
- * away. Nothing on the page said so, and Document mode is one of five ways of reading *one
+ * away. Nothing on the page said so, and Document mode is one of six ways of reading *one
  * selection*.
  *
  * The document is **not** closed when the selection moves, on Tom's call: a reader who is
@@ -6438,10 +6440,10 @@ const TRIAGE_LABELS = {
  * is available*. Two versions carrying versions are more obvious than a blind default, so
  * they win — and the strip states which of the two happened.
  *
- * Returns the basis as well as the answer, because they are different claims and the
- * strip prints both:
+ * `diffWords()` returns the basis as well as the answer, because they are different claims
+ * and the strip prints both:
  *
- *   from-versions   both versions parsed, same kind, one is greater
+ *   versions        both versions parsed, same kind, one is greater
  *   assumed         nothing to compare, or two kinds that cannot be ranked
  *
  * The comparison itself is the **server's** — `version_kind` and `version_key` come off
@@ -6551,7 +6553,7 @@ function diffBands() {
  *
  * Design rule 9's shape, not design rule 1's: this is a worklist, and the first move on
  * opening one is to start clearing it. So the bands are ordered by what is worth reading
- * first — what arrived, what went, what behaves differently — and the largest band is last
+ * first — what behaves differently, what arrived, what went — and the largest band is last
  * because it is the least interesting, which is the whole thesis of the tool.
  */
 function viewChanges() {
@@ -6872,7 +6874,7 @@ function viewChanges() {
  * the difference between the change being reported and the page saying "No differences
  * found" (rule 74's shape: a thing is never one of the things it holds).
  *
- * `data-nav="file"` is the code browser's own route, so the row opens the file — the
+ * `data-nav="chgfile"` opens the code browser on it, so the row opens the file — the
  * identity is the path, and it is one the router already acts on rather than a label with
  * no way in (rule 30). Never bounded (rule 8).
  *
@@ -6984,7 +6986,7 @@ function anomalyChangeNote(sev) {
   }
   if (ANOMALYCHANGES.loading) {
     /* Said out loud because this is the wait a reader is most likely to meet: the compared
-       version's findings are thirteen detectors over a graph nothing has opened, and the
+       version's findings are every detector run over a graph nothing has opened, and the
        first one of a session is seconds rather than milliseconds. */
     return `comparing with <code>${esc(shortRev)}</code>… running the detectors over that
             version, which is seconds the first time and nothing afterwards`;
@@ -8275,7 +8277,7 @@ function recordSelection(label, note, view) {
      while steps were named by hand and is wrong the moment every click makes one: two
      routines sharing a name would be silently dropped as a repeat. A label is not an
      identity (rule 30), and `sameSelection` is the test the selection history already
-     used. The view is in it because the three centre modes are three ways of looking at
+     used. The view is in it because the six centre modes are six ways of looking at
      one selection, and moving between them is a step even when the subject has not moved.
 
      **A duplicate is dropped whole, and it used to donate its note first.** That branch is
@@ -8383,7 +8385,7 @@ function redoSelection() {
  * anyone back to anything. Rule 30 a third time, in the one feature design rule 15 says
  * exists to make a detour free: nobody chases a rabbit if they might not find their way
  * back. */
-/* The three ways of looking at one selection.
+/* The six ways of looking at one selection.
  *
  * Written out twice already and about to be a third time, which is how a list stops
  * agreeing with itself (rule 36). It is the settled shape of the centre pane: **a mode
@@ -8417,7 +8419,7 @@ const OFF_MODE_PAGE = {
  * half the app. Reported at the keyboard as *"middle panel seems broken… just disappeared
  * in this mode"*, and an empty gap is exactly what that reads as.
  *
- * Three things are true at once and the treatment says all three. The modes are five ways
+ * Three things are true at once and the treatment says all three. The modes are six ways
  * of looking at one selection, and a destination is not one -- so none is pressed. Nothing
  * here is *unavailable*, because `state.mode` survives a visit to a destination and every
  * button has somewhere to go -- so they stay clickable, and pressing one is *put me back on
@@ -8457,7 +8459,7 @@ function paintModes() {
  * because that is where the step had been made. Reported as *unexpected, so either must be
  * changed or documented.*
  *
- * Changed, because the centre pane's own rule already settles it: the three modes are three
+ * Changed, because the centre pane's own rule already settles it: the six modes are six
  * ways of looking at one selection, so the *mode* is not part of where you were -- the
  * subject is. A step made in the graph and a step made in the table are the same step.
  *
@@ -9052,7 +9054,7 @@ function pointNote(r) {
  * then find the span inside the drawing. This holds the second half between the two --
  * `selectFromNav` is async and the ribbon is painted a `render()` later, so the id has to
  * survive the gap. Module-level and **not** persisted: it is a hop, not a setting, and a
- * `wantedPoint` that outlived the session would scroll a reader to a span they did not ask
+ * `keptPoint` that outlived the session would scroll a reader to a span they did not ask
  * for on the next boot.
  *
  * Cleared by the reveal rather than by the next selection, for `codeFollowedFor`'s reason:
@@ -9356,8 +9358,8 @@ function curiCard(c, i) {
           <span class="citeicon" aria-hidden="true">◈</span>Follow this<span class="citego">go</span></button>
         <button class="cite" data-sqlshow="${key}">
           <span class="citeicon" aria-hidden="true">⌗</span>How this was measured<span class="citego">show the query</span></button>
-        ${/* A doorway you can come back to. Eight of the ten families mint a node subject
-              and two mint a cohort, so most of this row keeps an ordinary node -- and keeps
+        ${/* A doorway you can come back to. Nine of the twelve families mint a node subject
+              and three mint a cohort, so most of this row keeps an ordinary node -- and keeps
               it under the *same* key the routine's own pane would, which is what makes the
               two doors one pin rather than two rows naming one thing. */""}
         ${threadPinBtn(c.subject, c.what)}
@@ -10477,7 +10479,7 @@ function provKey(pane, i) { return `${pane}:${i}`; }
  * bag would be one pane keeping another's flag. */
 const CURIOS = {};
 
-/* Ten measured extrema, asked for once. Idempotent the same way the vocabulary loaders
+/* Twelve measured extrema, asked for once. Idempotent the same way the vocabulary loaders
  * are -- the lane is set before the first await, so the repaint this triggers on arrival
  * does not start a second request. */
 async function loadCuriosities() {
@@ -10642,7 +10644,7 @@ function ensureCuriosities() {
 /* "Not asked for yet", "on its way", "the server refused" and "there is nothing here" are
  * four different things and a blank panel states the wrong one whichever it is.
  *
- * The bag is a parameter because three panes now fetch on demand and each keeps its own
+ * The bag is a parameter because four bags now fetch on demand and each keeps its own
  * flag. What must not be duplicated is *this* -- the four states and how each reads -- and
  * a second copy of it is how one pane quietly starts calling a failure an empty answer. */
 function laneState(bag, lane, err, what) {
@@ -11429,7 +11431,7 @@ function viewNaming() {
 /* ═══ glossary: the program's words, and who says what they mean ═══ */
 
 /* Four tiers, never blended (design rule 13). Two of them are real today; the other two
- * arrive with `dunneflow infer`, which is off until someone turns it on. */
+ * arrive with a model pass, which is off until someone turns it on. */
 const TIER = {
   DECLARED_CODE: ["certain", "DECLARED · code", "quoted from a docstring in this program"],
   DECLARED_DOCS: ["certain", "DECLARED · docs", "quoted from the project's own documents"],
@@ -11831,8 +11833,8 @@ async function selectFold(boxId) {
 
 /* **What the inspector is answering about, in one place.**
  *
- * There are two kinds of subject now -- a node and a fold -- and exactly one of them is
- * ever set. Expressed as an accessor rather than as a convention, because a convention is
+ * There are five kinds of subject now -- a node, a fold, a flow, a plate and a table -- and
+ * exactly one of them is ever set. Expressed as an accessor rather than as a convention, because a convention is
  * what every caller has to remember and rule 51 is a list of the times one of them did not.
  * Everything that asks "what is being inspected" asks here. */
 function inspectorSubject() {
@@ -11890,7 +11892,7 @@ function plateMembers(id) {
           && SPECIMEN.members) || [];
 }
 
-/* One fetch-and-paint, two subjects. `loadNode` and `loadFold` differ in the endpoint they
+/* One fetch-and-paint, for every kind of subject. `loadNode` and `loadFold` differ in the endpoint they
  * ask and in whether threads apply -- a thread is adjacency for one node, and a class has
  * no threads of its own -- and in nothing else. Written once so the two cannot drift in the
  * cache guard, the in-flight check or the order of the two renders. */
@@ -12931,7 +12933,7 @@ function viewInspectorPlate(s) {
  * body says what else it holds, so the figure and the list it opens cannot disagree
  * (rules 13 and 32).
  *
- * Rows are `algoRow`'s, so a row here and a row on the Algorithms page are one row. */
+ * Rows are `loopRow`'s, below, and deliberately not `algoRow`'s. */
 /* **One enclosing span, in a 26 rem column** — and deliberately not `algoRow`.
  *
  * The pane and the worklist share the *row the server sends* and must not share the row
@@ -14006,7 +14008,7 @@ function wire() {
   }));
 
   /* **The one way to the code, wherever it is asked from.** The inspector's location line,
-     every member of a fold, and -- when the flow panel lands -- every call site. Three
+     every member of a fold, and every call site on an arrow's pane. Three
      surfaces, one implementation, because rule 51's list of callers is the thing that
      grows and the second implementation is the one that forgets the mode switch.
 
@@ -14098,7 +14100,7 @@ function wire() {
     used("anomalies:onlythere:" + (state.anoOnlyThere ? "open" : "shut"));
     render();
   }));
-  /* Selection is keyed by qualname, never by row index -- sorting reorders the array,
+  /* Selection is keyed by node id, never by row index -- sorting reorders the array,
      and a revision change reorders it again. Same rule the temporal layers depend on. */
   $$("tbody tr[data-row]").forEach(tr => tr.addEventListener("click", () => {
     /* The row carries the node id, not the qualified name it prints.
@@ -14499,13 +14501,14 @@ function wire() {
     buildNav(); render();
   }));
 
-  /* glossary filter — refills three elements, and touches nothing else.
+  /* glossary filter — refills six elements, and touches nothing else.
    *
    * It used to call `render()`, which rewrites the whole centre pane, the inspector, the
    * navigator and the trail, then put the caret back in the field it had just destroyed.
    * That is 412 ms per keystroke on a real glossary -- a filter you cannot type into --
    * and the caret restoration was the tell that a full repaint was the wrong instrument.
-   * The lists it actually changes are the two lists and the count beside the box. */
+   * What it actually changes are the three lists, two of their headings and the count
+   * beside the box. */
   const tq = $("#termq");
   if (tq) tq.addEventListener("input", () => {
     state.termFilter = tq.value;
@@ -14633,7 +14636,7 @@ function wire() {
      dead, and here the row carried neither, so the shelf could drop a thing and never open
      it.
 
-     Five kinds, five routes, because they are five id spaces. A **node** is what
+     Seven kinds, seven routes, because each is an id space of its own. A **node** is what
      `/api/node` answers about. A **fold** is a box, whose id is the drawing's own. A
      **flow** is an arrow, and it needs the compartment it was drawn in — `selectFlow` reads
      `diagramNow` for the members at each end, so a flow kept in one compartment and opened
@@ -14746,7 +14749,7 @@ function wire() {
     used("pin:open:" + sub.kind);
   }));
 
-  /* A curiosity is a doorway, and it goes through `data-thread` above -- there is no
+  /* A curiosity is a doorway, and it goes through `data-thread` below -- there is no
      handler of its own here, deliberately. The one that used to be routed on a `tag`
      string with a fall-through, which is rule 30: a label is not an identity, and an
      unrecognised one landed on table mode looking like a decision somebody made. */
@@ -15029,9 +15032,10 @@ const WIRED_ATTRS = new Set([
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "navname-set", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
   "closedetail", "detachdetail", "detail", "detailall", "tablego",
-  /* The code browser's three. `codelink` is on every clickable name in the source and
-     `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
-     reads it, so a fourth kind added there without a listener fails by name. */
+  /* The code browser's eight. `codelink` is on every clickable name in the source and
+     `CODE_ROUTES` is what listens for all but `codemode`, which is state the stylesheet
+     reads -- one table, checked by the guard that reads it, so another kind added there
+     without a listener fails by name. */
   "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay", "codeprov", "codemarks",
   /* Document mode's, and they are in `DOC_ROUTES` for the same reason the code's are in a
      table: the document subtree is not rewritten on every render, so a `wire()` binding
@@ -15051,7 +15055,7 @@ const WIRED_ATTRS = new Set([
      `DOC_ROUTES`, because the viewer is a modal outside `#docMount` and rebuilt whole on
      every render — `docopenline` carries the line beside it and routes nothing. */
   "docopenat", "docopenline",
-  /* State the stylesheet reads, not a control: `offmode` says none of the five modes is
+  /* State the stylesheet reads, not a control: `offmode` says none of the six modes is
      current, so the toggle can look like the third state it is in rather than like a paint
      that failed. Nothing listens for it and nothing should. */
   "offmode",
@@ -15066,7 +15070,7 @@ const WIRED_ATTRS = new Set([
      ordinary and one control cannot say it. */
   "tableoverlay",
   /* And the findings'. A third rather than a wider second, for the reason the second exists
-     and one more: this is the dear one -- the compared end is thirteen detectors run over a
+     and one more: this is the dear one -- the compared end is every detector run over a
      graph nothing here has opened -- so a reader must have somewhere to decline it.
      `anoonlythere` unfolds the findings only the compared version has, which are counted
      but never listed among this version's own (design rule 1, rule 32). */
@@ -15535,7 +15539,7 @@ function routineTree() {
   treeCache = { packages, total, filtered, autoOpen };
   for (const g of packages) {
     /* Which plate this package is on, and it is not always its own. A package below
-     * `MIN_DISK` is merged into `pkg:<small>`, so `pkg:_version` names nothing in the
+     * the `minDisk` threshold is merged into `pkg:<small>`, so `pkg:_version` names nothing in the
      * stack -- and a row carrying it would be a control that renders and resolves to
      * nothing. It selects the plate it is genuinely drawn on, or it carries no identity at
      * all and stays a heading, which is the honest third answer. */
@@ -15685,7 +15689,7 @@ function shorten(text, budget) {
   const sep = s.includes("/") ? "/" : s.includes(".") ? "." : "";
 
   /* Both ends of one token, at a character. The unit changes and the rule does not.
-     Returns text only; the three places that reach it wrap it differently. */
+     Returns text only; the four places that reach it wrap it differently. */
   const squeeze = (str, room) => {
     const keep = room - ELLIPSIS.length;
     /* No room for two ends and a mark between them. The mark alone, never a bare head: a
@@ -16086,7 +16090,7 @@ function wireFitOnce() {
   if (wireFitOnce.done || typeof ResizeObserver === "undefined") return;
   wireFitOnce.done = true;
   const ro = new ResizeObserver(scheduleFit);
-  /* By id, and only the ones `render()` keeps. These three elements survive every repaint
+  /* By id, and only the ones `render()` keeps. These four elements survive every repaint
      -- their `innerHTML` is replaced, they are not -- so one observation holds for the life
      of the page. A missing one is skipped rather than thrown on: this is an improvement to
      when the fit happens, never the thing that makes it happen. */
@@ -16303,10 +16307,11 @@ const OVERLAY_SWITCHES = {
              off: "Mark what the comparison says about these findings" },
 };
 
-/* One renderer, two switches, and a table rather than a parameter chain -- an unknown
+/* One renderer, three switches, and a table rather than a parameter chain -- an unknown
  * surface is a named error rather than a switch that renders and governs nothing (design
- * rule 16). Two switches because what they cost differs: the code overlay fetches a
- * difference per file, and these marks are read off an answer already held. */
+ * rule 16). Three switches because what they cost differs: the code overlay fetches a
+ * difference per file, the table's marks are read off an answer already held, and the
+ * findings' is every detector run over the compared version. */
 function overlaySwitchHtml(which) {
   const spec = OVERLAY_SWITCHES[which];
   if (!spec) { console.error("DunneFlow: no such overlay switch:", which); return ""; }
@@ -17782,7 +17787,7 @@ function navGroupsInOrder() {
  *
  * `state.navOpen` is what the reader has arranged and it wins; a group it says nothing
  * about falls back to the table's own default. Under the accordion that fallback is
- * narrowed to the first group alone, because "several groups open" is precisely the state
+ * narrowed to the primary group alone, because "several groups open" is precisely the state
  * the accordion exists to prevent -- and a pane that opens four groups on the first paint
  * and then refuses to open two reads as a broken control rather than as a setting. */
 function groupOpen(g, order) {
@@ -18481,7 +18486,7 @@ document.addEventListener("keydown", (ev) => {
  *
  * The dialog, the pre-flight, the panel and the stop button live in `analyze.js`, because
  * the **start page** needs every one of them and is the surface where they matter most: it
- * is how a first-time reader gets a map at all. What is left here is the four things that
+ * is how a first-time reader gets a map at all. What is left here is the five things that
  * module cannot know, because they are facts about this page rather than about the gesture.
  *
  * `clearOverlays` is the one that came from a defect. The switch scrim is drawn at 96/97
@@ -18564,7 +18569,7 @@ async function closeMap() {
  * rather than a second thing that happens to be spelled the same way.
  *
  * `plates` comes with it, because they are not the same set: `graph.py` merges any package
- * below `MIN_DISK` into `pkg:<small>`, so 47 packages are 45 plates and a row offering
+ * below the `minDisk` threshold into `pkg:<small>`, so 47 packages are 45 plates and a row offering
  * `pkg:_version` would select a plate that is not in the stack.
  *
  * Loaded on demand rather than with the cover: 4,734 rows is a real payload and most
@@ -19586,7 +19591,7 @@ const hoverCache = new Map();     // id -> the served card; a re-hover costs not
  * deliberate pause feels instant. */
 const HOVER_DWELL = 90;
 
-/* ── two surfaces, one card ──
+/* ── three surfaces, one card ──
  *
  * The graph and the navigator both answer "what is this thing", and the answer is the same
  * answer -- so the markup, the fetch, the dwell and the cache are shared, and a **table**
@@ -19966,7 +19971,7 @@ function hoverPlaceBesideNav(el, row) {
   el.style.top = `${top}px`;
 }
 
-/* Hides *both* elements, not the one the current host names.
+/* Hides *every* host's element, not the one the current host names.
  *
  * Moving from the picture to the list switches hosts, and a hide that trusted `hoverHost`
  * to still be what it was when the card was shown would leave the other one on screen --
@@ -19984,7 +19989,7 @@ function hideHoverCard() {
   }
 }
 
-/* One way in for both surfaces: dwell, cache, two-stage paint. The caller says which host
+/* One way in for every surface: dwell, cache, two-stage paint. The caller says which host
  * is asking, what to anchor to, and what it can draw for free. */
 function showHoverCard(host, id, anchor, skeleton) {
   const spec = HOVER_HOSTS[host];
@@ -20808,7 +20813,7 @@ function legendSays(what) {
  * should have fitted -- the placement's own answer, arriving where there was no crowd to
  * answer for.
  *
- * Two controls reach it -- the switch in the controls box, where a reader flips a way of
+ * Two controls reached it -- the switch in the controls box, where a reader flips a way of
  * looking while reading, and the toggle in Settings beside the shapes, which is where a
  * reader who has just chosen a shape set is standing when they wonder why nothing changed.
  * Two doors onto one piece of state is fine; two *implementations* of what the door does is
@@ -21940,7 +21945,7 @@ function refreshCodeFileList() {
  * nothing else: the markup, the handlers and the wiring all checked out.
  *
  * Set from here rather than written into `buildNav`'s template, because the template is
- * generic across nine groups and only this one has two shapes. In `WIRED_ATTRS` for the
+ * generic across twelve groups and only this one has two shapes. In `WIRED_ATTRS` for the
  * reason rule 43 gives about `insp` and `fold`: grid and flex state the stylesheet reads is
  * a real use, and a roster that cannot see it cries wolf. */
 function markCodeMode() {

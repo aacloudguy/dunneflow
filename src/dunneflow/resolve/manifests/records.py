@@ -67,7 +67,7 @@ class Provider:
 
     A record rather than a module, so the registry is an ordinary tuple a test can walk and
     mypy can type. `read` is handed the text and the path: the text because every provider
-    parses it, and the path because two of them ask the *directory* a question -- Cargo's
+    parses it, and the path because one of them asks the *directory* a question -- Cargo's
     `src/main.rs` convention is a file on disk, not a line in the manifest.
     """
 

@@ -1,6 +1,6 @@
 """Document mode: the map's own prose, built from the store rather than from markdown.
 
-`render/markdown.py` writes the same material to fifteen files, and this does **not** reuse
+`render/markdown.py` writes the same material to sixteen files, and this does **not** reuse
 them. The reason is the one thing document mode exists to do: clicking a routine in the
 text must select that routine in the graph, and a markdown file has already thrown away
 the identity needed to do it. Linking rendered prose back to nodes would mean matching
@@ -84,7 +84,9 @@ class Document:
 # --------------------------------------------------------------------------- #
 # The map's own documents.
 #
-# Ordered as the rendered set is, because that order is an argument: where to
+# Ordered broadly as the rendered set is (named values sit beside the data here
+# rather than fourteenth, and flows and governance have no document here),
+# because that order is an argument: where to
 # start, then what it sets in motion, then what does the work, then what it
 # holds, then what it touches, then why it is that way.
 # --------------------------------------------------------------------------- #
@@ -282,7 +284,8 @@ def build(store: Store, doc_id: str) -> dict[str, Any]:
 
     out_sections: list[dict[str, Any]] = []
     for spec in doc.sections:
-        # Grouping here is by module, kind or protocol -- values the rows already carry.
+        # Grouping here is by module, kind, table, protocol or extension -- values the rows
+        # already carry.
         # None of these need the package expression the *node* queries splice in, and
         # binding parameters a statement does not name is how two query families drift
         # into depending on each other's shape.

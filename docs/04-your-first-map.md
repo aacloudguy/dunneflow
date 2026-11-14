@@ -239,7 +239,8 @@ own analysis finished, and every reader that vouches for a map checks:
 ```
 error: comitia was never finished: an analysis stopped while reading the documents.
 What it holds is part of a program, not a program. Analysing it again completes it —
-the extraction is cached, so it takes seconds rather than the whole run.
+the extraction is cached, so it takes seconds rather than the whole run. Or pass
+--allow-unfinished to read it as it stands.
 ```
 
 Analysing again does complete it, and it is quick: extraction is cached against the

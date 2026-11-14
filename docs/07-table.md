@@ -29,15 +29,15 @@ inspector, exactly as a navigator row does, and every other view follows.
 
 ## Finding yourself in it
 
-A large program's table is four thousand rows and about a quarter of a million pixels
-tall, with your selection somewhere in the middle of it. So the banner at the top always
+A large program's table is thousands of rows — 4,734 on one measured — and about a quarter
+of a million pixels tall, with your selection somewhere in the middle of it. So the banner at the top always
 states where you are:
 
 > SHOWING `cli.cmd_serve` — row 78 of 2,552 as sorted here · **Go to it**
 
 When you arrive in Table with something selected, the table scrolls to that row for you,
 every time you arrive; once you are there it leaves your scrolling alone. The rank is the
-useful part. *Row 3,214 of 4,734* says where you are in a list you cannot see all of, and
+useful part. *Row 1,791 of 2,552* says where you are in a list you cannot see all of, and
 **Go to it** brings you back after you have scrolled away to read around it. The number is
 taken from the same sorted list the table is drawing, so it cannot disagree with what you
 would find by scrolling — and *as sorted here* says so, because the same routine has a

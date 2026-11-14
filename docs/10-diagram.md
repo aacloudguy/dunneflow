@@ -26,8 +26,9 @@ its place:
 
 **fit** frames the whole drawing.
 
-**A dashed box is what a macro wrote**, one per macro per file, counted. `DECLARE_CYCLE_STAT` writes
-a class of seven accessors for every stat, and a drawing of those is a drawing of nothing. Select it
+**A dashed box is what a macro wrote**, one per macro per file, counted. A macro that writes
+a small class for every use of it gives a compartment hundreds of boxes nobody wrote, and a
+drawing of those is a drawing of nothing. Select it
 and the inspector lists them all; open it and they are drawn. A way in is never folded into one:
 `main` written by a macro is drawn as itself.
 

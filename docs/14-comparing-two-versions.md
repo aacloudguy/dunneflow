@@ -207,8 +207,9 @@ to draw.
 
 **The anomaly worklist** can say which findings the other version also has, and whose
 count, severity or confidence moved. That one is the expensive overlay: on a 628-file program,
-1.3 to 4.1 seconds the first time, because it means running thirteen detectors against a graph this process
-has never opened.
+1.3 to 4.1 seconds the first time, because it means running every detector against a graph
+this process has never opened. (That was measured when there were thirteen of them; there
+are sixteen now.)
 
 ## What is never done to your snapshots
 

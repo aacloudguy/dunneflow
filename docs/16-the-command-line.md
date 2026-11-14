@@ -116,10 +116,11 @@ but **which ways into the program stop working**.
 **A call that several bodies may answer is followed into all of them.** In Java, a call to
 an interface method or to one a subclass overrides is decided by the object at run time,
 so there is no single routine to draw an edge to. Both questions go on into every body that
-could answer it, and say so:
+could answer it, and say so. This is `touches` on `Json.write`, in DunneFlow's own Java
+reader:
 
 ```
-  goes on by dispatch at 3 calls, into 4 bodies any of which may run: r.run, s.area, step
+  goes on by dispatch at 1 call, into 43 bodies any of which may run: w.writeJson
 ```
 
 and on the `impact` side, *reached by dispatch from …*. Those routines are counted in the

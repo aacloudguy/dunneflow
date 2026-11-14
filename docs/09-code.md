@@ -2,7 +2,7 @@
 
 The source, as it was measured.
 
-![Code mode showing cli.py: the header reads "cli · 2,559 lines · 65 definitions · 257 marks" with "◆ changes", "margin 257" and "detach ⧉" buttons; under it "Against 2026-11-13 03:56:47: 559 lines added and 76 lines deleted" and "42 routines here the comparison has something to say about", then the first of them — __init__, _close, _say, detail, timings, _open_store, _size_verdict, build_parser, cmd_analyze, cmd_impact, cmd_mcp, cmd_mirror, cmd_naming, cmd_query, cmd_render, cmd_serve, cmd_touches and main, each "behaves differently" with what moved beside it, then cpu_phases and phases, each "added". The list runs past the foot of the picture, so the source itself and the SOURCE line under it are out of frame. The navigator is filtered to the search "cmd_serve" and the inspector shows cli.cmd_serve](images/09-code.jpg)
+![Code mode showing cli.py with the comparison overlay switched off: the header reads "cli · 2,559 lines · 65 definitions · 257 marks" with "◇ changes", "margin 257" and "detach ⧉" buttons, and under it "Not showing the difference from 2026-11-13 03:56:47." The source is scrolled to cmd_serve, lines 2437 to 2462 tinted because the routine is the selection: "def cmd_serve(args: argparse.Namespace) -> int:", its docstring, "import webbrowser" and "from .web.serve import already_serving, serve, where", a long comment, then the first lines of its body, with cmd_serve and default_output_root underlined as links. In the margin beside lines 2439 and 2441 are the marks "import webbrowser" and "import .web.serve.already_se…". At the foot, "SOURCE Read from the content-addressed sidecar — the file as measured at 2026-11-13T03:56:51Z, not as the tree stands now." The navigator is filtered to the search "cmd_serve" and the inspector shows cli.cmd_serve](images/09-code.jpg)
 
 ## Where the text comes from
 
@@ -66,9 +66,12 @@ the main pane.
 
 With a compared version set, the difference is drawn over the lines.
 
-The picture at the top of this chapter was taken with one set: under the header, *Against
-2026-11-13 03:56:47: 559 lines added and 76 lines deleted*, and then the forty-two routines
-in `cli.py` the comparison has something to say about.
+The picture at the top of this chapter was taken with one set and the overlay switched
+off, which the line under the header says: *Not showing the difference from 2026-11-13
+03:56:47.* Switched on, the same file reads *Against 2026-11-13 03:56:47: 559 lines added
+and 76 lines deleted*, and then lists the forty-two routines in `cli.py` the comparison has
+something to say about; that picture is in [comparing two
+versions](14-comparing-two-versions.md).
 
 The line-level difference is what `git diff` gives you and gives you better. The half
 above it is the one nothing else can: **which routines behave differently, and in what

@@ -114,7 +114,7 @@ to rewrite it in place
 uv run dunneflow migrate output/some-project
 ```
 
-It rewrites the stored paths in place — on a large program, about 115,000 paths across five
+It rewrites the stored paths in place — on a 628-file program, 115,546 paths across five
 stores in a little over a second. **In place rather than by re-analysis**, deliberately: a
 sealed snapshot exists to be readable after its source tree is gone, and rebuilding would
 orphan exactly those.

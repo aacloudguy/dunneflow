@@ -62,8 +62,8 @@ your route.
 definition lost and should not have to find a particular pane first.
 
 **Every step carries what it *is*, not just what it is called.** Two different things can
-print the same name. On a real codebase, 531 routines share a module word and every
-package has an `__init__` so a trail that stored labels would take you back to the wrong
+print the same name. On DunneFlow's own map 876 routines share their name with at least one other — 21 are
+called `__init__` and seven `main` — so a trail that stored labels would take you back to the wrong
 one to deliver a wrong answer with great confidence.
 
 **The bar is a window onto the history, not the history itself.** It shows a dozen steps;
@@ -103,7 +103,7 @@ nowhere.
   the map minted it. Its row also recounts itself: *how many routines this stands for
   now*, not how many it stood for when you kept it.
 - **A line, or a loop at a line**, is only true of the version it was kept in. If you
-  switch to a different version the row says so: *kept at 2026-10-02T21:37:11Z, so this
+  switch to a different version the row says so: *kept at 2026-11-13T03:56:47Z, so this
   version may have moved line 92*.
 - **A box in a diagram** belongs to the drawing it was drawn in, and is valid at the
   altitude you drew it at. The row says that too.

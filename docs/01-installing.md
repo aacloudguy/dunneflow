@@ -190,10 +190,12 @@ per-element rate hidden inside one is not drawn as a loop, where the same rate w
 before you read the Algorithms page of a Kotlin program.
 
 If Node or Go is not there, DunneFlow reads everything else and says, at the end of the run
-and in the map, what it could not read and why:
+and in the map, what it could not read and why. This is its own source, read on a machine
+where nothing answered `node`:
 
 ```
-  read: python 132
+files 170 (parsed 170, cached 0, removed 0, failed 0) in 11.5s
+  read: cpp 11 · go 8 · java 11 · python 128 · rust 12
   not read, no toolchain: 11 files of typescript — typescript needs `node` ≥ 20.0.0 and
   nothing answers `node --version` on this machine. Install it (brew install node, or
   nodejs.org), or run again with `--without typescript` and the map will say those files
@@ -205,8 +207,8 @@ language yourself and get the same map of everything else, with the count of wha
 out recorded as your choice rather than the machine's:
 
 ```
-files 131 (parsed 131, cached 0, removed 0, failed 0) in 1.0s
-  read: python 131
+files 170 (parsed 170, cached 0, removed 0, failed 0) in 8.2s
+  read: cpp 11 · go 8 · java 11 · python 128 · rust 12
   declined by you: 11 typescript — this build has a reader for that language;
   drop --without to read them
 ```
@@ -233,13 +235,14 @@ Node is never looked for.
 
 ## Where maps are kept
 
-A map is not small. One snapshot of a 628-file program is about 160 MB, and each further
-version of the same program adds about 130 MB. Maps include a graph and a document store per snapshot,
-which are the two that are not shared.
+A map is not small, and it grows with the program. A snapshot is a graph and a document
+store, which are the two things not shared between versions: about 130 MB for each version
+of a 628-file program, and 17.7 MB for the one of DunneFlow's own 181 files this guide was
+photographed against.
 
 The copies DunneFlow keeps of what it read are the cheap part, and they are the reason it
-can still show you the code after the tree has moved on: for that same program they are
-4 MB of source and 20 MB of prose, held once by content and shared by every snapshot,
+can still show you the code after the tree has moved on: for the 628-file program they are
+4 MB of source and 20 MB of prose, and for DunneFlow's own three versions 2.5 MB and 2.2 MB, held once by content and shared by every snapshot,
 however many you capture.
 
 Where they go depends on which of the three you are running:

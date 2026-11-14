@@ -171,7 +171,7 @@ governs nothing is worse than no switch.
 |---|---|
 | **The code overlay** | A per-file difference and up to a few hundred marked lines. The dearest to read, because it makes the *code* harder to read. |
 | **The routine and table marks** | Free — drawn from an answer already held. |
-| **The findings overlay** | The dearest to compute: thirteen detectors run against a graph this process has never opened. On a 628-file program, 1.3 to 4.1 seconds the first time, nothing afterwards. Fetched when you open the worklist, not at boot. |
+| **The findings overlay** | The dearest to compute: every detector — sixteen of them — runs against a graph this process has never opened. On a 628-file program it measured 1.3 to 4.1 seconds the first time, when there were thirteen, and nothing afterwards. Fetched when you open the worklist, not at boot. |
 
 Wanting the free ones while reading clean code is an ordinary thing to want, and one switch
 could not express it.

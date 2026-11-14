@@ -11,12 +11,12 @@ chapter, the steps this tutorial has taken since [chapter 7](07-diagram.md) read
 
 > Diagram › entrypoints.py › inside entrypoints.py › _target_routine → exact › Suspect ›
 > Informational › Glossary › Derived naming standard › Stated naming rules ›
-> Stated rules, checked › Worth a look › entrypoints_from_manifests › _target_routine
+> Stated rules, checked › Worth a look › entrypoints_from_manifests › _target_file
 
 That is thirteen steps, and twelve is what the bar draws by default — the last twelve,
 scrolled sideways so that the one you are on is in view:
 
-![The trail strip. It reads TRAIL, a count of the steps behind, then Worth a look › entrypoints_from_manifests › _target_routine, the last one highlighted, followed by buttons reading ← Back, Forward → (greyed out), Clear, and a filled badge reading ◆ 1 kept](images/12-trail-bar.png)
+![The trail strip. It reads TRAIL, "+8 behind", the cut-off end of an older step, then Worth a look › entrypoints_from_manifests › _target_file, the last one highlighted, followed by buttons reading ← Back, Forward → (greyed out), Clear, and a filled badge reading ◆ 1 kept](images/12-trail-bar.png)
 
 **+N behind** counts the older steps you cannot see: the ones beyond the twelve it draws,
 from the chapters before 7, and the ones scrolled out of view to the left, which in a
@@ -43,7 +43,7 @@ two steps to check something.
 Select `entrypoints_from_manifests` again — the routine chapters 3 to 7 followed — and
 scroll the inspector past IN, OUT, TOUCHES and GOVERNANCE.
 
-![The inspector's THREADS TO PULL section, counted 5, with the explanation "Not the call graph — reasons something nearby is worth a detour. Two routines that never call each other and both write one table are related, and no call graph can say that." A lane headed NAMED LIKE THESE · 2 lists manifests "8 modules, 1 table — defined in __init__.py:1" and entrypoints "3 constants, 1 module, 1 table — defined in entrypoints.py:1". A lane headed UNUSUAL NEARBY · 3 lists _target_routine "2 comments — the most in entrypoints", binding_note "called from 4 places — the most in entrypoints" and exact "nested 2 levels deep — the deepest closure in entrypoints". Every row has a Keep this button](images/12-threads.png)
+![The inspector's THREADS TO PULL section, counted 5, with the explanation "Not the call graph — reasons something nearby is worth a detour. Two routines that never call each other and both write one table are related, and no call graph can say that." A lane headed NAMED LIKE THESE · 2 lists manifests "8 modules, 1 table — defined in __init__.py:1" and entrypoints "3 constants, 1 module, 1 table — defined in entrypoints.py:1". A lane headed UNUSUAL NEARBY · 3 lists _target_file "3 comments — the most in entrypoints", binding_note "called from 4 places — the most in entrypoints" and exact "nested 2 levels deep — the deepest closure in entrypoints". Every row has a Keep this button](images/12-threads.png)
 
 > **Not the call graph** — reasons something nearby is worth a detour. Two routines that
 > never call each other and both write one table are related, and no call graph can say
@@ -65,8 +65,8 @@ lane appears only where there is something in it:
 three constants, a module and a table. Both are words the glossary in
 [chapter 10](10-words-and-names.md) found defined, and the thread says where.
 
-A busier routine has busier lanes. Select `cmd_analyze` — the **go** on chapter 11's
-631-lines card — and it has fifteen threads in four lanes. **The other end** is three
+A busier routine has busier lanes. Select `_analyze` — the **go** on chapter 11's
+681-lines card — and it has fourteen threads in three lanes. **The other end** is three
 files, `docsource.db`, `README.md` and `source.db`, each with the number of other routines
 that name it. **Runs the same shape** is eight decisions: `not args.no_docs`,
 `doc_store is not None`, `getattr(args, "standards", None)` and five more. Somewhere else in
@@ -87,24 +87,24 @@ written"* — which includes the blind spot in two words: **as written**. `x == 
 
 The last lane on `entrypoints_from_manifests` is three outliers:
 
-> `_target_routine` — 2 comments, the most in `entrypoints`
+> `_target_file` — 3 comments, the most in `entrypoints`
 > `binding_note` — called from 4 places, the most in `entrypoints`
 > `exact` — nested 2 levels deep, the deepest closure in `entrypoints`
 
 *The most in `entrypoints`*, not the most in the program. That is the difference between
 this panel and [chapter 11](11-worth-a-look.md)'s: a curiosity is *somewhere in this
 program and worth the walk*, a thread is *beside you*. The most-commented routine in the
-whole program has 785 comments; the most-commented one in this module has 2, and when you
+whole program has 804 comments; the most-commented one in this module has 3, and when you
 are standing in `entrypoints` the second number is the useful one.
 
 ## Keeping something
 
-Press **◇ Keep this** on the `binding_note` thread. Then click `_target_routine`, the thread
+Press **◇ Keep this** on the `binding_note` thread. Then click `_target_file`, the thread
 above it, and follow that one instead.
 
-![The dashboard on the Diagram view of the resolve compartment, "40 boxes over 178 routines", with _target_routine selected and entrypoints.py — the box that holds it — outlined. The trail reads "Worth a look › entrypoints_from_manifests › _target_routine", after its count of the steps behind, followed by Back, Forward, Clear and a filled badge reading "◆ 1 kept". The inspector shows resolve.entrypoints._target_routine at resolve/entrypoints.py:69–117, tagged ANALYSED and ROUTINE. IN 1 lists entrypoints_from_manifests, CERTAIN, under the docstring "Find the routine a `module:attr` console-script target names." OUT 7 call sites lists exact (CERTAIN), module.startswith (EXTERNAL), exact (CERTAIN), len (EXTERNAL), query in store (CERTAIN), len (EXTERNAL) and str (EXTERNAL). TOUCHES 1 reads SELECT routines READ :112. SHAPE 6 shows guard 3, loop 2, decision 1 and "1 thing moves inside them, and 2 calls go to this program's own code."](images/12-trail-and-kept.jpg)
+![The dashboard on the Diagram view of the resolve compartment, "46 boxes over 200 routines", with _target_file selected and entrypoints.py — the box that holds it — outlined. The trail reads "Worth a look › entrypoints_from_manifests › _target_file", after its count of the steps behind, followed by Back, Forward, Clear and a filled badge reading "◆ 1 kept". The inspector shows resolve.entrypoints._target_file at resolve/entrypoints.py:120–157, tagged ANALYSED and ROUTINE. IN 1 lists entrypoints_from_manifests, CERTAIN, under the docstring "Find the module scope of the file a declaration points at." OUT 8 call sites lists _resolved (CERTAIN), query in store (CERTAIN), load_rules in detectors (CERTAIN), str (EXTERNAL), query (CERTAIN), str (EXTERNAL), query (CERTAIN) and str (EXTERNAL). TOUCHES 4 reads SELECT files READ :138 and :146 and SELECT routines READ :146 and :154. SHAPE 3 shows decision 2 and guard 1](images/12-trail-and-kept.jpg)
 
-You are on `_target_routine` now, and `binding_note` is not lost. The trail gains a badge,
+You are on `_target_file` now, and `binding_note` is not lost. The trail gains a badge,
 **◆ 1 kept**, and the navigator's EXPLORE group gains a row, **Kept · 1**. Click either and
 the page behind it says what the shelf is for:
 
@@ -117,7 +117,7 @@ a reload, so a half-finished investigation is still there tomorrow.
 
 ## The empty inspector is not empty
 
-Go back to `cmd_analyze` and follow its **The other end** thread to `source.db`. It is an
+Go back to `_analyze` and follow its **The other end** thread to `source.db`. It is an
 artefact — a file this program names, not a routine — and almost every panel on it is zero.
 None of them is blank:
 
@@ -137,7 +137,7 @@ and mean completely different things, so nothing here is ever left blank. The la
 even tells you not to read anything into it.
 
 Note also the seven rows under **IN**, each named for the routine that names the file —
-`cmd_analyze`, `cmd_revisions` and `cmd_render` in `cli`, `__init__` in `mcp.session`,
+`_analyze`, `cmd_revisions` and `cmd_render` in `cli`, `__init__` in `mcp.session`,
 `migrate_program` in `migrate`, and `switch_program` and `serve` in `web.serve` — every
 one tagged **INFERRED**. DunneFlow
 found seven routines that name the string `source.db`, and it will not pretend that naming

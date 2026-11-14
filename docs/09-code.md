@@ -2,14 +2,14 @@
 
 The source, as it was measured.
 
-![Code mode showing cli.py: the header reads "cli · 2,132 lines · 47 definitions · 213 marks" with "◆ changes", "▾ margin 213" and "detach ⧉" buttons; under it "Against 2026-10-02 21:37:11: 71 lines added and 15 lines deleted" and "8 routines here the comparison has something to say about" — build_parser, cmd_analyze, cmd_impact, cmd_mirror, cmd_naming and cmd_touches, each "behaves differently" with what moved beside it, then _gap and _settled, each "added"; then the source with a margin column naming the import on each line, and a SOURCE line at the foot reading "Read from the content-addressed sidecar — the file as measured at 2026-10-02T21:37:19Z, not as the tree stands now."](images/09-code.jpg)
+![Code mode showing cli.py: the header reads "cli · 2,559 lines · 65 definitions · 257 marks" with "◆ changes", "margin 257" and "detach ⧉" buttons; under it "Against 2026-11-13 03:56:47: 559 lines added and 76 lines deleted" and "42 routines here the comparison has something to say about", then the first of them — __init__, _close, _say, detail, timings, _open_store, _size_verdict, build_parser, cmd_analyze, cmd_impact, cmd_mcp, cmd_mirror, cmd_naming, cmd_query, cmd_render, cmd_serve, cmd_touches and main, each "behaves differently" with what moved beside it, then cpu_phases and phases, each "added". The list runs past the foot of the picture, so the source itself and the SOURCE line under it are out of frame. The navigator is filtered to the search "cmd_serve" and the inspector shows cli.cmd_serve](images/09-code.jpg)
 
 ## Where the text comes from
 
-The line at the foot reveals the origin:
+The line at the foot of the file, below the last line of source, reveals the origin:
 
 > **SOURCE** — Read from the content-addressed sidecar — the file as measured at
-> 2026-10-02T21:37:19Z, not as the tree stands now.
+> 2026-11-13T03:56:51Z, not as the tree stands now.
 
 DunneFlow keeps the bytes it read, held by content hash. That is not a cache. It is what
 lets you open a sealed snapshot months later, on a machine that has never held the tree,
@@ -32,9 +32,9 @@ inventing a position would be inventing a fact.
 
 The narrow column on the left carries what the line does that the line does not say:
 which import it resolves through, which boundary it touches. The header counts them
-(*213 marks*) and **▾ margin** folds the whole column away when you would rather just
+(*257 marks*) and **▾ margin** folds the whole column away when you would rather just
 read the code. The button carries the count, because *fold the margin* and *fold the
-margin holding 213 things* are different offers.
+margin holding 257 things* are different offers.
 
 **detach** opens the file in its own window, which is what you want when you are reading
 code and driving the graph at the same time.
@@ -53,19 +53,22 @@ did not ask for.
 Each hit says where it sits, including which routine and which class, resolved from the line range with
 innermost first.
 
-![The Code group's own search box holding "webbrowser", with its Aa, |ab| and .* toggles; under it "4 lines in 2 files, of 142 files, 53,988 lines. The first is open; open any."; then cli.py open at the first hit, with "‹ files", "◆ changes" and "open ▸", the comparison sentence, and lines 2033–2035 — def cmd_serve, its docstring, and import webbrowser — highlighted](images/09-code-search.png)
+![The Code group's own search box holding "webbrowser", with its Aa, |ab| and .* toggles; under it "4 lines in 2 files, of 181 files, 81,283 lines. The first is open; open any."; then cli.py open at the first hit, with "‹ 4 lines in 2 files", "◆ changes" and "open ▸", the comparison sentence "Against 2026-11-13 03:56:47: 559 lines added and 76 lines deleted", and lines 2435–2439 of the file, the last three — def cmd_serve, its docstring, and import webbrowser — highlighted](images/09-code-search.png)
 
-The count is said against the whole program — *of 142 files, 53,988 lines* — so a word
-that turns up in two files out of a hundred and forty reads as rare, which it is.
-**‹ files** goes back to the list, and **open ▸** puts the file in the main pane.
+The count is said against the whole program — *of 181 files, 81,283 lines* — so a word
+that turns up in two files out of a hundred and eighty reads as rare, which it is.
+The button on the left is the way back out, and it says where it goes: once a search has
+answered it reads **‹ 4 lines in 2 files** and goes back to what the search found, and
+with no answer it reads **‹ files** and goes back to the list. **open ▸** puts the file in
+the main pane.
 
 ## When you are comparing
 
 With a compared version set, the difference is drawn over the lines.
 
 The picture at the top of this chapter was taken with one set: under the header, *Against
-2026-10-02 21:37:11: 71 lines added and 15 lines deleted*, and then the eight routines in
-`cli.py` the comparison has something to say about.
+2026-11-13 03:56:47: 559 lines added and 76 lines deleted*, and then the forty-two routines
+in `cli.py` the comparison has something to say about.
 
 The line-level difference is what `git diff` gives you and gives you better. The half
 above it is the one nothing else can: **which routines behave differently, and in what

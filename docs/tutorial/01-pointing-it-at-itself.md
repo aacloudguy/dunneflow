@@ -12,7 +12,7 @@ Pick the first. You get the dialog that makes every map DunneFlow has.
 
 ## The dialog
 
-Two fields and a checkbox.
+Two fields, a checkbox, and two questions that only matter on a large tree.
 
 **Directory to read** wants the whole path. Not a path relative to the terminal you started
 from — the server reads the tree itself, and it is not standing where you are. **Choose…**
@@ -26,11 +26,19 @@ chapters interesting. DunneFlow reads the prose beside the code as a first-class
 not to decorate the output, but because the words a program's authors chose are evidence
 about *what* the program does, and often *why*.
 
+**Under each flow diagram, list** and **Ask me first if it may take longer than … minutes**
+are the two for a large tree. The first chooses how much the written map lists under each
+of its flow diagrams — *every routine each way in reaches* is what every map has held, and
+on a very large program it is the largest page in the map. The second is a number of
+minutes, ten unless you change it: DunneFlow estimates the run when you press **Analyse**,
+and if the estimate is longer than that it tells you the figure and asks before it starts.
+DunneFlow's own source is nowhere near either limit, so leave both alone.
+
 ## The refusal you meet first
 
 Now type the path to DunneFlow's own source, which is the thing this tutorial is about.
 
-![The Analyse a directory dialog over the dunneflow map. "Directory to read" holds /Volumes/YourDisk/code/DunneFlow/src/dunneflow, with a Choose… button beside it and the hint "The whole path, as this machine sees it — the server reads the tree itself, so a path relative to your terminal would mean nothing to it." "Call it" shows dunneflow, greyed, over the hint "This names the directory the map is written to, beside the programs already in the list." The "Read the documentation too" checkbox is ticked, and below it a refusal in red reads "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." The Analyse button is dimmed; Cancel is not, and beside them the dialog says "It runs behind this page — the map you are reading stays open and stays true."](images/01-refuses-itself.jpg)
+![The Analyse a directory dialog over the dunneflow map. "Directory to read" holds /Volumes/YourDisk/code/DunneFlow/src/dunneflow, with a Choose… button beside it and the hint "The whole path, as this machine sees it — the server reads the tree itself, so a path relative to your terminal would mean nothing to it." "Call it" shows dunneflow, greyed, over the hint "This names the directory the map is written to, beside the programs already in the list." The "Read the documentation too" checkbox is ticked. "Under each flow diagram, list" is set to "every routine each way in reaches — 124 KB last time", over "The sizes are what this program's last analysis measured for each.", and "Ask me first if it may take longer than" holds 10 minutes. Below them a refusal in red reads "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." The Analyse button is dimmed; Cancel is not, and beside them the dialog says "It runs behind this page — the map you are reading stays open and stays true."](images/01-refuses-itself.jpg)
 
 > **dunneflow is the program being read** — its graph is open here, and an analysis may
 > discard and re-extract it. Switch to another program first, or run this from a terminal.
@@ -70,7 +78,7 @@ being served.
 
 ## What it does while you wait
 
-A few seconds for DunneFlow's 142 files. If you run it through the dialog rather than
+Under a quarter of a minute for DunneFlow's 181 files. If you run it through the dialog rather than
 the terminal you get a progress panel instead of scrolling text, and three things about it
 are worth knowing:
 
@@ -89,12 +97,12 @@ The reference chapter [Your first map](../04-your-first-map.md) walks the panel 
 ## What you get
 
 ```
-dunneflow: 1,552 routines · 3,315 internal calls · 526 boundary touches ·
-           207 structures · 24 ways in
+dunneflow: 2,552 routines · 6,147 internal calls · 658 boundary touches ·
+           515 structures · 30 ways in
 ```
 
 and a directory holding the graph, the documentation store, the source it read, and
-fifteen written documents. The source matters more than it sounds: DunneFlow keeps a copy
+sixteen written documents. The source matters more than it sounds: DunneFlow keeps a copy
 of what it read, so it can still show you the code months later when the tree has moved on
 — which is what makes comparing two versions possible at all.
 

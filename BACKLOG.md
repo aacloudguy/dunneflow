@@ -21,17 +21,8 @@ Nothing from before 2026-11-01: every older item was closed on 2026-10-02 or mov
 residues below. These came out of the Go, Rust and Java readers, and each says what would settle
 it. (30,
 Go on the build machines, was settled the same day: Go 1.25.6 on both, and the suite green
-on each.)
-
-**31. The tour maps and screenshots predate the Go and Rust readers.** DunneFlow's own tree
-now holds the Go reader's seven `.go` files and the Rust reader's `.rs` files (its `vendor/`
-is pruned), so a self-map reads `python · typescript · go · rust`, and the
-figures the guide was photographed against (`python 131 · typescript 11`, chapters 1 and 4)
-move. Not done because a retake is its own session with its own record. *Settled by* the next
-retake, with `GROUND-TRUTH.md`'s screenshot-map figures rewritten from it. *Added 2026-11-07:* `docs/01-installing.md`'s
-*About this map* screenshot still shows *Inferred facts* and *Read by a model*, which a map no
-model touched no longer says (BACKLOG 41, settled); the image and its caption go with the
-retake.
+on each. 31, the tour maps and screenshots, was settled by the retake of 2026-11-13 and 14:
+`GROUND-TRUTH.md`'s screenshot map says what it was taken against.)
 
 **32. A dependency is an empty stand-in, so methods on its types are *unknown*, not
 *outside*.** Measured: rain's 628 unknown calls are mostly cobra's `Cmd.Flags()` and

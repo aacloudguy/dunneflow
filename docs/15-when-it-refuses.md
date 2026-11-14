@@ -129,7 +129,8 @@ command.
 ```
 error: some-project was never finished: an analysis stopped while reading the documents.
 What it holds is part of a program, not a program. Analysing it again completes it — the
-extraction is cached, so it takes seconds rather than the whole run.
+extraction is cached, so it takes seconds rather than the whole run. Or pass
+--allow-unfinished to read it as it stands.
 ```
 
 **What happened.** An analysis was interrupted — you pressed **Stop it**, or the machine
@@ -176,7 +177,7 @@ writes the map again from the graph that is already there, without reading the s
 > dunneflow is the program being read — its graph is open here, and an analysis may discard
 > and re-extract it. Switch to another program first, or run this from a terminal.
 
-![The analyse dialog over the dashboard, with DunneFlow's own src/dunneflow typed into "Directory to read" and "Call it" showing dunneflow, refusing in red: "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." Analyse is greyed out; Cancel is not](images/15-refuse-served-program.jpg)
+![The analyse dialog over the dashboard, with DunneFlow's own src/dunneflow typed into "Directory to read" and "Call it" showing dunneflow; "Read the documentation too" is ticked, the "Under each flow diagram, list" menu reads "every routine each way in reaches — 124 KB last time" over the hint "The sizes are what this program's last analysis measured for each.", and "Ask me first if it may take longer than" holds 10 minutes; under them, refusing in red: "dunneflow is the program being read — its graph is open here, and an analysis may discard and re-extract it. Switch to another program first, or run this from a terminal." Analyse is greyed out; Cancel is not](images/15-refuse-served-program.jpg)
 
 **What happened.** You asked the dashboard to analyse into the name it is currently
 serving.
@@ -253,7 +254,7 @@ lets a cancelled dialog mean only that you cancelled it.
 Each is its own sentence because each is a different problem, and each appears under the
 fields as you type, with **Analyse** greyed out until it is settled.
 
-![The ANALYSE A DIRECTORY dialog with requests/src typed into "Directory to read", over the hint "The whole path, as this machine sees it — the server reads the tree itself, so a path relative to your terminal would mean nothing to it."; "Call it" shows src, borrowed from the directory; "Read the documentation too" is ticked; and in red, "requests/src is a relative path — give the whole path, because the server's directory is not yours". Analyse is greyed out](images/15-refuse-relative.png)
+![The ANALYSE A DIRECTORY dialog with requests/src typed into "Directory to read", over the hint "The whole path, as this machine sees it — the server reads the tree itself, so a path relative to your terminal would mean nothing to it."; "Call it" shows src, borrowed from the directory; "Read the documentation too" is ticked; "Under each flow diagram, list" reads "every routine each way in reaches"; "Ask me first if it may take longer than" holds 10 minutes; and in red, "requests/src is a relative path — give the whole path, because the server's directory is not yours". Analyse is greyed out](images/15-refuse-relative.png)
 
 | It says | What to do |
 |---|---|

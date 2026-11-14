@@ -114,12 +114,14 @@ That leaf is the **project's** directory, not the one you pointed at. Analyse
 `~/code/some-project/src` and the map says `some-project`, because `src` identifies
 nothing because every src-layout program in the world has one.
 
-![The version strip: BASE DunneFlow 0.2.0 compared with dunneflow-before-parts · DunneFlow at 0804aa7 - before parts 0.1.0, a button reading "you chose: the compared version is older", and "captured: compared first".](images/02-version-strip.png)
+![The version strip: BASE DunneFlow 0.3.0 compared with dunneflow-before-parts · DunneFlow at 0804aa7 - before parts 0.1.0, a button reading "the compared version is older — from their versions", and "captured: compared first".](images/02-version-strip.png)
 
 That strip is DunneFlow reading itself. The base was analysed from `DunneFlow/src/dunneflow`
 and is called `DunneFlow`, the project's directory; the version it is compared with was read
 from a worktree called `dunneflow-before-parts`, and carries the label it was given when it
-was sealed. The green figures beside each are the versions the program states about itself.
+was sealed. The green figures beside each are the versions the program states about itself,
+and the button after them says which of the two is the older — read, as it says, from those
+two versions.
 
 **Recorded: the version the program states about itself**, if it states one, whether from
 `pyproject.toml`, or a module-level `__version__`, each with the file that proves it.

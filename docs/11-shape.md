@@ -3,7 +3,7 @@
 Every other view answers what a routine is *connected to*. This one answers what it
 **does**.
 
-![Shape mode for docstore.DocStore.mark_duplicates: the header reads "docstore.py:422–459 · 38 lines · 3 loops · 1 decision · 1 refusal · 4 things that move", and below it a nested outline — at 440 a LOOP over a SELECT that moves nothing inside it, with its DATABASE row and a SQL documents link; at 447 LOOP groups.values(), "something moves inside this loop, 2 of them, once per pass"; inside it GUARD len(paths) < 2 → continue, LOOP paths, and DECISION p != canonical, "every way out of it moves the same things", holding a DATABASE UPDATE documents SET duplicate_of = ? WHERE path = ?. The inspector on the right shows IN 2, OUT 11 and TOUCHES 7](images/11-shape-ribbon.jpg)
+![Shape mode for docstore.DocStore.mark_duplicates: the header reads "docstore.py:422–459 · 38 lines · 3 loops · 1 decision · 1 refusal · 4 things that move", and below it a nested outline — at 440 a LOOP over a SELECT that moves nothing inside it, with its DATABASE row and a SQL documents link; at 447 LOOP groups.values(), "something moves inside this loop, 2 of them, once per pass"; inside it GUARD len(paths) < 2 → continue, LOOP paths, and DECISION p != canonical, "every way out of it moves the same things", holding a DATABASE UPDATE documents SET duplicate_of = ? WHERE path = ?. The inspector on the right shows IN 2 and OUT 11 call sites, the calls with no edge each saying why under their name](images/11-shape-ribbon.jpg)
 
 ## Why this exists at all
 
@@ -54,7 +54,7 @@ everything that reads and writes it.
 The mode toggle's **Shape** is one routine. The navigator's **Algorithms** group is the
 same facts over the whole program, in five lanes.
 
-![The Algorithms page on its first lane: tabs, wrapped onto two rows, reading "A boundary, once per pass 113", "Decisions about what leaves 11", "Three or more ways out 56", "Something moves while recovering 6" and "match statements 0", then "113 of 1,809 loops and comprehensions", an explanation, the quiet bands, and a list of loops — mark_duplicates at docstore.py:451, _from_dunder at resolve/version.py:84, _discard_stale_languages at store.py:866, cmd_touches at cli.py:1307 — each naming the loop it sits inside, what moves inside it, and a "◇ Keep this" button. The navigator's ALGORITHMS group reads 186 and "4,365 loops and decisions were measured — 971 loops move nothing and 1,283 branches are refusals"](images/11-algorithms-page.jpg)
+![The Algorithms page on its first lane: tabs, wrapped onto two rows, reading "A boundary, once per pass 158", "Decisions about what leaves 11", "Three or more ways out 94", "Something moves while recovering 9" and "match statements 172", then "158 of 2,661 loops and comprehensions", an explanation ending "17 of these run inside another loop", the quiet bands, and a list of loops — mark_duplicates at docstore.py:451, _from_dunder at resolve/version.py:84, _discard_stale_languages at store.py:1100, and the top of a fourth row — each naming the loop it sits inside, what moves inside it, and a "◇ Keep this" button. The navigator's ALGORITHMS group reads 444 and "7,713 loops and decisions were measured — 1,416 loops move nothing and 2,109 branches are refusals"](images/11-algorithms-page.jpg)
 
 | Lane | What is in it |
 |---|---|
@@ -66,19 +66,20 @@ same facts over the whole program, in five lanes.
 
 Two things about this page:
 
-**Every lane states its denominator.** *113 of 1,809 loops and comprehensions* — never
-*113 loops*, which would be a number you could not weigh.
+**Every lane states its denominator.** *158 of 2,661 loops and comprehensions* — never
+*158 loops*, which would be a number you could not weigh.
 
 **The quiet bands are stated above the list**, and that is the honest half:
 
-> Measured and not listed here: 971 loops that move nothing, 725 that call something of
-> this program and move nothing themselves, 1,027 decisions whose arms move alike, 39
-> handlers that guard something and recover quietly, and 1,283 refusals — a guard is read
+> Measured and not listed here: 1,416 loops that move nothing, 1,087 that call something
+> of this program and move nothing themselves, 2,488 decisions whose arms move alike, 63
+> handlers that guard something and recover quietly, and 2,109 refusals — a guard is read
 > in the routine it stands at the top of, never in a list of its own.
 
-Four lanes holding 186 points, out of 4,365 loops and decisions measured, is a claim about
-the 4,179 that are not in them, and this is where that claim is made. (The fifth lane,
-`match` statements, holds none in this program, and its tab says *0*.)
+Five lanes holding 444 points, out of 7,713 loops and decisions measured, is a claim about
+the 7,269 that are not in them, and this is where that claim is made. (The fifth lane,
+`match` statements, holds 172 in this program — every one of them in the Rust, Go, Java
+and C++ readers under `plugins/`, and none in the Python — and its tab says so.)
 
 ## What it cannot see
 

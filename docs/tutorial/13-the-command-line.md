@@ -17,7 +17,7 @@ uv run dunneflow touches output/dunneflow --routine cmd_analyze
 
 ```
 no --output given; maps go to output
-cli.cmd_analyze  (cli.py:576)
+cli.cmd_analyze  (cli.py:771)
 …
 ```
 
@@ -43,27 +43,28 @@ uv run dunneflow touches output/dunneflow --routine cmd_analyze
 ```
 
 ```
-cli.cmd_analyze  (cli.py:576)
-  reaches 411 routines
-  CRYPTO     hashlib.sha256, raw.encode('utf-8'), text.encode('utf-8')
+cli.cmd_analyze  (cli.py:771)
+  reaches 497 routines
+  CRYPTO     hashlib.sha256, json.dumps(rows).encode('utf-8'), raw.encode('utf-8'), text.encode('utf-8')
   DATABASE   
             WITH RECURSIVE reach(id, depth) AS (
             …
             SELECT DISTINCT id FROM reach WHERE id IS NOT NULL
-            , ANALYZE, DELETE FROM annotations WHERE owner_id IN (…), DELETE FROM call_args …
+            , …, ANALYZE, DELETE FROM annotations WHERE owner_id IN (…), DELETE FROM boundaries …
   ENV        LOCALAPPDATA, XDG_DATA_HOME
-  FILE        , ', '\n'.join(lines), '\n'.join(lines) + '\n', *.md, *.yaml, -, :
-  PROCESS    self.argv
-  STDIO      f"{program}: {c['routines']:,} routines · …", f'docs:  {…}', f'graph: {db_path}', …
+  FILE       '\n'.join(lines), '\n'.join(lines) + '\n', *.md, *.yaml, /proc/meminfo, …
+  PROCESS    ['sysctl', '-n', 'vm.swapusage'], f'pid {self.pid}', self.argv
+  STDIO      Read it whole now? [y/N] , …, f'docs:  {…}', f'graph: {db_path}', …
 ```
 
-This is [chapter 3](03-one-selection-six-ways.md)'s inspector with no pixels. 411 routines
+This is [chapter 3](03-one-selection-six-ways.md)'s inspector with no pixels. 497 routines
 reachable, and every boundary any of them touches, grouped by kind and quoted **as
 written** — the SQL is the SQL, line breaks and all, which is why the first DATABASE entry
 is a recursive query spread over several lines: `reach`, the walk over the call graph
 [chapter 9](09-what-looks-wrong.md) met as a table nobody writes. The environment
-variables are the two it really reads, and the STDIO line begins with the f-string that
-printed [chapter 1](01-pointing-it-at-itself.md)'s summary line.
+variables are the two it really reads, and the STDIO line begins with a question: *Read it
+whole now?* is what a terminal is asked before a long read, where
+[chapter 1](01-pointing-it-at-itself.md)'s dialog asks it with two buttons.
 
 ## What breaks if I change it?
 
@@ -72,8 +73,8 @@ uv run dunneflow impact output/dunneflow --routine write_file_facts
 ```
 
 ```
-store.Store.write_file_facts  (store.py:1128)
-  5 routines depend on this, directly or transitively
+store.Store.write_file_facts  (store.py:1487)
+  7 routines depend on this, directly or transitively
   ways in affected (4):
     - analyze [CLI]
     - dunneflow [CLI]
@@ -82,7 +83,7 @@ store.Store.write_file_facts  (store.py:1128)
 ```
 
 `touches` runs the graph forwards; `impact` runs it backwards and then says which **ways
-in** are behind you. Five routines depend on it, and four ways in — every one of them a way
+in** are behind you. Seven routines depend on it, and four ways in — every one of them a way
 in from the command line: the `dunneflow` console script its `pyproject.toml` declares, the
 `analyze` subcommand, `main`, and `python -m`. For the routine that writes a file's facts
 into the store, that is exactly right and reassuring to see stated.
@@ -94,18 +95,18 @@ uv run dunneflow check output/dunneflow
 ```
 
 ```
-[SUSPECT/PROBABLE] LOST_EDGE: `self.ancestors` could not be connected: 2 definitions share the name  extractors/cpp/scopes.py
-[SUSPECT/PROBABLE] LOST_EDGE: `self.masked.line_at` could not be connected: 2 definitions share the name  extractors/cpp/ctx.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self._live.note` could not be connected: 2 definitions share the name  web/serve.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self._live.out_dir.resolve` could not be connected: 5 definitions share the name  web/serve.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self.conn.close` could not be connected: 8 definitions share the name  docstore.py
+[SUSPECT/PROBABLE] NO_TIMEOUT: 2 of 3 remote calls set no timeout  web/serve.py:4025
 …
-[SUSPECT/PROBABLE] NO_TIMEOUT: 2 of 3 remote calls set no timeout  web/serve.py:3764
-…
-0 broken, 21 suspect, 18 informational
+0 broken, 19 suspect, 19 informational
 ```
 
-Same thirty-nine findings as [chapter 9](09-what-looks-wrong.md): the 21 suspect ones a line
-each, and the 18 informational ones counted in the last line — `--all` prints those too.
+Same thirty-eight findings as [chapter 9](09-what-looks-wrong.md): the 19 suspect ones a line
+each, and the 19 informational ones counted in the last line — `--all` prints those too.
 **It exits non-zero only on BROKEN**, so it can gate a build without failing it every time
-the tool is merely unsure. Here it exits `0` with 21 findings printed.
+the tool is merely unsure. Here it exits `0` with 19 findings printed.
 
 ## The vocabulary, without a browser
 
@@ -117,17 +118,21 @@ uv run dunneflow naming output/dunneflow
 STATED — nothing in this program's documentation states a naming rule
 
 MEASURED — counted against the code
-  [B] 1,233/1,249  Python routines are named in snake_case.  (16 exceptions)
-  [B] 616/623  A routine marked private is called only from its own module.  (7 exceptions)
+  [B] 1,286/1,303  Python routines are named in snake_case.  (17 exceptions)
+  [B] 615/622  Python routines marked private are called only from their own module.  (7 exceptions)
   …
-  [D] 165/182  Python classes are named in PascalCase.  (17 exceptions)
+  [E] 249/281  Java routines are named in camelCase.  (32 exceptions)
   …
-  [A] 11/11  TypeScript modules begin with `plugins`.
-  ... 1 more; all of them in 11-naming.md
+  [D] 180/199  Python classes are named in PascalCase.  (19 exceptions)
+  …
+  [A] 118/118  Rust parameters are named in snake_case.
+  ... 23 more; all of them in 11-naming.md
+  GAP  Go classes: 47 counted — PascalCase 35, camelCase 12
+  …
 ```
 
 Both lanes, and the empty one first. The last line names the file in the map's own
-Markdown that holds all sixteen conventions with every exception, because a terminal is not
+Markdown that holds all thirty-eight conventions with every exception, because a terminal is not
 the place for them.
 
 **`--allow-leading-underscore`** is the Setting from [chapter 10](10-words-and-names.md), as
@@ -138,14 +143,14 @@ uv run dunneflow naming output/dunneflow --allow-leading-underscore
 ```
 
 ```
-  [B] 179/182  Python classes are named in PascalCase (a leading underscore allowed).  (3 exceptions)
-  [B] 154/157  Python data structures are named in PascalCase (a leading underscore allowed).  (3 exceptions)
+  [B] 196/199  Python classes are named in PascalCase (a leading underscore allowed).  (3 exceptions)
+  [B] 169/172  Python data structures are named in PascalCase (a leading underscore allowed).  (3 exceptions)
 ```
 
 `glossary` prints the defined terms with their citations, and opens with the count:
 
 ```
-82 of 223 terms are defined somewhere (37%)
+89 of 367 terms are defined somewhere (24%)
 ```
 
 `mirror` prints the third question, the one with no page in the dashboard — **words the
@@ -158,7 +163,7 @@ documents define that the code never uses**:
   Spoken      0   The word appears only in comments and docstrings. …
   Absent      0   Defined in documentation, and nowhere in the code at all. …
 
-only Python and TypeScript are extracted: absent from this graph is not absent from the product.
+only C and C++, Go, Java, Python, Rust and TypeScript are extracted: absent from this graph is not absent from the product.
 ```
 
 On DunneFlow the two definitions are headings out of this tutorial that merely look like
@@ -173,9 +178,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-10-02T21:37:19Z   WORKING          2026-10-02T21:37:19Z      142
-2026-10-02T21:37:11Z   FOR_COMPARISON   2026-10-02T21:37:11Z      141  DunneFlow at 1017ef4 - before the Windows fix
-2026-10-02T21:37:03Z   FOR_COMPARISON   2026-10-02T21:37:03Z      141  DunneFlow at 0804aa7 - before parts
+2026-11-13T03:56:51Z   WORKING          2026-11-13T03:56:51Z      181
+2026-11-13T03:56:47Z   FOR_COMPARISON   2026-11-13T03:56:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-11-13T03:56:43Z   FOR_COMPARISON   2026-11-13T03:56:43Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 The versions from [chapter 8](08-two-versions.md), and the mechanism behind them in one
@@ -196,12 +201,12 @@ uv run dunneflow query output/dunneflow \
 
 ```
 kind | n
-DATABASE | 290
-FILE | 154
-STDIO | 62
-PROCESS | 9
-ENV | 5
-CRYPTO | 3
+DATABASE | 309
+FILE | 218
+STDIO | 84
+PROCESS | 23
+ENV | 16
+CRYPTO | 5
 NETWORK | 3
 ```
 

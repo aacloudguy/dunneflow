@@ -1,6 +1,6 @@
 # 5. The shell
 
-![The DunneFlow dashboard on the cover of dunneflow: the top bar (program menu "dunneflow — 142 files", SOURCE DIRECTORY DunneFlow, the version menu, the search box, the scale slider, System and Settings); the version strip comparing with dunneflow-before-windows and "assuming the compared version is newer"; the navigator on the left with Routines open, "1,552 in 24 packages — open one, or search"; the cover in the middle headed "dunneflow 142 files · 53,988 lines · 1,552 routines · analysed 2026-10-02 21:37 UTC" with WHERE TO START, WHAT IT TOUCHES 526 and WHAT LOOKS WRONG (Broken 0, Suspect 21, Informational 18); and the inspector railed on the right](images/05-shell-cover.jpg)
+![The DunneFlow dashboard on the cover of dunneflow: the top bar (program menu "dunneflow — 181 files", SOURCE DIRECTORY DunneFlow, the version menu, the search box, the scale slider, System and Settings); the version strip comparing DunneFlow 0.3.0 with dunneflow-before-windows 0.2.0 and reading "the compared version is older — from their versions"; the navigator on the left with Routines open, "2,552 in 27 packages — open one, or search", plugins leading with 1,053; the cover in the middle headed "dunneflow 181 files · 81,283 lines · 2,552 routines · analysed 2026-11-13 03:56 UTC" with WHERE TO START (the dunneflow command first, at 602), WHAT IT TOUCHES 658 and WHAT LOOKS WRONG (Broken 0, Suspect 19, Informational 19); and the inspector railed on the right](images/05-shell-cover.jpg)
 
 Three panes and a top bar. The important thing to understand before anything else is that
 the middle is **one selection read six ways**, not six places to go. Pick a routine
@@ -9,7 +9,7 @@ all six views are already showing it. Switching view never loses your place.
 
 ## The top bar
 
-**The program menu** (`dunneflow — 142 files`) switches between every program under your
+**The program menu** (`dunneflow — 181 files`) switches between every program under your
 maps root. Its last two entries are **+ Analyse a directory…**, so you can read a new tree
 without going back to the start page, and **× Close this map**, which puts you back on the
 start page with nothing open.
@@ -59,16 +59,18 @@ With nothing compared it says so in as many words, and it says **which kind of n
 
 | | |
 |---|---|
-| *version DunneFlow 0.2.0 — on its own; this program has only one version* | there is nothing to compare |
-| *version DunneFlow 0.2.0 — on its own, nothing compared* | there is, and you chose not to |
+| *version DunneFlow 0.3.0 — on its own; this program has only one version* | there is nothing to compare |
+| *version DunneFlow 0.3.0 — on its own, nothing compared* | there is, and you chose not to |
 
 One is a limit of the map and the other is a switch you can throw. Reporting both the same
 way would leave the second looking like the first.
 
-With a comparison running, it names both sides and what it is assuming about their order —
-*BASE DunneFlow 0.2.0 compared with dunneflow-before-windows · DunneFlow at 1017ef4 - before
-the Windows fix 0.2.0*, then a button reading *assuming the compared version is newer*. That
-is in [comparing two versions](14-comparing-two-versions.md).
+With a comparison running, it names both sides and which way round they run —
+*BASE DunneFlow 0.3.0 compared with dunneflow-before-windows · DunneFlow at 1017ef4 - before
+the Windows fix 0.2.0*, then a button reading *the compared version is older — from their
+versions*, then *captured: compared first*. The button says whether the order was read from
+the versions the two programs state, assumed, or chosen by you. That is in [comparing two
+versions](14-comparing-two-versions.md).
 
 ## The navigator
 
@@ -96,7 +98,7 @@ see [Settings](13-settings.md).
 **No filter is ever silent.** Type in the search box and every group tells you what it did
 with your query, including the ones that found nothing:
 
-![The navigator with "cmd_serve" in the search box, beside the graph: Ways in says "nothing matches "cmd_serve""; Routines says "1 match "cmd_serve", in 1 package" and shows cli › cmd_serve with 1← 7→; Packages, Database and Structures each say "nothing matches "cmd_serve"", and Boundaries adds "— these are the 7 kinds this program touches; a target is in the source"](images/05-navigator-search.jpg)
+![The navigator with "cmd_serve" in the search box, beside the cover: Ways in says "nothing matches "cmd_serve""; Routines says "1 match "cmd_serve", in 1 package" and shows cli › cmd_serve with 1← 7→; Changes says "two versions — open to compare them" and Code "181 files — open one, or search names or source"; Packages, Database and Structures each say "nothing matches "cmd_serve"", and Boundaries adds "— these are the 7 kinds this program touches; a target is in the source"](images/05-navigator-search.jpg)
 
 That matters more than it looks. A group that quietly showed nothing would be
 indistinguishable from a group that has nothing.
@@ -110,7 +112,7 @@ nothing.
 
 Everything known about the current selection, on the right.
 
-![The inspector for cli.cmd_serve, cli.py:2033–2100: ANALYSED and ROUTINE tags, "◇ Keep this" and "Collapse all" buttons, then IN 2 — serve, tagged CLI, and build_parser in cli, CERTAIN — with its docstring "Open the map. Read-only throughout -- serving can never damage what it shows.", then OUT "14 call sites" beginning Path EXTERNAL, default_output_root (runtime) CERTAIN, str EXTERNAL, platform_output_root (runtime) CERTAIN, _emit (cli) CERTAIN twice, given.mkdir at the boundary EXTERNAL, _emit (cli) CERTAIN, already_serving (web.serve) CERTAIN, where (web.serve) CERTAIN, _emit (cli) CERTAIN, webbrowser.open EXTERNAL and serve (web.serve) CERTAIN](images/05-inspector.png)
+![The inspector for cli.cmd_serve, cli.py:2437–2504: ANALYSED and ROUTINE tags, "◇ Keep this" and "Collapse all" buttons, then IN 2 — serve, tagged CLI, and build_parser in cli, CERTAIN — with its docstring "Open the map. Read-only throughout -- serving can never damage what it shows.", then OUT "14 call sites" beginning Path → pathlib.Path EXTERNAL, default_output_root (runtime) CERTAIN, str EXTERNAL, platform_output_root (runtime) CERTAIN, _emit (cli) CERTAIN twice, given.mkdir at the boundary EXTERNAL, _emit (cli) CERTAIN, already_serving (web.serve) CERTAIN, where (web.serve) CERTAIN, _emit (cli) CERTAIN, webbrowser.open EXTERNAL and serve (web.serve) CERTAIN](images/05-inspector.png)
 
 - **IN** What calls this, and how sure DunneFlow is about each: `CERTAIN`, `INFERRED`,
   `EXTERNAL`. A way in is listed here too, tagged by its kind — `serve` above is the

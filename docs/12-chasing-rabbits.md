@@ -12,7 +12,7 @@ means a detour gains you treasure.
 
 At the bottom of the inspector, for whatever is selected.
 
-![The Threads to pull panel for resolve.entrypoints.entrypoints_from_manifests, headed "THREADS TO PULL 5" and "Not the call graph — reasons something nearby is worth a detour. Two routines that never call each other and both write one table are related, and no call graph can say that." Below it two lanes: NAMED LIKE THESE 2 — manifests, "8 modules, 1 table — defined in __init__.py:1", and entrypoints, "3 constants, 1 module, 1 table — defined in entrypoints.py:1"; and UNUSUAL NEARBY 3 — _target_routine, "2 comments — the most in entrypoints", binding_note, "called from 4 places — the most in entrypoints", and exact, "nested 2 levels deep — the deepest closure in entrypoints". Each row has a "◇ Keep this" button](images/12-threads-to-pull.png)
+![The Threads to pull panel for resolve.entrypoints.entrypoints_from_manifests, headed "THREADS TO PULL 5" and "Not the call graph — reasons something nearby is worth a detour. Two routines that never call each other and both write one table are related, and no call graph can say that." Below it two lanes: NAMED LIKE THESE 2 — manifests, "8 modules, 1 table — defined in __init__.py:1", and entrypoints, "3 constants, 1 module, 1 table — defined in entrypoints.py:1"; and UNUSUAL NEARBY 3 — _target_file, "3 comments — the most in entrypoints", binding_note, "called from 4 places — the most in entrypoints", and exact, "nested 2 levels deep — the deepest closure in entrypoints". Each row has a "◇ Keep this" button](images/12-threads-to-pull.png)
 
 This is **adjacency by interest, not by edge**. Two routines that never call each other and
 both write to one table are coupled, and no call graph will ever tell you that.
@@ -35,11 +35,11 @@ of the five.
 The **Explore → Worth a look** panel is the same idea with no selection required. This indicates a
 doorway when you do not yet know what to ask.
 
-![The Worth a look panel: "12 measurements of this program, each showing what came out furthest from the middle", with "Measured on the base alone" beneath, then the first cards — "3,023 characters in one call argument", 377.9× the middle, _r_diagram, written at web/serve.py:1867, "the middle argument is 8 characters, of 16,049"; "17,585 characters in one constant's value", 308.5×, SCHEMA_SQL at store.py:52; "785 comments on one routine", 157×, web.queries; "89 callers of one routine", 89×, query at store.py:1641 — each with "Follow this go", "How this was measured show the query" and "◇ Keep this"](images/12-worth-a-look.jpg)
+![The Worth a look panel: "12 measurements of this program, each showing what came out furthest from the middle", with "Measured on the base alone" beneath, then the first cards — "27,913 characters in one constant's value", 1,116.5× the middle, SCHEMA_SQL, declared at store.py:57, "the middle constant is 25 characters, of 888"; "3,023 characters in one call argument", 431.9×, _r_diagram, written at web/serve.py:1991, "the middle argument is 7 characters, of 28,992"; "804 comments on one routine", 201×, web.queries; "108 callers of one routine", 108×, query at store.py:2379 — each with "Follow this go", "How this was measured show the query" and "◇ Keep this". The trail reads "mark_duplicates › Worth a look", and the inspector still shows docstore.DocStore.mark_duplicates](images/12-worth-a-look.jpg)
 
 Twelve measured extrema, each with **its middle stated beside it**. Every program has a
 most-commented routine, so a maximum on its own is a claim nobody can weigh. *3,023
-characters in one call argument, 377.9× the middle* is a discovery. *3 levels of nesting
+characters in one call argument, 431.9× the middle* is a discovery. *3 levels of nesting
 against a middle of 2* is not, and the panel says the second as plainly as the first.
 
 **A curiosity is a measurement, never a judgement.** No severity, no blind spot, nothing
@@ -55,7 +55,7 @@ alone. Run it yourself with `dunneflow query`, one of the CLI-commands.
 Every selection you make is recorded, and the bar across the top of the centre pane is
 your route.
 
-![The trail bar: "TRAIL", a count of the steps behind it, then "Worth a look › entrypoints_from_manifests › _target_routine", the last highlighted, then "← Back", "Forward →" (greyed, with nothing ahead), "Clear" and "◆ 1 kept"](images/12-trail-bar.png)
+![The trail bar: "TRAIL", then "mark_duplicates › Worth a look › entrypoints_from_manifests › _target_file", the first step scrolled half out of the bar and the last highlighted, then "← Back", "Forward →" (greyed, with nothing ahead), "Clear" and "◆ 1 kept"](images/12-trail-bar.png)
 
 **← Back** (`⌘Z`, or `Ctrl+Z` on Windows and Linux) and **Forward →** (`⇧⌘Z`,
 `Ctrl+Shift+Z`) step along it. They work from anywhere because the person who needs Back is by
@@ -83,7 +83,7 @@ screen. It does not drop what you have kept.
 Anywhere you see **◇ Keep this,** including the inspector, a thread, a curiosity, a search hit, or a
 row on the Algorithms page, that thing lands on a shelf.
 
-![The kept shelf, reached from the "◆ 1 kept" badge: "Things you kept while you were looking at something else. The point of wandering is that you find what you were not looking for; this is where it goes so the detour does not cost you the thread you were on." One kept routine, binding_note, with a Drop button. The trail reads "… Worth a look › _target_routine › kept things" with "◆ 1 kept", and the inspector still shows resolve.entrypoints._target_routine, the routine the reader was on](images/12-kept-shelf.jpg)
+![The kept shelf, reached from the "◆ 1 kept" badge: "Things you kept while you were looking at something else. The point of wandering is that you find what you were not looking for; this is where it goes so the detour does not cost you the thread you were on." One kept routine, binding_note, with a Drop button. The trail reads "+1 behind", then "look › entrypoints_from_manifests › _target_file › kept things" with "◆ 1 kept", and the inspector still shows resolve.entrypoints._target_file, the routine the reader was on](images/12-kept-shelf.jpg)
 
 The count sits in the trail bar as **◆ 1 kept** and opens the shelf. Every row **opens**
 when you click it and goes back to the thing itself, not to a note about it. **Drop** removes

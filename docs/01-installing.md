@@ -218,12 +218,15 @@ row headed *It was told* — because a map read `--without typescript` and a map
 program actually written in one language hold exactly the same rows, and only one of them
 is the second thing.
 
-![About this map for DunneFlow read with both languages: Program dunneflow 2026-10-02T21:37:19Z, Read by 0.2.0 · extractor 16:9befb90ff994e280, 142 files · 1,552 routines · 53 documents, Read from Python 131 · TypeScript 11, and under Left out of it the unread suffixes (8 .js, 6 .json, 6 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs), the strings not judged (3,475 python, 112 typescript), 262 typescript calls resolved outside this map, 200 whose far end could not be named, and "pruned 1 directory: vendor". Inferred facts: none; Read by a model: none.](images/01-about-this-map.png)
+![About this map for DunneFlow read with all six languages its source is written in: Program dunneflow 2026-11-13T03:56:51Z, Read at 2026-11-13 03:56 UTC, From a tree called DunneFlow, Read by 0.3.0 · extractor 20:3fa9ec73bb2525d4, 181 files · 2,552 routines · 56 documents, Read from Python 128 · Rust 12 · C and C++ 11 · Java 11 · TypeScript 11 · Go 8, and under Left out of it the unread suffixes (9 .json, 9 .yaml, 8 .js, 2 .html and six more), the tests left out (1 go, 1 java, and 5 rust items inside source files), the strings not judged (3,720 python and five smaller counts), the calls resolved outside this map (1,641 cpp, 467 go, 2,148 java, 2,092 rust, 280 typescript), those whose far end could not be named (484 cpp, 2 go, 6 java, 100 rust, 228 typescript), two Rust dependencies read from this machine and never fetched, and "pruned 4 directories: vendor ×3, .cargo". Under Where it stops, "10,583 calls leave the program" with the ten commonest destinations and "839 more", then "4,191 have no edge, and why" with seven reasons; under Dispatch, 4 calls dispatched into 88 bodies. At the foot, "Every fact here was read from the source with the standard library, and nothing left this machine.", and Analyse this again… and Close buttons.](images/01-about-this-map.png)
 
-That one was read with both languages, so it has no *It was told* row: **Read from** names
-what was read and how much of it, and **Left out of it** names everything that was not —
-suffixes no reader claims, strings outside the bound a reader judges, calls whose far end is
-outside the map, and directories pruned on the way in.
+That one was read with all six of the languages its source is written in, so it has no *It
+was told* row: **Read from** names what was read and how much of it, and **Left out of it**
+names everything that was not — suffixes no reader claims, tests, strings outside the bound a
+reader judges, calls whose far end is outside the map, and directories pruned on the way in —
+and, beside them, the dependencies a reader found on this machine rather than fetched.
+**Where it stops** counts the calls that leave the program and the calls drawn with no edge,
+each with its reason, and **Dispatch** counts the calls that may run one of several bodies.
 
 **Everything else needs nothing.** If the tree you point it at has no TypeScript in it,
 Node is never looked for.

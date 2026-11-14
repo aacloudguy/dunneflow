@@ -10,7 +10,7 @@ code, whether they are versions over time or just an Enterprise repository.
 
 Every example below is `uv run dunneflow …` from a checkout, and every transcript is what
 it printed against the map the screenshots in this guide were taken from: DunneFlow reading
-its own source on 2026-10-02. If you have the application
+its own source on 2026-11-13. If you have the application
 binary, do not run the `uv run` portion, start with `dunneflow` 
 From the installed application, the binary is:
 
@@ -59,7 +59,8 @@ uv run dunneflow analyze <path> --name <program>
 | `--without <lang>` | do not read that language, and say so. Repeatable, refused for a language this build has no reader for, and refused if it would decline them all. For a machine that lacks a language's toolchain — see [installing](01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install) |
 | `--part-of <tree>` | this is a part of `<tree>`, so judge what to skip and what is a test from there. A directory read on its own is judged by a path that no longer contains the component that hid something — see [when it refuses](15-when-it-refuses.md) |
 | `--parts` | print the tree cut into parts small enough to read, and stop |
-| `--any-size` | read a tree larger than the guard allows, however long it takes |
+| `--any-size` | start without asking, however long the estimate says it will take |
+| `--warn-after <minutes>` | ask before a run estimated to take longer than this (default 10; 1–600) |
 | `--allow-unfinished` | on `check`, `touches`, `impact`, `glossary`, `naming`, `mirror`, `serve` and `mcp`: read a map whose analysis never finished, with a warning — see [when it refuses](15-when-it-refuses.md#was-never-finished) |
 | `--jobs <n>` | parallel workers |
 | `--timings` | print what each phase of the run cost, in time and CPU, with peak memory and the machine's load and swap at the start and the end |
@@ -81,15 +82,16 @@ uv run dunneflow touches src/dunneflow --name dunneflow --routine cmd_serve
 ```
 
 ```
-cli.cmd_serve  (cli.py:2033)
-  reaches 81 routines
+cli.cmd_serve  (cli.py:2437)
+  reaches 64 routines
   CRYPTO     hashlib.sha256
   DATABASE   DOC_SCHEMA_SQL, INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, INSERT INTO revisions(revision, state, captured_at, note) VALUES(?, ?, '', ?), SCHEMA_SQL, SELECT 1 FROM paths WHERE revision = ? LIMIT 1, SELECT 1 FROM revisions WHERE revision = ?, SELECT 1 FROM revisions WHERE state = ? LIMIT 1, SELECT COUNT(*) FROM documents
   ENV        LOCALAPPDATA, XDG_DATA_HOME
-  FILE       *.yaml, -, :, GRAPH_DB, child.is_dir, chosen.is_dir, f'{stem}{SEP}*.db', given.mkdir
+  FILE       *.yaml, GRAPH_DB, child.is_dir, chosen.is_dir, f'{stem}{SEP}*.db', given.mkdir, graph_db.exists, legacy.exists
   NETWORK    f'{url}api/programs', socket.socket
-  PROCESS    self.argv
   STDIO      msg
+  leaves the program by 131 calls: str 39 · re.compile 13 · pathlib.Path 9 · len 8 · sorted 6 · frozenset 4 · FileNotFoundError 3 · ctypes.CDLL 3 · 32 more
+  no edge, and why: 69 the reader could not tell what it calls · 15 a closure or function value the routine holds
 ```
 
 **What breaks if I change it?**
@@ -99,8 +101,8 @@ uv run dunneflow impact src/dunneflow --name dunneflow --routine _emit
 ```
 
 ```
-cli._emit  (cli.py:77)
-  25 routines depend on this, directly or transitively
+cli._emit  (cli.py:92)
+  27 routines depend on this, directly or transitively
   ways in affected (18):
     - analyze [CLI]
     - check [CLI]
@@ -132,11 +134,11 @@ uv run dunneflow glossary src/dunneflow --name dunneflow
 ```
 
 ```
-82 of 223 terms are defined somewhere (37%)
+89 of 367 terms are defined somewhere (24%)
 
-calls  (18 uses)
+calls  (17 uses)
   Call sites, their arguments as written, and the boundaries the rules recognise.
-  [DECLARED_CODE] extractors/cpp/calls.py:1
+  [DECLARED_CODE] extractors/kotlin/calls.py:1
 ```
 
 Every definition carries where it came from and the line that proves it.
@@ -151,11 +153,14 @@ uv run dunneflow naming src/dunneflow --name dunneflow
 STATED — nothing in this program's documentation states a naming rule
 
 MEASURED — counted against the code
-  [B] 1,233/1,249  Python routines are named in snake_case.  (16 exceptions)
-  [B] 616/623  A routine marked private is called only from its own module.  (7 exceptions)
-  [B] 433/435  Python parameters are named in snake_case.  (2 exceptions)
-  [B] 211/213  Python database tables are named in snake_case.  (2 exceptions)
-  [D] 165/182  Python classes are named in PascalCase.  (17 exceptions)
+  [B] 1,286/1,303  Python routines are named in snake_case.  (17 exceptions)
+  [B] 615/622  Python routines marked private are called only from their own module.  (7 exceptions)
+  [B] 484/486  Python parameters are named in snake_case.  (2 exceptions)
+  [E] 249/281  Java routines are named in camelCase.  (32 exceptions)
+  [B] 273/276  Python database tables are named in snake_case.  (3 exceptions)
+  [C] 239/245  C and C++ routines are named in snake_case.  (6 exceptions)
+  [A] 233/233  Rust routines are named in snake_case.
+  [D] 180/199  Python classes are named in PascalCase.  (19 exceptions)
   …
 ```
 
@@ -171,8 +176,8 @@ uv run dunneflow naming src/dunneflow --name dunneflow --allow-leading-underscor
 ```
 
 ```
-  [B] 179/182  Python classes are named in PascalCase (a leading underscore allowed).  (3 exceptions)
-  [B] 154/157  Python data structures are named in PascalCase (a leading underscore allowed).  (3 exceptions)
+  [B] 196/199  Python classes are named in PascalCase (a leading underscore allowed).  (3 exceptions)
+  [B] 169/172  Python data structures are named in PascalCase (a leading underscore allowed).  (3 exceptions)
 ```
 
 It is the same choice as the dashboard's **A leading underscore in a name** setting — see
@@ -191,7 +196,7 @@ uv run dunneflow mirror src/dunneflow --name dunneflow
   Spoken      0   The word appears only in comments and docstrings. The program talks about it; nothing is named for it.
   Absent      0   Defined in documentation, and nowhere in the code at all. The strongest signal of drift the two stores can produce together.
 
-only Python and TypeScript are extracted: absent from this graph is not absent from the product.
+only C and C++, Go, Java, Python, Rust and TypeScript are extracted: absent from this graph is not absent from the product.
 ```
 
 Four bands — Named, Borne, Spoken, Absent — where **Absent** is the strongest
@@ -204,10 +209,10 @@ uv run dunneflow check src/dunneflow --name dunneflow
 ```
 
 ```
-[SUSPECT/PROBABLE] LOST_EDGE: `self.ancestors` could not be connected: 2 definitions share the name  extractors/cpp/scopes.py
-[SUSPECT/PROBABLE] LOST_EDGE: `self.masked.line_at` could not be connected: 2 definitions share the name  extractors/cpp/ctx.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self._live.note` could not be connected: 2 definitions share the name  web/serve.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self._live.out_dir.resolve` could not be connected: 5 definitions share the name  web/serve.py
 …
-0 broken, 21 suspect, 18 informational
+0 broken, 19 suspect, 19 informational
 ```
 
 Exits non-zero **only on BROKEN**, so it can gate CI without failing your build over
@@ -223,12 +228,12 @@ uv run dunneflow query src/dunneflow --name dunneflow \
 
 ```
 kind | n
-DATABASE | 290
-FILE | 154
-STDIO | 62
-PROCESS | 9
-ENV | 5
-CRYPTO | 3
+DATABASE | 309
+FILE | 218
+STDIO | 84
+PROCESS | 23
+ENV | 16
+CRYPTO | 5
 NETWORK | 3
 ```
 
@@ -246,9 +251,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-10-02T21:37:19Z   WORKING          2026-10-02T21:37:19Z      142
-2026-10-02T21:37:11Z   FOR_COMPARISON   2026-10-02T21:37:11Z      141  DunneFlow at 1017ef4 - before the Windows fix
-2026-10-02T21:37:03Z   FOR_COMPARISON   2026-10-02T21:37:03Z      141  DunneFlow at 0804aa7 - before parts
+2026-11-13T03:56:51Z   WORKING          2026-11-13T03:56:51Z      181
+2026-11-13T03:56:47Z   FOR_COMPARISON   2026-11-13T03:56:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-11-13T03:56:43Z   FOR_COMPARISON   2026-11-13T03:56:43Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 **Keep the current one**, so the next analysis lands beside it rather than on it:

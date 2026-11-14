@@ -2,9 +2,9 @@
 
 One compartment, drawn as a diagram.
 
-![Diagram mode showing the render compartment: a dropdown reading "render — 14 boxes", the line "14 boxes over 91 routines · 23 flows within · 45 crossing to 10 other compartments (not drawn) · drawn in 7 ms · double-click a box to open it", a "show crossings" checkbox, "colour by: nothing", a "fit" button and "· what you picked is not in this compartment"; below, fourteen labelled boxes — snapshot.py, index.py and markdown.py at the top, eleven files and the Stamp class in a row, page.py at the foot — joined by arrows](images/10-diagram-compartment.jpg)
+![Diagram mode showing the render compartment: a dropdown reading "render — 19 boxes", the line "19 boxes over 115 routines · 31 flows within · 52 crossing to 13 other compartments (not drawn) · drawn in 6 ms · double-click a box to open it", a "show crossings" checkbox, "colour by: nothing", a "fit" button and "· what you picked is not in this compartment"; below, nineteen labelled boxes — the Inventory and InventoryCost classes and snapshot.py at the top, markdown.py and index.py under them, then a row of thirteen, the InventoryChoice, _Stream and Stamp classes and ten files from anomalies.py to traceability.py, and page.py at the foot — joined by arrows](images/10-diagram-compartment.jpg)
 
-The stack draws all 2,692 nodes of this map at once. This draws fourteen boxes and answers
+The stack draws all 4,410 nodes of this map at once. This draws nineteen boxes and answers
 a different question: **what is this part shaped like, and what flows through it.**
 
 ## What a box is
@@ -15,14 +15,14 @@ compartment with how many boxes it holds; pick one.
 The line under it is the whole of what you are looking at, and every number in it earns
 its place:
 
-- **14 boxes over 91 routines** A fold, and what it folded.
-- **23 flows within** Arrows drawn inside this compartment.
-- **45 crossing to 10 other compartments (not drawn)** Arrows that leave. Counted always,
+- **19 boxes over 115 routines** A fold, and what it folded.
+- **31 flows within** Arrows drawn inside this compartment.
+- **52 crossing to 13 other compartments (not drawn)** Arrows that leave. Counted always,
   drawn only when you ask, because drawn they connect everything to everything and nothing
   packs. **show crossings** turns them on.
 - **entered from … ways in** How the outside world gets here, said only where it does:
   `web` is entered from 4, and `render` from none, so its line leaves the clause out.
-- **drawn in 4 ms.**
+- **drawn in 6 ms.**
 
 **fit** frames the whole drawing.
 
@@ -41,7 +41,7 @@ in it. The line says which, in one of three ways:
 - **what you picked is not in this compartment** is the actual answer, and used to
   be given by saying nothing.
 
-![The diagram's header, close up: "render — 14 boxes", the line "14 boxes over 91 routines · 23 flows within · 45 crossing to 10 other compartments (not drawn) · drawn in 7 ms · double-click a box to open it", and under it "show crossings", "colour by: nothing", "fit", then "· 1 box selected" and a "frame it" button](images/10-frame-it.png)
+![The diagram's header, close up: "render — 19 boxes", the line "19 boxes over 115 routines · 31 flows within · 52 crossing to 13 other compartments (not drawn) · drawn in 6 ms · double-click a box to open it", and under it "show crossings", "colour by: nothing", "fit", then "· 1 box selected" and a "frame it" button](images/10-frame-it.png)
 
 **frame it** moves the camera to your selection *and everything an arrow joins it to*, so
 you land on the neighbourhood rather than on one box with no context. **fit** is untouched,
@@ -60,7 +60,7 @@ you were looking at. Framing is offered, one click away, and never taken on your
 
 Double-click one.
 
-![The second level: "render — 14 boxes", "‹ out" and "markdown.py", then "13 routines · 27 flows within · 36 crossing to 21 other boxes (not drawn) · drawn in 4 ms" and "· you are inside what you picked"; the routines inside markdown.py drawn as boxes, render_all at the top fanning out to _flows, _routines, _data, _boundaries, _governance, _overview and _entrypoints, most of them writing to a FILE cylinder and calling _esc at the foot; the inspector on the right is headed render.markdown, render/markdown.py:42–626, ANALYSED · FILE · 13 folded, and lists HOLDS 13 with a code button beside each. The navigator is still filtered to the search "cmd_serve"](images/10-diagram-box-open.jpg)
+![The second level: "render — 19 boxes", "‹ out" and "markdown.py", then "19 routines · 32 flows within · 53 crossing to 28 other boxes (not drawn) · drawn in 5 ms" and "· you are inside what you picked"; the routines inside markdown.py drawn as boxes, render_all in the middle fanning out to _boundaries, _governance, _data, _mark_unfinished, _routines, _overview and _entrypoints, most of them writing to a FILE cylinder and calling _esc at the foot; to the left flows above _flows, which reaches inventory_costs, _flows_into, _traced and _flow_inventory, and human_bytes standing on its own; the inspector on the right is headed render.markdown, render/markdown.py:52–950, ANALYSED · FILE · 19 folded, and lists HOLDS 19 with a code button beside each. The navigator is still filtered to the search "cmd_serve"](images/10-diagram-box-open.jpg)
 
 Now the boxes are routines and the same sentence describes them; the breadcrumb above it
 names the box you are inside, and with a selection made first the sentence adds whether
@@ -69,12 +69,12 @@ your pick is in here, so it is not a drawing you cannot place. **‹ out** goes 
 The inspector follows you in. Opening a box selects it, and the box's own inspector lists
 what it holds, each with a **code ▸** button that opens that routine's lines:
 
-![The inspector for the opened box: render.markdown, render/markdown.py:42–626 with a "code ▸" button, the badges ANALYSED, FILE and "13 folded", "◇ Keep this" and "Collapse all", then "HOLDS 13" — _esc, render_all, _overview, _entrypoints, _unclaimed_marks, _count_commands, _tree_list, _flows, _flow_inventory, _routines, _data, _boundaries, _governance — each a signature cut short at its tail, with a code button and its line number on the same line; then IN 2, snapshot.py and cli, and OUT 18 beginning with page.py](images/10-box-inspector.png)
+![The inspector for the opened box: render.markdown, render/markdown.py:52–950 with a "code ▸" button, the badges ANALYSED, FILE and "19 folded", "◇ Keep this" and "Collapse all", then "HOLDS 19" — _esc, render_all, flows, _mark_unfinished, _overview, _entrypoints, _unclaimed_marks, _count_commands, _tree_list, _flows, _flows_into, _flow_inventory, _traced, human_bytes, inventory_costs, _routines, _data, _boundaries, _governance — each a signature cut short at its tail, with a code button and its line number on the same line; then the heading IN 6, where the picture ends](images/10-box-inspector.png)
 
 This second level is asked for on demand rather than built with the rest. A compartment is
-one of 25 drawings that come out of one pass over the model; a box is one of 197. On this
-map, fetching one takes a few milliseconds for a small file and about 15 ms for the largest
-class in the program, `web.serve._Handler`, which holds 74 routines.
+one of 30 drawings that come out of one pass over the model; a box is one of 420. On this
+map, fetching one takes a few milliseconds for a small file and a few tens of milliseconds for the
+largest class in the program, `web.serve._Handler`, which holds 79 routines.
 
 ## Arrows open too
 
@@ -85,7 +85,7 @@ Clicking one opens the flow: **every call site, with the arguments as written, b
 callee's declared parameters**. For an arrow into a boundary you get the SQL and the
 network operations instead.
 
-![An arrow opened inside entrypoints.py, in the "resolve — 40 boxes" compartment: the line says "12 routines · 11 flows within · 18 crossing to 8 other boxes (not drawn) · drawn in 2 ms", then "· 2 boxes selected" and a "frame it" button, and the arrow from _target_routine to exact is lit at both ends, entrypoints_from_manifests above them. The inspector is headed "_target_routine → exact", routine → routine, FLOW · CALL · 2 along it, and lists CALL SITES 2: exact at :102 passing module, and exact at :107 passing module[len(prefix) + 1:], each lined up against "→ name: str" and the declared signature exact(name: str) → str | None; then TOUCHES 0, "Nothing along this arrow touches a boundary, a table, a remote or a named file.", and under it the note that ends "92% of arguments on a resolved call bind; the rest say why they do not."](images/10-arrow-flow.jpg)
+![An arrow opened inside entrypoints.py, in the "resolve — 46 boxes" compartment: the line says "14 routines · 12 flows within · 23 crossing to 9 other boxes (not drawn) · drawn in 2 ms", then "· 2 boxes selected" and a "frame it" button, and the arrow from _target_routine to exact is lit at both ends, entrypoints_from_manifests above them. The inspector is headed "_target_routine → exact", routine → routine, FLOW · CALL · 2 along it, and lists CALL SITES 2: exact at :102 passing module, and exact at :107 passing module[len(prefix) + 1:], each lined up against "→ name: str" and the declared signature exact(name: str) → str | None; then TOUCHES 0, "Nothing along this arrow touches a boundary, a table, a remote or a named file.", and under it the note that ends "92% of arguments on a resolved call bind; the rest say why they do not."](images/10-arrow-flow.jpg)
 
 > **Aim for the middle of the arrow.** An arrow is a line two pixels wide, and a box is
 > drawn over the ends of its own arrows, so a click close to either box picks the box. Click

@@ -10,18 +10,18 @@ one:
 
 ## Lane 2: the map's own documents
 
-![Document mode showing the generated Routines document at the section headed "resolve.entrypoints 12", with columns ROUTINE, SIGNATURE, WHY and WHERE. The selected row is entrypoints_from_manifests, with the signature "entrypoints_from_manifests(readings, store, tree) -> list[Entrypoint]", its docstring paragraph beginning "Bind, mint and record every way in the manifests declared.", and a location badge reading resolve/entrypoints.py:252. Above it the end of the previous row's paragraph shows; below it collisions, "collisions(readings) -> list[str]" at resolve/entrypoints.py:305, begins a paragraph of its own. The trail ends "Shape › Graph › Table › Code › Document › Table › Code › Document"](images/06-document-map-lane.jpg)
+![Document mode showing the generated Routines document at the section headed "resolve.entrypoints 14", with columns ROUTINE, SIGNATURE, WHY and WHERE. The selected row is entrypoints_from_manifests, with the signature "entrypoints_from_manifests(readings, store, tree) -> list[Entrypoint]", its docstring paragraph beginning "Bind, mint and record every way in the manifests declared.", and a location badge reading resolve/entrypoints.py:296. Above it the end of the previous row's paragraph shows; below it collisions, "collisions(readings) -> list[str]" at resolve/entrypoints.py:349, begins a paragraph of its own. The trail ends "cmd_serve › entrypoints_from_manifests › Table › Code › Document"](images/06-document-map-lane.jpg)
 
 This is the Routines document, opened at your selection: the section for
-`resolve.entrypoints`, 12 routines, with a signature, an explanation and a location for each.
+`resolve.entrypoints`, 14 routines, with a signature, an explanation and a location for each.
 
-The location badges (`resolve/entrypoints.py:252`) are the thing to notice. **Every row here carries
+The location badges (`resolve/entrypoints.py:296`) are the thing to notice. **Every row here carries
 the graph node that produced it**, so a row is an ordinary selection: click it and the
 stack lights up, the inspector fills, the trail records the hop, and Back will bring you
 home. It is not a report you read and leave; it is another way into the same map.
 
 The eight documents here — entrypoints, routines, data, constants, boundaries, database,
-network and artefacts — cover the same ground as the fifteen Markdown files
+network and artefacts — cover the same ground as the sixteen Markdown files
 `dunneflow analyze` writes to disk, which you can hand to someone who does not have
 DunneFlow installed. They are not those files read back. A Markdown file has already thrown
 away which node each line came from, so the dashboard builds its documents again from the
@@ -32,15 +32,15 @@ graph, and every row keeps its node.
 The other lane is the corpus: every Markdown, reStructuredText and plain-text file found
 beside the source, rendered, searchable, and cross-referenced with the code.
 
-![Document mode with "The program's own 53" chosen over "The map". A blue note reads "No document in this map is about entrypoints_from_manifests. It carries no plan, ticket or decision id, so there is nothing for a document to have in common with it. What follows is the whole corpus — DunneFlow relates code to prose through the plan, ticket and decision ids they both name, and this one shares none." Beside a "Filter by path or title…" box: "All 53 documents." Under OTHER 47 are listed, each with its title, path, word count and section count: Backlog BACKLOG.md 1,211w 3 §, the design rules, ground truth, adding a language, packaging, the measured budgets PERFORMANCE.md 13,404w 27 §, the rules RULES.md 28,188w 1 §, third-party notices, then the user guide's chapters from 1. Installing docs/01-installing.md 2,265w 9 § down to 5. The shell](images/06-corpus-lane.jpg)
+![Document mode with "The program's own 56" chosen over "The map". A blue note reads "No document in this map is about entrypoints_from_manifests. It carries no plan, ticket or decision id, so there is nothing for a document to have in common with it. What follows is the whole corpus — DunneFlow relates code to prose through the plan, ticket and decision ids they both name, and this one shares none." Beside a "Filter by path or title…" box: "All 56 documents." Under OTHER 47 are listed, each with its title, path, word count and section count: Backlog BACKLOG.md 3,493w 3 §, the design rules, ground truth, adding a language, packaging, the measured budgets PERFORMANCE.md 16,140w 34 §, the rules RULES.md 29,136w 1 §, third-party notices, then the user guide's chapters from 1. Installing docs/01-installing.md 2,882w 9 § down to 5. The shell](images/06-corpus-lane.jpg)
 
-DunneFlow's own analysis found **53 documents** carrying **2 definitions** and **13
+DunneFlow's own analysis found **56 documents** carrying **2 definitions** and **17
 governance ids**. Those documents are `CLAUDE.md`, `README.md`, `RULES.md` and the other
 reference files at the top of the tree, the sixteen chapters of the user guide, the
 licence texts the tree carries — and these tutorials, this chapter included.
 
 That last one is not a throwaway. The map was made from a tree that already held this
-chapter, so **it is in the corpus lane now**, indexed, searchable, and counted in the 53.
+chapter, so **it is in the corpus lane now**, indexed, searchable, and counted in the 56.
 Add a chapter of your own and re-run the analysis, and the number goes up by one. The tool
 makes no distinction between documentation about a program and documentation that happens
 to be about itself, which is the correct amount of distinction to make.

@@ -442,11 +442,16 @@ did not move: its jars are not on this machine (`BACKLOG.md`'s residues).
 ## The screenshot map — what `docs/` and `docs/tutorial/` were photographed against
 
 **Every figure in the user guide and the tutorial is one this map reproduces**, so a retake
-rebuilds it rather than rediscovering it. Taken 2026-10-02, on a map of a **clean clone** at
-`2cdd872` analysed by release 8, the installed build of that commit, and photographed through
-releases 8 and 9 (`0cd81cd`), which read the same maps — all five stamps agree. The shots of
-the analyse dialog and the Settings page (`04-*`, `13-*`, `03-opening`, `15-refuse-relative`)
-hold no figure these maps decide and were kept from the previous retake, against `5b737a0`.
+rebuilds it rather than rediscovering it. Taken 2026-11-13 and 14, on a map of a **clean
+clone** at `1ba37b3` analysed by the frozen build of that commit, in a directory with nobody's
+name in its path. The first twelve guide images were photographed through that build. Taking
+the rest turned up five defects in the dashboard's script and stylesheet — a way back that
+did not say what a search had found, a call's reason running off the inspector, a path
+standing out of its card, a diagram opening on the wrong compartment, and a **clear** button
+that outlived its selection — so everything else, and those twelve again where a fix moved
+a pixel of them, was photographed through the source tree of the commit that fixed them, `6b94c1a`. It
+reads the same maps: none of the five touches a reader or the store. Every image in `docs/images` and `docs/tutorial/images` is from this retake except
+`04-progress-quiet.png`, below.
 The clone is required: the working
 tree holds `CLAUDE.local.md` and `output/`, which the documentation scan would read as
 DunneFlow's own corpus and print into the screenshots.
@@ -457,7 +462,7 @@ named commit, so they can be rebuilt from history:
 ```bash
 git worktree add ../dunneflow-before-parts   7665d66^    # 0804aa7
 git worktree add ../dunneflow-before-windows 290c39b^    # 1017ef4
-git clone . ../tour/DunneFlow && git -C ../tour/DunneFlow checkout 2cdd872
+git clone . ../tour/DunneFlow && git -C ../tour/DunneFlow checkout 1ba37b3
 
 dunneflow analyze ../dunneflow-before-parts/src/dunneflow --name dunneflow --output ../tour/maps
 dunneflow revisions ../tour/maps/dunneflow --seal --label "DunneFlow at 0804aa7 - before parts"
@@ -467,19 +472,22 @@ dunneflow analyze ../tour/DunneFlow/src/dunneflow --name dunneflow --output ../t
     --standards ../dunnecorp-standards
 ```
 
-The last analysis must reproduce **142 files · 53,988 lines · 1,552 routines · 3,315
-internal calls · 526 boundary touches · 207 structures · 24 ways in**, findings 0 broken,
-21 suspect and 18 informational, and 53 documents. Each figure moves with the source, so a
+The last analysis must reproduce **181 files · 81,283 lines · 2,552 routines · 6,147
+internal calls · 658 boundary touches · 515 structures · 30 ways in**, findings 0 broken,
+19 suspect and 19 informational, and 56 documents. Each figure moves with the source, so a
 retake at another commit writes new figures rather than matching these. The tutorial's
 chapter 8 compares *before the Windows fix* with the working revision; guide chapter 14
 compares *before parts*.
 
 The same root also holds `fastapi`, `djangoproject.com` and `OpenUSD`, analysed from
 `../fastapi`, `../djangoproject.com` and `../OpenUSD`, so that the start page and the program
-menu have neighbours. OpenUSD is the long run in guide chapter 4: long enough cold through
-`serve` to photograph the steps and **Stop it**, at 80.5 s on this machine at `5b737a0`. The
-quiet warning needs a run that goes quiet for longer than that one ever does, so
-`04-progress-quiet.png` is kept from an earlier retake, taken when the same run took about
+menu have neighbours. OpenUSD is the long run in guide chapter 4. With the C++ reader
+it is about an hour's read on this machine (`--any-size` from a terminal; the dialog
+estimated *about 52 min* and asked first), so the chapter's run was started through `serve`
+as `OpenUSD-cold`, photographed at step 1 of 7, and stopped at 1 m 36 s; a quick run of
+`../requests` gives the finished panel. Both were removed from the root afterwards, so it
+holds four programs. No step of that run was quiet for 45 s, so
+`04-progress-quiet.png` is kept from an earlier retake, taken when the whole read took about
 four minutes. Serve with `dunneflow serve ../tour/maps --port 8787 --no-open`.
 How the captures were composed (window size, framing, the native menus that cannot be
 photographed) is in the retake's record.
@@ -525,6 +533,23 @@ named `bind`. With the fix the same tree reads **NETWORK 3, FILE 218, 658 touche
 body in the same translation unit: on the maps of 2026-11-03 that is 1 row in git, 4 in nmap, 20
 in Runtime and none in tmux, Core or OpenUSD, counted by query and not by a rerun. What it
 leaves, and why, is `BACKLOG.md`'s residue.
+
+**tmux, git and nmap read again at 1ba37b3 (2026-11-13), and the count held.** The rows the
+query named are gone and nothing else of that shape is left: git's `rmdir` at `symlinks.c:290`,
+nmap's four `open` at `libz/contrib/iostream2/zstream.h:54, 55, 161, 165`, and none in tmux.
+
+| at 1ba37b3 | routines | internal calls | touches | broken · suspect · info |
+|---|---:|---:|---:|---|
+| tmux | 2,683 | 10,776 | 160 | 0 · 4 · 3 |
+| git | 12,795 | 62,947 | 3,558 | 1 · 22 · 5 |
+| nmap | 8,750 | 23,980 | 2,053 | 1 · **229** · 7 |
+
+git's 22 and nmap's 301 before this read are the macro table's below: the 20 and 288 above it
+plus the macro findings. **nmap's suspects fell by 72, and all 72 are the Python resolver's
+`builtin_methods` (404f588), not the C++ reader**: zenmap's lost edges on `.append` (61),
+`.clear` (6) and `.update` (5), each "could not be connected" because `ndiff.py` and
+`OptionBuilder.py` define an `append`, two files a `clear` and thirteen an `update`. `self.liststore` is a
+`Gtk.ListStore` (`ScriptInterface.py:182`), and those 72 were false alarms.
 
 **Every BROKEN left was read against the source, and each is the program's.** OpenUSD's two are
 `test_ListAPI` and `test_ComputeAllDependencies`, each defined twice in one test class, so the

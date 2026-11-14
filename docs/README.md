@@ -59,7 +59,7 @@ The middle of the screen is one selection read six ways. Each one is a unique po
 
 | | |
 |---|---|
-| [DunneFlow, read by DunneFlow](tutorial/README.md) | Thirteen chapters walking through the whole tool, using it on its own source. Every number in it is one you can reproduce: it was retaken on 2 October 2026, and its first page says against which commit. |
+| [DunneFlow, read by DunneFlow](tutorial/README.md) | Thirteen chapters walking through the whole tool, using it on its own source. Every number in it is one you can reproduce: it was retaken on 13 and 14 November 2026, and its first page says against which commit. |
 
 ## Two promises the tool makes
 

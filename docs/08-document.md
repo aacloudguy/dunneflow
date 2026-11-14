@@ -10,7 +10,7 @@ The switch at the top picks between them, and it remembers which you were in.
 
 ## Lane 1: the map
 
-![Document mode, map lane, with cmd_serve selected: the Routines document scrolled to the cli section, its header "cli 47" held at the top over the columns ROUTINE, SIGNATURE, WHY and WHERE, and the cmd_serve row highlighted below the tail of cmd_migrate's long WHY and above main (cli.py:2103) — "cmd_serve(args) -> int", "Open the map. Read-only throughout -- serving can never damage what it shows.", cli.py:2033](images/08-document-map-lane.jpg)
+![Document mode, map lane, with cmd_serve selected: the Routines document scrolled to the cli section, its header "cli 65" held at the top over the columns ROUTINE, SIGNATURE, WHY and WHERE, and the cmd_serve row highlighted below the tail of cmd_migrate's long WHY and above say_how_it_crashed (cli.py:2507) — "cmd_serve(args) -> int", "Open the map. Read-only throughout -- serving can never damage what it shows.", cli.py:2437](images/08-document-map-lane.jpg)
 
 Eight documents, generated from the graph:
 
@@ -30,7 +30,7 @@ the inspector fills, the trail records the hop, and Back will bring you home. A 
 a database table selects the table, which means selecting all the code that reads and
 writes it.
 
-Like the table, it says where you are — *SHOWING `cmd_serve` — row 75 of 1,552 in this
+Like the table, it says where you are — *SHOWING `cmd_serve` — row 101 of 2,552 in this
 document*, with **Go to it** — and it scrolls to that row each time you arrive. The table
 says *as sorted here* instead, because its order is the sort you chose and this one is the
 document's own; the same routine has a different row in each, and each sentence names
@@ -41,14 +41,14 @@ The **WHERE** button on a row opens the routine's source at that line in
 
 Every analysis also writes the map to disk as Markdown, in `map@<instant>/`, so you can
 send someone the answer without sending them the application. That directory holds
-**fourteen documents and an index**: seven of these eight — *Files the program names* is a
-tab here and not a file there — and seven more that have their own surfaces in the dashboard
-rather than a tab here: flows, governance, anomalies, the glossary, naming, traceability and
-the mirror.
+**fifteen documents and an index**: seven of these eight — *Files the program names* is a
+tab here and not a file there — and eight more that have their own surfaces in the dashboard
+rather than a tab here: flows, governance, anomalies, the glossary, naming, traceability, the
+mirror and the macros.
 
 ## Lane 2: the program's own
 
-![Document mode, corpus lane, "The program's own 53": a blue note saying no document in this map is about cmd_serve, a filter box, "All 53 documents.", and the first group, OTHER 47, listing Backlog (BACKLOG.md, 1,211w, 3 §), the design rules, ground truth, adding a language, packaging, the measured budgets (13,404w, 27 §), the rules (28,188w), the third-party notices, and the guide's chapters from 1. Installing (2,265w, 9 §) onward, each with its path, word count and section count](images/08-document-corpus-lane.jpg)
+![Document mode, corpus lane, "The program's own 56": a blue note saying no document in this map is about cmd_serve, a filter box, "All 56 documents.", and the first group, OTHER 47, listing Backlog (BACKLOG.md, 3,493w, 3 §), the design rules, ground truth, adding a language, packaging, the measured budgets (16,140w, 34 §), the rules (29,136w), the third-party notices, and the guide's chapters from 1. Installing (2,882w, 9 §) onward, each with its path, word count and section count](images/08-document-corpus-lane.jpg)
 
 Everything DunneFlow found beside the code encompassing Markdown, reStructuredText, and plain text, all
 grouped by what kind of document it is, with its size in words and sections.
@@ -69,7 +69,7 @@ confident nonsense at scale.
 
 ## Reading one
 
-![A document open: "‹ all documents", the title DunneFlow, README.md, "README · 2,476 words · 15.6 KB", a grey note "Not related to cmd_serve. You opened it from the list of all documents." with a "See what is related ›" button, an "IN THIS DOCUMENT" outline on the left (Download, Run from source, What it reads, The dashboard, For agents, Command line…), and the rendered prose on the right](images/08-document-open.jpg)
+![A document open: "‹ all documents", the title DunneFlow, README.md, "README · 2,896 words · 18.0 KB", a grey note "Not related to cmd_serve. You opened it from the list of all documents." with a "See what is related ›" button, an "IN THIS DOCUMENT" outline on the left (Download, Run from source, What it reads, The dashboard, For agents, Command line, and seven more down to Licence), and the rendered prose on the right](images/08-document-open.jpg)
 
 When the document you are reading has nothing to do with the selection, the note above it
 says so and says how you got there, and **See what is related ›** closes it and returns you

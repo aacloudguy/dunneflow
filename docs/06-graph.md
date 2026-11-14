@@ -2,7 +2,7 @@
 
 The whole program at once, as a stack of plates. Also known as 2.5D, or two and a half dimensional.
 
-![Graph mode with nothing selected: the stack of coloured dots, mostly teal and grey, narrowing to a waist above a wide purple plate at the bottom; the HUD on the left reading "60 fps · 2,692 nodes · 25 plates — nothing selected — all links hidden; pick two plates to see what crosses between them, or click a node" above the undo, redo, you are here, focus, snap to fit, top-down, tilt and benchmark buttons; the sliders folded to one line, "spacing 1.50× · spread 1.00 / 1.00 / 0.35 · plate width 1.00"; the Plates panel folded to a rail labelled PLATES; and the inspector on the right reading "Nothing selected."](images/06-graph-stack.jpg)
+![Graph mode with nothing selected: the stack of coloured dots, a wide plate of teal, blue and grey at the top narrowing to a thin column above a smaller purple plate at the bottom; the HUD on the left reading "60 fps · 4,410 nodes · 30 plates — nothing selected — all links hidden; pick two plates to see what crosses between them, or click a node" above the undo, redo, you are here, focus, snap to fit, top-down, tilt and benchmark buttons; the sliders folded to one line, "spacing 1.50× · spread 1.00 / 1.00 / 0.35 · plate width 1.00"; the Plates panel folded to a rail labelled PLATES; and the inspector on the right reading "Nothing selected."](images/06-graph-stack.jpg)
 
 ## What you are looking at
 
@@ -33,7 +33,7 @@ is a picture of nothing.
 
 Pick a node and the rest dims:
 
-![Graph mode with cmd_serve selected: everything except its neighbourhood is dimmed to grey, its links drawn between the few lit nodes, and the HUD says "60 fps · 2,692 nodes · 25 plates — on pkg:cli, pkg:runtime, pkg:web, ext:FILE · cmd_serve · 9 nodes · 4 within · 7 crossing · 2,683 dimmed · focus: only what is lit answers". The inspector on the right shows cli.cmd_serve, IN 2 and OUT 14 call sites.](images/06-graph-selected.jpg)
+![Graph mode with cmd_serve selected: everything except its neighbourhood is dimmed to grey, its links drawn between the few lit nodes, and the HUD says "60 fps · 4,410 nodes · 30 plates — on pkg:cli, pkg:runtime, pkg:web, ext:FILE · cmd_serve · 9 nodes · 4 within · 7 crossing · 4,401 dimmed · focus: only what is lit answers". An amber pointer stands over the selection, the navigator shows its one match for "cmd_serve", and the inspector on the right shows cli.cmd_serve, IN 2 and OUT 14 call sites.](images/06-graph-selected.jpg)
 
 The HUD states exactly what it did: how many nodes are lit, how many are dimmed, and
 whether the dimmed ones still answer a hover. **Dimming says what is not yours; it does
@@ -105,8 +105,8 @@ of looking at the same facts and not a filter: nothing is dropped, and every fol
 says what it stands for.
 
 **smallest plate** How few things a plate may hold before it is merged into `<small>`.
-The line under it always states what that merged: *"2,692 drawn · 9 plates merged into
-`<small>`, holding 35."*
+The line under it always states what that merged: *"4,410 drawn · 7 plates merged into
+`<small>`, holding 25."*
 
 **Colour by** What colour means: `what it is`, `which plate`, or `what changed`. The last
 appears only when there are two versions to compare.
@@ -135,7 +135,7 @@ be optimal, only better by a stated amount than the order it started from.
 
 The **Stack** / **Overview** toggle beside the mode buttons is two drawings of one
 selection, not a seventh mode. The stack holds every node and answers *what is in
-here*. The overview holds one box per package — 24 of them for DunneFlow — and answers *what
+here*. The overview holds one box per package — 27 of them for DunneFlow — and answers *what
 is this shaped like*.
 
 ---

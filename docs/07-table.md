@@ -2,7 +2,7 @@
 
 Every routine as a row.
 
-![Table mode, compared with the version before the Windows fix: a banner reading "SHOWING cli.cmd_serve row 62 of 1,552 as sorted here [Go to it]", a ROW DENSITY control offering Compact, Comfortable and Spacious beside "Drag a column edge to resize — widths store in rem, so the scale control moves them too." and a "◆ changes" switch, the line "against 2026-10-02 21:37:11: +25 added · ○ 63 behave differently · ≈ 33 edited only · 1,431 unchanged · 1 deleted — in 2026-10-02 21:37:11 only, so not listed here", and a table of ROUTINE, WHY, CONNECTIONS and CHANGED with the cmd_serve row tinted: "Open the map. Read-only throughout -- serving can never damage what it shows.", 1← 7→, —. Above it, the tail of the previous row's long WHY; below it cmd_touches 1← 14→ marked ○ as behaving differently, then common 1← 1→, detail 2← 2→, doc_progress 0← 1→, done 1← 2→ and main 1← 2→, all unchanged.](images/07-table.jpg)
+![Table mode, compared with the version before the Windows fix: a banner reading "SHOWING cli.cmd_serve row 78 of 2,552 as sorted here [Go to it]", a ROW DENSITY control offering Compact, Comfortable and Spacious beside "Drag a column edge to resize — widths store in rem, so the scale control moves them too." and a "◆ changes" switch, the line "against 2026-11-13 03:56:47: +1,147 added · ○ 228 behave differently · ¶ 2 explained differently · ≈ 186 edited only · 989 unchanged · 123 deleted — in 2026-11-13 03:56:47 only, so not listed here", and a table of ROUTINE, WHY, CONNECTIONS and CHANGED with the cmd_serve row tinted: "Open the map. Read-only throughout -- serving can never damage what it shows.", 1← 7→, and ○ for behaving differently. Above it, the tail of cmd_revisions' long WHY, 1← 12→ and unchanged; below it cmd_touches 1← 22→ marked ○ too, then common 1← 1→ unchanged, cpu_phases 3← 2→ marked + as added, and detail 3← 2→ marked ○.](images/07-table.jpg)
 
 The graph answers *what is connected to what*. This answers *what is here, and what did
 its author say about it* and it is the view to reach for when you want to read rather
@@ -33,7 +33,7 @@ A large program's table is four thousand rows and about a quarter of a million p
 tall, with your selection somewhere in the middle of it. So the banner at the top always
 states where you are:
 
-> SHOWING `cli.cmd_serve` — row 62 of 1,552 as sorted here · **Go to it**
+> SHOWING `cli.cmd_serve` — row 78 of 2,552 as sorted here · **Go to it**
 
 When you arrive in Table with something selected, the table scrolls to that row for you,
 every time you arrive; once you are there it leaves your scrolling alone. The rank is the
@@ -62,10 +62,10 @@ column, which on a well-commented program runs to paragraphs.
 ## When you are comparing
 
 With a compared version set, each row marks itself with what the comparison found about
-it, whether it was added, deleted, behaving differently, or edited only, and a line above
-the table counts them: *against 2026-10-02 21:37:11: +25 added · ○ 63 behave differently ·
-≈ 33 edited only · 1,431 unchanged · 1 deleted — in 2026-10-02 21:37:11 only, so not listed
-here*. A deleted routine has no row in a table of what the base holds, so it is counted
+it, whether it was added, deleted, behaving differently, explained differently, or edited
+only, and a line above the table counts them: *against 2026-11-13 03:56:47: +1,147 added ·
+○ 228 behave differently · ¶ 2 explained differently · ≈ 186 edited only · 989 unchanged ·
+123 deleted — in 2026-11-13 03:56:47 only, so not listed here*. A deleted routine has no row in a table of what the base holds, so it is counted
 rather than left out without a word. That mark is free: it is drawn from an answer the
 dashboard already holds, which is why it has its own switch, **◆ changes**, separate from
 the code browser's. See [comparing two

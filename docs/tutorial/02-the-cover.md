@@ -3,11 +3,11 @@
 The map opens on the cover. It is the answer to *what is this program*, in three panels,
 before you have asked anything specific.
 
-![The DunneFlow dashboard showing the dunneflow map. The heading reads "dunneflow 142 files · 53,988 lines · 1,552 routines · analysed 2026-10-02 21:37 UTC". WHERE TO START ranks dunneflow, tagged CLI and DECLARED, at 500 with the line "pyproject.toml [project.scripts] dunneflow = dunneflow.cli:main"; then serve at 71 (web/serve.py:4182) and another serve at 57 (mcp/server.py:325), both MAIN and GUESSED; run at 17; _Handler.do_GET at 4 and _Handler.do_POST at 2, tagged HTTP_ROUTE and GUESSED; and a second run at 2. Every bar after the first is short. WHAT IT TOUCHES totals 526: DATABASE 290, FILE 154, STDIO 62, PROCESS 9, ENV 5, CRYPTO 3, NETWORK 3. WHAT LOOKS WRONG shows Broken 0, Suspect 21, Informational 18. The navigator on the left lists WAYS IN 7 and ROUTINES 1,552 "in 24 packages", with web 352, extractors 296, resolve 201, plugins 126 and render 103 at the top; the inspector is folded to its rail on the right](images/02-the-cover.jpg)
+![The DunneFlow dashboard showing the dunneflow map. The heading reads "dunneflow 181 files · 81,283 lines · 2,552 routines · analysed 2026-11-13 03:56 UTC". WHERE TO START ranks dunneflow, tagged CLI and DECLARED, at 602 with the line "pyproject.toml [project.scripts] dunneflow = dunneflow.cli:main"; then dunneflow-rust-reader, also CLI and DECLARED, at 201 ("Cargo.toml src/main.rs — Cargo's own convention, with no [[bin]] declared"); three entries called main, tagged MAIN and GUESSED, at 189 (plugins/java/…/reader/Main.java:208), 119 (plugins/go/main.go:161) and 73 (plugins/cpp/reader.cpp:384); serve at 57 (web/serve.py:4443) and another serve at 51 (mcp/server.py:339), both MAIN and GUESSED; run at 12; _Handler.do_GET at 8 and _Handler.do_POST at 5, tagged HTTP_ROUTE and GUESSED; and a second run at 3. The bars shorten quickly after the first. WHAT IT TOUCHES totals 658: DATABASE 309, FILE 218, STDIO 84, PROCESS 23, ENV 16, CRYPTO 5, NETWORK 3. WHAT LOOKS WRONG shows Broken 0, Suspect 19, Informational 19. The navigator on the left lists WAYS IN 12 and ROUTINES 2,552 "in 27 packages", with plugins 1,053, web 372, resolve 225, extractors 188 and render 127 at the top; the inspector is folded to its rail on the right](images/02-the-cover.jpg)
 
 ## The heading
 
-> **dunneflow** 142 files · 53,988 lines · 1,552 routines · analysed 2026-10-02 21:37 UTC
+> **dunneflow** 181 files · 81,283 lines · 2,552 routines · analysed 2026-11-13 03:56 UTC
 
 The date is not decoration, it's a label. A map is a reading of a tree at a moment, and it
 keeps saying which moment for as long as it exists. Later, when the source has moved on, 
@@ -17,20 +17,26 @@ this line is how you know what you are looking at.
 
 > ranked by how much of the program each one commands
 
-Seven ways in, and the first one — `dunneflow` itself, the command you type — commands
-500 of the 1,552 routines. The two `serve`s command 71 and 57 — the dashboard's server and
-the agent's — and `run` 17. Then the drop is steep: 4, 2, 2.
+Twelve ways in, and the first one — `dunneflow` itself, the command you type — commands
+602 of the 2,552 routines. Then four more programs: `dunneflow-rust-reader` at 201, and
+three called `main` at 189, 119 and 73, which are the readers for Java, Go and C++, each
+written in the language it reads. The two `serve`s command 57 and 51 — the dashboard's
+server and the agent's — and `run` 12. Then the drop is steep: 8, 5, 3, and a last `main`
+at 1, below the fold.
 
 That shape is the useful part. It says DunneFlow is a command-line program with one large
-front door and two servers hanging off the side of it — which is true, and which you now
-know without having opened a file. DunneFlow is about the flow of information, in this
+front door, four smaller programs beside it that it starts when it meets their language,
+and two servers hanging off the side — which is true, and which you now know without
+having opened a file. DunneFlow is about the flow of information, in this
 case it is the flow of information into the program.
 
-Each entry says how it was found, and the first two say it differently. `dunneflow` carries
-**CLI** and **DECLARED**: the tag is the kind of way in, and *declared* means DunneFlow read
-a sentence that said so — the line under it, `pyproject.toml [project.scripts] dunneflow =
-dunneflow.cli:main`, is the package's own manifest naming its command. `serve` carries
-**MAIN** and **GUESSED**: nothing declared it, and DunneFlow inferred it from a
+Each entry says how it was found, and they do not all say it the same way. `dunneflow`
+carries **CLI** and **DECLARED**: the tag is the kind of way in, and *declared* means
+DunneFlow read a sentence that said so — the line under it, `pyproject.toml
+[project.scripts] dunneflow = dunneflow.cli:main`, is the package's own manifest naming its
+command. `dunneflow-rust-reader` is declared too, by a different manifest in a different
+language's manner: `Cargo.toml src/main.rs — Cargo's own convention, with no [[bin]]
+declared`. `serve` carries **MAIN** and **GUESSED**: nothing declared it, and DunneFlow inferred it from a
 conventional name at module level. The tool is persistently willing to tell you how
 confident it is, and this is the first place you see it.
 
@@ -40,14 +46,14 @@ rabbits wherever they may lead, and sometimes guessing can help make the intelle
 leap needed to connect two concepts that have no obvious link. That sort of connection
 can help to create that insight moment and forms a foundation on which to build lasting knowledge.
 
-**Two of the seven are HTTP routes** — `_Handler.do_GET` and `_Handler.do_POST`. They
-command 4 and 2 routines respectively, which is a good demonstration of what "commands"
+**Two of the twelve are HTTP routes** — `_Handler.do_GET` and `_Handler.do_POST`. They
+command 8 and 5 routines respectively, which is a good demonstration of what "commands"
 means: those two dispatch to fifty-odd routes, but they *reach* almost nothing directly.
 Reach is measured, not asserted.
 
 ## What it touches
 
-> 526
+> 658
 
 This is the panel that says what kind of program you have, and it is the one to read first
 on a codebase you have never before seen. If the application was written by an AI, it is
@@ -55,12 +61,12 @@ possible that no one has ever seen the source code.
 
 | | | |
 |---|---|---|
-| DATABASE | 290 | It is mostly a database program. |
-| FILE | 154 | It reads and writes a lot of files. |
-| STDIO | 62 | It talks to a terminal. |
-| PROCESS | 9 | It starts other programs — nine places. |
-| ENV | 5 | It reads five things from the environment. |
-| CRYPTO | 3 | Hashing, here; it is how the caches are keyed. |
+| DATABASE | 309 | It is mostly a database program. |
+| FILE | 218 | It reads and writes a lot of files. |
+| STDIO | 84 | It talks to a terminal. |
+| PROCESS | 23 | It starts other programs, and its readers end their own — twenty-three places. |
+| ENV | 16 | It reads the environment in sixteen places. |
+| CRYPTO | 5 | Hashing, here; it is how the caches are keyed. |
 | NETWORK | 3 | Three. For a tool with a web dashboard. |
 
 That last row is the interesting one and it is worth dwelling on, because it is the 
@@ -68,14 +74,14 @@ reason for this panel. **Three network touches, in a program that serves a
 dashboard.** Open **BOUNDARIES** in the navigator, click **NETWORK**, and the stack lights
 what is behind the number:
 
-![The graph after clicking NETWORK under BOUNDARIES. The trail reads "dunneflow › NETWORK › NETWORK f'{url}api/programs'". The heads-up panel says "60 fps · 2,692 nodes · 25 plates" and "on ext:<small outside>, pkg:web · f'{url}api/programs', (NETWORK, unnamed) · 4 nodes · 0 within · 2 crossing · 2,688 dimmed · focus: only what is lit answers", with the sliders open beneath it; the stack is grey but for a few lit nodes and the links between them, and the Plates panel is folded to its rail. The navigator's BOUNDARIES group is open at "7 kinds": DATABASE 290, FILE 154, STDIO 62, PROCESS 9, ENV 5, CRYPTO 3, NETWORK 3. The inspector on the right is headed f'{url}api/programs', tagged ANALYSED and BOUNDARY: IN 1, already_serving from web.serve, INFERRED; OUT 0, "It calls nothing this map can see."; TOUCHES 0; and REACHED FROM INSIDE, "not reached from inside any loop. Listed below with 1 other enclosing span — a decision that writes is a fact about this, even though it is not a rate", above the row already_serving HANDLER 3744; then GOVERNANCE 0 and THREADS TO PULL 0](images/02-network.jpg)
+![The graph after clicking NETWORK under BOUNDARIES. The trail reads "dunneflow › NETWORK › NETWORK f'{url}api/programs'". The heads-up panel says "60 fps · 4,410 nodes · 30 plates" and "on ext:<small outside>, pkg:web · f'{url}api/programs', (NETWORK, unnamed) · 4 nodes · 0 within · 2 crossing · 4,406 dimmed · focus: only what is lit answers", with the sliders open beneath it; the stack is grey but for a few lit nodes and the links between them, and the Plates panel is folded to its rail. The navigator's BOUNDARIES group is open at "7 kinds": DATABASE 309, FILE 218, STDIO 84, PROCESS 23, ENV 16, CRYPTO 5, NETWORK 3. The inspector on the right is headed f'{url}api/programs', tagged ANALYSED and BOUNDARY: IN 1, already_serving from web.serve, INFERRED; OUT 0, "It calls nothing this map can see."; TOUCHES 0; and REACHED FROM INSIDE, "not reached from inside any loop. Listed below with 1 other enclosing span — a decision that writes is a fact about this, even though it is not a rate", above the row already_serving HANDLER 4005; then GOVERNANCE 0 and THREADS TO PULL 0](images/02-network.jpg)
 
 Two boundary nodes and the two routines that reach them. The three touches are:
 
 | | |
 |---|---|
-| `_free_port` | `serve.py:3764` and `:3770` — binding a socket to find a port that is free; the address is built at run time, so this end has no name |
-| `already_serving` | `serve.py:3745` — asking `f'{url}api/programs'` whether a server is already up |
+| `_free_port` | `serve.py:4025` and `:4031` — binding a socket to find a port that is free; the address is built at run time, so this end has no name |
+| `already_serving` | `serve.py:4006` — asking `f'{url}api/programs'` whether a server is already up |
 
 All three are localhost, and there is no fourth. DunneFlow's claim that nothing leaves your
 machine is not a promise in a README here; it is a number on the cover of its own map, with
@@ -89,8 +95,8 @@ crash reported home, this row would say so — and it is the shortest row on the
 | | |
 |---|---|
 | Broken | 0 |
-| Suspect | 26 |
-| Informational | 18 |
+| Suspect | 19 |
+| Informational | 19 |
 
 And underneath, the sentence that governs the entire feature:
 
@@ -109,12 +115,12 @@ problems were fixed, so anything that is wrong with DunneFlow now is a new probl
 
 ## The navigator
 
-Down the left: **WAYS IN 7**, **ROUTINES 1,552 in 24 packages**, and below them CHANGES,
+Down the left: **WAYS IN 12**, **ROUTINES 2,552 in 27 packages**, and below them CHANGES,
 CODE, EXPLORE, PACKAGES, BOUNDARIES, DATABASE, STRUCTURES, VOCABULARY, ALGORITHMS,
 ANOMALIES.
 
-The package list is ranked by size — `web` 352, `extractors` 296, `resolve` 201, `plugins`
-126, `render` 103 — and runs all the way down: the five smallest, `macapp` 4, `canonical` 3,
+The package list is ranked by size — `plugins` 1,053, `web` 372, `resolve` 225,
+`extractors` 188, `render` 127 — and runs all the way down: the five smallest, `macapp` 4, `canonical` 3,
 `lookup` 2, `standards` 2 and `words` 2, carry a `·small` mark, because they are too small for a plate
 of their own and the stack draws them together. Marked, and **still listed**, with their
 counts. Nothing is dropped for being small; it is just moved out of the way of the things
@@ -122,13 +128,14 @@ that are not.
 
 ## The strip above it
 
-![The comparison strip. It reads "BASE DunneFlow 0.2.0 compared with dunneflow-before-windows · DunneFlow at 1017ef4 - before the Windows fix 0.2.0", then a button reading "assuming the compared version is newer", then "captured: compared first"](images/02-comparison-strip.png)
+![The comparison strip. It reads "BASE DunneFlow 0.3.0 compared with dunneflow-before-windows · DunneFlow at 1017ef4 - before the Windows fix 0.2.0", then a boxed note reading "the compared version is older — from their versions", then "captured: compared first"](images/02-comparison-strip.png)
 
 This map holds three readings of DunneFlow: the current source, and two snapshots sealed
 from earlier commits — one from before a fix for Windows landed, which is the one the strip
 is holding it against, and one from further back. That is [chapter 8](08-two-versions.md)'s
-subject and you can ignore it for now — including the button that says which way round it
-is assuming the two go — but it is worth knowing it is there, because several panels behave
+subject and you can ignore it for now — including the note that says which way round the
+two go, and that it read that from the versions the two state rather than assuming it — but
+it is worth knowing it is there, because several panels behave
 differently once a comparison exists, and they will tell you so rather than changing
 quietly.
 

@@ -34,13 +34,13 @@ whether the emptiness below is *nothing here* or *nothing found*.
 Each row says how many points in time it holds: *one point in time*, or *3 points in
 time* for a program you have analysed more than once. Click a row to open it.
 
-![The same page a moment after dunneflow was clicked: the lead line now reads "opening dunneflow — opening the graph…" and the dunneflow row is shaded under the pointer, still reading "3 points in time".](images/03-opening.jpg)
+![The same page a moment after OpenUSD was clicked: the lead line now reads "opening OpenUSD — the 2.5D model and its payload…" and the OpenUSD row is greyed under the pointer, reading "opening…" where it said "one point in time".](images/03-opening.jpg)
 
 Opening is not instant on a large map, so the lead line becomes a progress line while it
 happens: it names the program and the step it is on — the graph, the model the stack is
 drawn from, the file list, the naming standard, the glossary, and the cover — and the row
-you clicked greys out and says *opening…*. When the last step is done the page becomes the
-dashboard by itself.
+you clicked greys out and says *opening…*. The picture is OpenUSD on its second step.
+When the last step is done the page becomes the dashboard by itself.
 
 DunneFlow decides what is a map by looking inside, never by the directory's name. A
 folder called `output` full of hand-written prose is a folder full of prose, and it will

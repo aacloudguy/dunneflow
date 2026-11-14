@@ -40,7 +40,7 @@ uv run dunneflow analyze ~/code/DunneFlow/src/dunneflow --name dunneflow
 ```
 
 ```
-sealed 2026-10-02T21:37:11Z as FOR_COMPARISON — “DunneFlow at 1017ef4 - before the Windows fix”
+sealed 2026-11-13T03:56:47Z as FOR_COMPARISON — “DunneFlow at 1017ef4 - before the Windows fix”
 the next `analyze` opens a fresh working revision beside it
 ```
 
@@ -53,9 +53,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-10-02T21:37:19Z   WORKING          2026-10-02T21:37:19Z      142
-2026-10-02T21:37:11Z   FOR_COMPARISON   2026-10-02T21:37:11Z      141  DunneFlow at 1017ef4 - before the Windows fix
-2026-10-02T21:37:03Z   FOR_COMPARISON   2026-10-02T21:37:03Z      141  DunneFlow at 0804aa7 - before parts
+2026-11-13T03:56:51Z   WORKING          2026-11-13T03:56:51Z      181
+2026-11-13T03:56:47Z   FOR_COMPARISON   2026-11-13T03:56:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-11-13T03:56:43Z   FOR_COMPARISON   2026-11-13T03:56:43Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 **Sealing is a command, not a button**, and the dashboard says so where you would look for
@@ -97,39 +97,45 @@ remembered.
 
 ## Which is newer?
 
-**DunneFlow does not know, and does not pretend to.** The only instant it records is when
-*it* read the bytes. A tree handed to you on a memory stick has no history at all and
-that is precisely the case this view exists to serve.
+**DunneFlow reads it where the two programs say, and does not pretend to where they do
+not.** The only instant it records is when *it* read the bytes, and that is a fact about
+the capture. A tree handed to you on a memory stick has no history at all and that is
+precisely the case this view exists to serve. What a program can state is its own version,
+and where both ends state one and the two can be ordered, that is what decides.
 
 So the bands are named by **where a thing is**, never by what happened to it, and the
-interpretation is yours. The strip carries it as a button you can flip:
+interpretation laid over them says where it came from. The strip carries it:
 
-> BASE **DunneFlow** `0.2.0` compared with **dunneflow-before-windows** · DunneFlow at
-> 1017ef4 - before the Windows fix `0.2.0` [ assuming the compared version is newer ]
-> captured: compared first
+> BASE **DunneFlow** `0.3.0` compared with **dunneflow-before-windows** · DunneFlow at
+> 1017ef4 - before the Windows fix `0.2.0` [ the compared version is older — from their
+> versions ] captured: compared first
 
 Three things in that line:
 
-- **The assumption**, as a button. Click it to flip. Where the two versions state numbers
-  that can be ordered, it says so — *"the compared version is newer — from their
-  versions"*. Where they cannot, as here (both are `0.2.0`), it says *"assuming the
-  compared version is newer"*: a default rather than a reading. Hover it and the reason is
-  given in full — *"Neither version says enough to compare, so this is the default
-  assumption. It decides whether what only the base has reads as deleted or as added."*
-  Once you have clicked it, it says so, and the versions no longer decide:
+- **The direction, and its basis**, as a button. Where the two versions state numbers
+  that can be ordered, as here (`0.3.0` against `0.2.0`), it says so — *"the compared
+  version is older — from their versions"*: a reading rather than a default. Hover it and
+  the reason is given in full — *"Read from the two versions each program states about
+  itself. It decides whether what only the base has reads as deleted or as added."* Where
+  they cannot be ordered — one end states none, or both state the same one — it says
+  *"assuming the compared version is newer"*, and the hover says that *"Neither version
+  says enough to compare, so this is the default assumption."* Clicking the button puts
+  your own choice in place of either, it then begins *"you chose:"*, and a third click
+  hands the decision back to the versions. The other pair in this map reads the same way,
+  `0.3.0` against `0.1.0`:
 
-  ![The version strip for the before-parts pair: "BASE DunneFlow 0.2.0 compared with dunneflow-before-parts · DunneFlow at 0804aa7 - before parts 0.1.0", then the button "you chose: the compared version is older", then "captured: compared first"](images/14-assumption.png)
+  ![The version strip for the before-parts pair: "BASE DunneFlow 0.3.0 compared with dunneflow-before-parts · DunneFlow at 0804aa7 - before parts 0.1.0", then the button "the compared version is older — from their versions", then "captured: compared first"](images/14-assumption.png)
 - **captured: compared first** Which of the two DunneFlow read first. A fact about the
-  capture, not about the code, which is why it sits beside the assumption rather than
+  capture, not about the code, which is why it sits beside the direction rather than
   deciding it.
-- Changing the assumption costs no re-query. It only relabels; the facts underneath do not
+- Changing the direction costs no re-query. It only relabels; the facts underneath do not
   move.
 
 ## What differs
 
 The **Changes** group in the navigator, or **The whole comparison** inside it.
 
-![The "What differs" page for the before-parts pair: "base 2026-10-02T21:37:19Z · compared with 2026-10-02T21:37:03Z — DunneFlow at 0804aa7 - before parts · you chose: the compared version is older · compared in 1,799 ms on the connection already open here", then eight cards — 36 added, 3 deleted, 87 behave differently, 0 explained differently, 37 edited only, 1 module explained differently, 6 structures declaring differently, 1 structure explained differently — followed by "1,552 routines in the base, 1,519 in the compared. A rename reads as one of each — nothing in the source says the two are the same thing.", "207 structures in the base, 207 in the compared", and the start of the constants: +4, beginning cli.STEP_BEFORE and extractors.docs.markdown.IMAGE_ONLY, and ◈14, beginning extractors.cpp.extract.RESIDUE. The navigator's CHANGES group reads 134, with The whole comparison open and its bands listed beneath](images/14-what-differs.jpg)
+![The "What differs" page for the before-parts pair: "base 2026-11-13T03:56:51Z · compared with 2026-11-13T03:56:43Z — DunneFlow at 0804aa7 - before parts · the compared version is older — from their versions · compared in 521 ms on the connection already open here", then ten cards — 1,158 added, 125 deleted, 238 behave differently, 2 explained differently, 186 edited only, 41 modules explained differently, 318 structures only in the base, 10 structures only in the compared, 29 structures declaring differently, 9 structures explained differently — followed by "2,552 routines in the base, 1,519 in the compared. A rename reads as one of each — nothing in the source says the two are the same thing." and "515 structures in the base, 207 in the compared", where the picture ends. The navigator's CHANGES group reads 1,930, with The whole comparison open and its bands listed beneath](images/14-what-differs.jpg)
 
 ### The bands
 
@@ -162,18 +168,19 @@ Docstrings are canonicalised slightly differently: paragraphs are **kept**. Merg
 would destroy the separation between a summary line and the rest, which is exactly the
 change you would want reported.
 
-Every card says what it counts, and the bands add up: of the 1,552 routines in this base,
-36 are added, 87 behave differently, 37 are edited only, and 1,392 are unchanged — the
-same sentence the ROUTINES group prints, which adds that the 3 deleted are *in
-2026-10-02 21:37:03 only, so not listed here*. A list of the base cannot hold a routine the
+Every card says what it counts, and the bands add up: of the 2,552 routines in this base,
+1,158 are added, 238 behave differently, 2 are explained differently, 186 are edited only,
+and 968 are unchanged — the same sentence the ROUTINES group prints, which adds that the
+125 deleted are *in 2026-11-13 03:56:43 only, so not listed here*. A list of the base cannot hold a routine the
 base does not have.
 
 ### Below the bands
 
-Ways in that appeared or vanished, named files, and constants with each listed by name, and
-each clickable. Here, four constants arrived, `cli.STEP_BEFORE` among them, and fourteen
-say something different, `schema.SCHEMA_VERSION` and `plugins.typescript.src.main.VERSION`
-among them; the second list shows six and folds the other eight behind *8 more ▸*.
+Tables and ways in that appeared or vanished, named files, and constants with each listed
+by name, and each clickable. Here, 329 constants arrived, `cli.STEP_BEFORE` among them, 41
+are gone, and forty say something different, `schema.SCHEMA_VERSION` and
+`plugins.typescript.src.main.VERSION` among them; each list shows six and folds the rest
+behind a count, so the last of the three ends *34 more ▸*.
 
 ## Reading the difference in the views
 
@@ -184,11 +191,11 @@ Free, drawn from an answer already held.
 
 **The code browser** draws it over the source:
 
-![The code browser on cli.py, against the before-the-Windows-fix version: "cli · 2,132 lines · 47 definitions · 213 marks", then "Against 2026-10-02 21:37:11: 71 lines added and 15 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "8 routines here the comparison has something to say about": build_parser "behaves differently — call_args", cmd_analyze "— call_args, calls, comments", cmd_impact and cmd_mirror "— boundaries, call_args, calls", cmd_naming "— call_args, docstring", cmd_touches "— boundaries, call_args, calls, comments", and two added, _gap and _settled](images/14-code-overlay.jpg)
+![The code browser on cli.py, against the before-the-Windows-fix version: "cli · 2,559 lines · 65 definitions · 257 marks", then "Against 2026-11-13 03:56:47: 559 lines added and 76 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "42 routines here the comparison has something to say about", the first twenty of them in the picture: __init__ "behaves differently — calls, comments", detail "— call_args, params, docstring", build_parser "— call_args, calls, comments", cmd_analyze "— boundaries, call_args, calls, comments, docstring", cmd_naming "— boundaries, call_args, calls, docstring", cmd_serve "— call_args", cmd_touches "— boundaries, call_args, calls, comments" and eleven more that behave differently, then two added, cpu_phases and phases](images/14-code-overlay.jpg)
 
 The lines are the cheap half. The list under them is the half nothing else gives you:
-*`cmd_naming` behaves differently — call_args, docstring*. That is two different claims
-about one routine, and each is a fact you can go and look at.
+*`cmd_naming` behaves differently — boundaries, call_args, calls, docstring*. That is four
+different claims about one routine, and each is a fact you can go and look at.
 
 Note what it says about deleted lines: they are *shown where they belong, with their own
 numbers — they are not in the file you are reading*. You are reading one version, with the

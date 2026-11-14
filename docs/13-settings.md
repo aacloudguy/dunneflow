@@ -82,11 +82,12 @@ do while you move them. See [Graph](06-graph.md).
 
 ## What opens, and what shows
 
-Twenty-four rows, and this is all of them.
+Twenty-six rows, and this is all of them.
 
 | | |
 |---|---|
 | **Startup screen** — Cover / Package graph | Which one you land on. Both exist because the choice was a genuine tie; Usage below tracks which you open. |
+| **Unfinished maps** — Refuse / Open with a warning | What happens to a map whose analysis stopped part way. Held for every program on this machine, not per program. See [when it refuses](15-when-it-refuses.md). |
 | **Show the trail** | The strip recording where you have been. |
 | **Steps the trail shows** — 6 / 12 / 25 | How many fit on the bar, not how many are kept: the history holds fifty either way and Back reaches all of them. |
 | **A leading underscore in a name** — Counted as a violation / Allowed | Whether `_Handler` is a PascalCase class. See below. |
@@ -128,7 +129,7 @@ The diagram keeps its one dashed box per macro either way, and opening the box l
 A naming rule that says *classes are PascalCase* is broken, strictly, by every private class
 in a Python program. **Counted as a violation**, the default, takes the rule at its word.
 **Allowed** reads a leading underscore as a privacy mark and judges what follows it. On
-DunneFlow's own map that moves its classes from **165 of 182** to **179 of 182**: the
+DunneFlow's own map that moves its Python classes from **180 of 199** to **196 of 199**: the
 three left are `ClassDef_`, `Exception_` and `Field_`, whose underscore is at the other end
 and means something else.
 
@@ -139,7 +140,7 @@ produced it. The command line takes the same choice as `dunneflow naming
 
 ## Usage
 
-![The foot of the Usage counters, one row per view or choice with a bar and a count — Diagram:Colour:None, Naming:Underscore:Allowed and Naming:Underscore:Violation, each wrapped onto two lines inside its own column, then Doc:Lane:Map, Doc:Open and Algorithms — under which "Counted so a Setting that exists only because two options were tied can be retired on evidence rather than on opinion." Below it the ACCESSIBILITY — AND ITS LIMITS section: a node graph stops being screen-reader navigable past roughly fifty nodes; Mermaid's generated SVG can be themed but its focus order cannot be controlled; pan and pinch-zoom are gestures not everyone has; colour is never the only carrier of meaning](images/13-settings-usage-a11y.jpg)
+![The foot of the Usage counters, one row per view or choice with a bar and a count — the end of Naming:Underscore:Allowed, then Naming:Underscore:Violation, wrapped onto two lines inside its own column, Thread, Follow:Replace, Doc:Open, Diagram:Pick and Algorithms, every one of them counted once — under which "Counted so a Setting that exists only because two options were tied can be retired on evidence rather than on opinion." Below it the ACCESSIBILITY — AND ITS LIMITS section: a node graph stops being screen-reader navigable past roughly fifty nodes; Mermaid's generated SVG can be themed but its focus order cannot be controlled; pan and pinch-zoom are gestures not everyone has; colour is never the only carrier of meaning](images/13-settings-usage-a11y.jpg)
 
 A count of which views you actually open and which way you set the tied choices, headed *local only · never leaves this machine*.
 It is here for one reason, stated on the page: several settings exist only because two

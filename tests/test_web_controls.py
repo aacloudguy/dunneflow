@@ -11512,6 +11512,152 @@ def test_the_rail_browses_its_list_without_closing_the_centres_file() -> None:
     )
 
 
+def test_a_call_with_no_edge_says_why_inside_the_pane() -> None:
+    """Found photographing the tutorial, 2026-11-14: the inspector for
+    `entrypoints_from_manifests` read *"entry.target.partition the reader could not t"* and
+    stopped at the pane's edge, with a horizontal scrollbar under it and no badge on the row.
+
+    A resolved call puts a name over a module, each elided in its own box. A call with no
+    edge puts the name and **a sentence** in one `<code>`, and `.flowitem code` is `nowrap`
+    so that a qualified name is never broken mid-token. The sentence inherited it: 63
+    characters on a pane of about 45, the EXTERNAL badge pushed out of sight, and the whole
+    inspector scrolling sideways (design rule 31). The name still may not wrap. The reason
+    is prose and has to.
+    """
+    css = _read("tokens.css")
+    rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+
+    assert re.search(r"\.flowitem code \{[^}]*white-space: nowrap", rules), (
+        "a name in a flow row may wrap again, so a qualified name breaks mid-token"
+    )
+    assert re.search(r"\.flowitem > code > \.dim \{[^}]*white-space: normal", rules), (
+        "the phrase beside an unlinked call is held on one line with its name again, so it "
+        "runs off the pane and takes the badge with it"
+    )
+    assert re.search(r"\.flowitem > code \{[^}]*min-width: 0", rules), (
+        "the unlinked row's text cannot shrink, so wrapping it changes nothing"
+    )
+
+    # The rule only helps while each phrase is a `.dim` inside the row's own `<code>`
+    # (rule 54) -- the reason, and the two fixed phrases that were three pixels over.
+    js = _read("shell.js")
+    assert re.search(r'<span class="dim"[^>]*>\s*\$\{\s*esc\(frontierWords\(c\)\)', js)
+    for words in ("a class of this program", "at the boundary"):
+        assert re.search(r'<span class="dim"[^>]*>\s*' + re.escape(words), js), (
+            f"{words!r} is no longer drawn in a .dim span, so the stylesheet's rule for it "
+            "names nothing"
+        )
+
+
+def test_a_cards_path_stays_inside_the_card() -> None:
+    """Found photographing the tutorial, 2026-11-14: *13 parameters on one routine* is declared
+    at `plugins/java/src/dunneflow/reader/Edges.java:669`, and the path stood 21px outside its
+    card. `.curi-text code` has broken long values since the cards were built, but a card's
+    *where* is drawn as `<span class="mono">`, which that rule does not name (rule 54).
+    """
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
+    assert re.search(r"\.curi-text \.mono \{[^}]*overflow-wrap: anywhere", css), (
+        "a path in a Worth-a-look card cannot break, so one longer than the card runs out of it"
+    )
+    js = _read("shell.js")
+    assert re.search(r'curi-text.{0,400}?<span class="mono">', js, flags=re.S), (
+        "the card's where is no longer a .mono span inside .curi-text, so the rule names nothing"
+    )
+
+
+def test_diagram_opens_on_the_selections_compartment_without_the_stack() -> None:
+    """Found rebuilding a trail for the tutorial, 2026-11-14: reload on a page view, pick
+    `entrypoints_from_manifests` in the navigator, press Diagram -- and the drawing was
+    `plugins — 226 boxes` with *what you picked is not in this compartment* above it.
+
+    `diagramWanted` asked `Graph.selectedDisks()` and nothing else, and the engine has no
+    selection until the stack has been drawn in this page (rule 87: a derivation from the
+    picture is only as available as the picture). The mark and the note beside it were each
+    taught this already; the entry was the third place and the first one a reader meets.
+    """
+    js = _read("shell.js")
+    wanted = _fn_body(js, "diagramWanted")
+    assert "specimenCompartment()" in wanted, (
+        "the compartment to open on is taken from the stack alone again, so a selection made "
+        "before the stack was drawn opens the largest compartment instead of its own"
+    )
+    assert wanted.index("state.diagramId") < wanted.index("specimenCompartment()"), (
+        "a compartment the reader chose must still win over one derived from the selection"
+    )
+    named = _fn_body(js, "specimenCompartment")
+    assert "Graph." not in _code(named), "the stack-free answer asks the stack"
+    assert "SPECIMEN.id !== state.selected" in named, (
+        "a specimen still loading for the previous selection would name the wrong compartment"
+    )
+    assert "DIAGRAM.find" in named, (
+        "the compartment is assembled from a name rather than found in the index, so a merged "
+        "package would be asked for by an id that does not exist"
+    )
+
+
+def test_the_stacks_clear_button_follows_the_selection() -> None:
+    """Found reviewing the retaken guide, 2026-11-14: `06-graph-stack.jpg` shows the stack
+    with nothing selected and a **clear** button, and pressing clear in the live page left
+    the button standing over *nothing selected*.
+
+    The button was written into the HUD only when something was selected at the moment the
+    box was built, and a selection never rebuilds that box -- `updateGraphCounts` is the
+    narrow path precisely so a slider is not destroyed mid-drag. So the button showed
+    whatever was true at the last rebuild. Rule 78: it follows the counts now.
+    """
+    js = _read("shell.js")
+    assert re.search(r'data-gact="clear" \$\{c\.selected \? "" : "hidden"\}', js), (
+        "clear is drawn conditionally again, so it shows what was selected at the last "
+        "rebuild rather than what is selected now"
+    )
+    narrow = _fn_body(js, "updateGraphCounts")
+    assert re.search(r"clear\.hidden = !\(counts && counts\.selected\)", narrow), (
+        "the narrow path no longer moves clear with the selection"
+    )
+
+
+def test_the_way_back_out_of_an_open_file_says_what_the_search_found() -> None:
+    """Found photographing the guide, 2026-11-14: with `cli.py` open in the rail, typing
+    `webbrowser` into the Code group's box drew *"4 lines in 2 files … The first is open;
+    open any."* directly above a button reading **‹ files**, titled *Back to the list of
+    files*. It went to the four lines.
+
+    `codeList` chose the button's words once, when the file was opened, and gave it the class
+    `srch-back` only when a search had already answered; `refreshCodeSearch` then looked for
+    `.srch-back` to bring it up to date. A file opened first had no such button to find, and a
+    search cleared afterwards left its count standing, because the refresh only ever wrote the
+    one sentence. Rule 78, and rule 37 for the earlier guard: the class name appeared in both
+    functions and nothing happened.
+    """
+    js = _read("shell.js")
+    paint = _fn_body(js, "codeList")
+    refresh = _fn_body(js, "refreshCodeSearch")
+    says = _fn_body(js, "codeBackSays")
+
+    # One place decides the words, and both the paint and the refresh ask it.
+    for name, body in (("codeList", paint), ("refreshCodeSearch", refresh)):
+        assert "codeBackSays()" in body, (
+            f"{name} words the way back by itself again, so the button says whatever the "
+            "last path to draw it knew"
+        )
+    assert "Back to the list of files" not in paint and "Back to what the search" not in paint
+
+    # The refresh must be able to find the button whichever answer it was painted under.
+    assert re.search(r'class="linkbtn srch-back" data-codeback="1"', paint), (
+        "the button is findable only in one of its two states, so the refresh skips the other"
+    )
+    assert "? `<button" not in paint, "the button is chosen between two again"
+
+    # Both directions, and the title with the text: a hover that disagrees with the label
+    # is the same defect one gesture later.
+    assert "back.textContent = way.text" in refresh and "back.title = way.title" in refresh
+    assert "SEARCH.total)" not in re.sub(r"/\*.*?\*/", "", refresh, flags=re.S), (
+        "the refresh writes the button only when there is an answer, so clearing the box "
+        "leaves the last answer's size on it"
+    )
+    assert "state.codeQ.trim()" in says and "Back to the list of files" in says
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════
 # Document mode, lane 2: the map's own eight documents
 #

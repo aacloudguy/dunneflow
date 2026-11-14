@@ -3686,7 +3686,35 @@ function diagramWanted() {
     const hit = DIAGRAM.find(c => c.id === on[0]);
     if (hit) return hit.id;
   }
+  const named = specimenCompartment();
+  if (named) return named;
   return DIAGRAM && DIAGRAM.length ? DIAGRAM[0].id : null;
+}
+
+/* The selection's compartment, **without the stack** (rule 87).
+ *
+ * `Graph.selectedDisks()` is the picture's answer, and it is `[]` for as long as the picture
+ * has not been drawn in this page -- a reader who reloads on a page view, picks a routine in
+ * the navigator and presses Diagram has a selection the inspector shows and the engine has
+ * never heard of. The entry then fell through to the largest compartment and said *what you
+ * picked is not in this compartment* about a routine the reader had picked one click before
+ * (found rebuilding a trail for the tutorial, 2026-11-14: `entrypoints_from_manifests`,
+ * opened on `plugins`). `markDiagramSelection` learned this about the mark and
+ * `dgmSelectionNote` about the note; this is the third place, and the first one a reader
+ * meets.
+ *
+ * So the specimen answers when the picture cannot. A compartment is a plate, and a routine's
+ * plate is its package unless `graph.py` merged that package into `<small>` -- which is
+ * exactly the case where the package's own id is missing from the index, so the index is
+ * what decides and nothing here re-derives the merge rule. Says nothing (`null`) for a
+ * subject with no module: a boundary or a table has no package to stand in. */
+function specimenCompartment() {
+  if (!DIAGRAM || !state.selected || !SPECIMEN || SPECIMEN.id !== state.selected) return null;
+  const mod = SPECIMEN.identity && SPECIMEN.identity.module;
+  if (!mod) return null;
+  const own = "pkg:" + String(mod).split(".")[0];
+  const hit = DIAGRAM.find(c => c.id === own) || DIAGRAM.find(c => c.id === "pkg:<small>");
+  return hit ? hit.id : null;
 }
 
 async function ensureDiagram() {
@@ -17211,6 +17239,27 @@ function revealLine(first) {
   }
 }
 
+/* What the way back out of an open file says, and where it says it goes.
+ *
+ * **One function, read by the paint and by the refresh**, because the two disagreed. The
+ * paint chose between "‹ files" and "‹ 4 lines in 2 files" once, when the file was opened;
+ * the refresh then looked for a button the paint had only made in the second case. So a
+ * reader with a file already open who typed a search kept "‹ files — Back to the list of
+ * files" above an answer of four lines, and one who cleared the box kept the four lines
+ * above nothing. The button went to the right place both times and said the wrong one
+ * (rule 78: a control kept up to date by whichever path drew it). */
+function codeBackSays() {
+  if (state.codeQ.trim() && SEARCH && SEARCH.ok && SEARCH.total) {
+    return {
+      text: `\u2039 ${SEARCH.total.toLocaleString()} line${
+        SEARCH.total === 1 ? "" : "s"} in ${SEARCH.files.toLocaleString()} file${
+        SEARCH.files === 1 ? "" : "s"}`,
+      title: "Back to what the search found",
+    };
+  }
+  return { text: "\u2039 files", title: "Back to the list of files" };
+}
+
 /* The group's body: the list, or the file with a way back to the list. */
 function codeList() {
   if (!FILES.length) return "";
@@ -17224,13 +17273,9 @@ function codeList() {
    * they are reading to the one they are looking for; making them close the file first is
    * making them lose their place to ask a question. What the search *found* is one click
    * back, stated with its size so the way back is not a guess. */
-  const back = (SEARCH && SEARCH.ok && SEARCH.total)
-    ? `<button class="linkbtn srch-back" data-codeback="1"
-               title="Back to what the search found">‹ ${SEARCH.total.toLocaleString()} line${
-                 SEARCH.total === 1 ? "" : "s"} in ${SEARCH.files.toLocaleString()} file${
-                 SEARCH.files === 1 ? "" : "s"}</button>`
-    : `<button class="linkbtn" data-codeback="1"
-               title="Back to the list of files">‹ files</button>`;
+  const way = codeBackSays();
+  const back = `<button class="linkbtn srch-back" data-codeback="1"
+               title="${esc(way.title)}">${esc(way.text)}</button>`;
   return `
     ${searchBoxHtml()}
     <div class="codehead">
@@ -20431,6 +20476,10 @@ function updateGraphCounts() {
       ? "Nothing is selected, so there is no view to go back to"
       : "Back to the view you found this in";
   }
+  /* And the second: `clear` is there only while something is selected, which is the same
+     fact arriving as presence rather than as `disabled`. */
+  const clear = $('[data-gact="clear"]');
+  if (clear) clear.hidden = !(counts && counts.selected);
   const legend = $("#graphLegend");
   if (!legend) return;
   const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
@@ -20552,7 +20601,13 @@ function renderGraphFurniture() {
           <button class="gbtn" data-gact="top">top-down</button>
           <button class="gbtn" data-gact="tilt">tilt</button>
           <button class="gbtn" data-gact="bench">benchmark</button>
-          ${c.selected ? `<button class="gbtn" data-gact="clear">clear</button>` : ""}
+          <!-- Always drawn, and hidden while there is nothing to clear. It was drawn only
+               when c.selected was true *at the rebuild*, and a selection never rebuilds
+               this box (see updateGraphCounts): so pressing it left it standing over
+               "nothing selected", and a first selection made after a rebuild had no clear
+               at all. Its presence follows the counts on the narrow path now, as the
+               enabled state of "you are here" does (rule 78). -->
+          <button class="gbtn" data-gact="clear" ${c.selected ? "" : "hidden"}>clear</button>
         </div>
         <div class="muted" id="gbench"></div>
       </div>
@@ -21936,10 +21991,10 @@ function refreshCodeSearch() {
   /* The way back out of an open file states the answer's size, so it moves when the answer
      does. Narrow: one button, not the group. */
   const back = $(".srch-back");
-  if (back && SEARCH && SEARCH.ok && SEARCH.total) {
-    back.textContent = `\u2039 ${SEARCH.total.toLocaleString()} line${
-      SEARCH.total === 1 ? "" : "s"} in ${SEARCH.files.toLocaleString()} file${
-      SEARCH.files === 1 ? "" : "s"}`;
+  if (back) {
+    const way = codeBackSays();
+    back.textContent = way.text;
+    back.title = way.title;
   }
 }
 

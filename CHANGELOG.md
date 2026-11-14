@@ -66,6 +66,14 @@ repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
 - **Two controls in the Analyse dialog were drawn by the browser** and not by the
   dashboard: the list under *Under each flow diagram* and the minutes box, white in the
   dark theme.
+- **Five things in the dashboard that the retake of its own screenshots turned up.** With
+  a file already open beside the navigator, a search that answered left the way back
+  reading *‹ files*; it now says what the search found. A call with no edge says why in
+  words, and those words ran off the inspector and took the EXTERNAL badge with them; they
+  wrap under the name now. A long path stood outside its *Worth a look* card. Diagram
+  opened on the largest compartment, and said *what you picked is not in this
+  compartment*, when a routine was picked before the stack had been drawn in that page.
+  And the stack's **clear** button stayed up after it was pressed.
 
 ### Security
 
